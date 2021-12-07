@@ -1,9 +1,30 @@
 package core
 
+import (
+	"encoding/json"
+
+	logger "github.com/geebytes/go-scrapy/logging"
+	"github.com/sirupsen/logrus"
+)
+
 type Response struct {
 	Text   string
 	Status int
 	Body   []byte
 	Header map[string][]byte
 	Req    *Request
+}
+
+var respLog *logrus.Entry = logger.GetLogger("response")
+
+func (r *Response) Json() map[string]interface{} {
+	defer func() {
+		if p := recover(); p != nil {
+			respLog.Errorf("panic recover! p: %v", p)
+		}
+
+	}()
+	jsonResp := map[string]interface{}{}
+	json.Unmarshal(r.Body, &jsonResp)
+	return jsonResp
 }

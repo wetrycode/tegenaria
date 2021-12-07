@@ -53,6 +53,17 @@ func TestRequestPost(t *testing.T) {
 		t.Errorf("response status = %d; expected %d", resp.Status, 200)
 
 	}
+	data, _ := resp.Json()["data"].(map[string]interface{})
+	for key, value := range data {
+		if data, ok := body[key]; ok {
+			if value != data {
+				t.Errorf("post request error")
+			}
+		} else {
+			t.Errorf("post request error")
+		}
+	}
+
 }
 
 func TestRequestCookie(t *testing.T) {
