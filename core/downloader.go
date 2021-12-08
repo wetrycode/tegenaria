@@ -79,14 +79,11 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 	for {
 		select {
 		case <-ctx.Done():
-			if ctx.Err() != nil {
-				log.Errorf("request error %s", ctx.Err().Error())
-			} else {
-				log.Infof("request is done")
-			}
+			log.Infof("request is done")
+			return
 		default:
 			if err := c.DoTimeout(req, resp, request.Timeout); err != nil {
-				log.Errorf("request %s error %s:", request.Url, err.Error())
+				// log.Errorf("request %s error %s:", request.Url, err.Error())
 				//return nil, err
 				r.Response = nil
 				r.Error = err
