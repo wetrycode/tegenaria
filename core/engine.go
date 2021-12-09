@@ -1,9 +1,18 @@
 package core
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/geebytes/go-scrapy/middlewares"
+	"github.com/geebytes/go-scrapy/pipelines"
+)
 
 type SpiderEnginer struct {
-	SpidersModules []*SpiderProcesser
+	SpidersModules map[string]*SpiderProcesser
+	DownloaderMiddliers map[string] *middlewares.DownloadMiddlewares
+	SpidersMiddliers map[string] *middlewares.SpidersMiddlewares
+	Pipelines map[string] *pipelines.Pipelines
+
 }
 
 var Enginer *SpiderEnginer
@@ -16,6 +25,9 @@ func NewSpiderEnginer() *SpiderEnginer {
 	return Enginer
 }
 
-func (s *SpiderEnginer) Register(spider *SpiderProcesser) {
-	s.SpidersModules = append(s.SpidersModules, spider)
+func (s *SpiderEnginer) Register(name string, spider *SpiderProcesser) {
+	s.SpidersModules[name] = spider
+}
+func init(){
+	Enginer = NewSpiderEnginer()
 }
