@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<checkstyle version="5.0">
+  <file name="settings/settings.go">
+    <error column="24" line="42" message="Error return value of `runtimeViper.Unmarshal` is not checked" severity="error" source="errcheck">
+    </error>
+  </file>
+  <file name="core/response.go">
+    <error column="16" line="28" message="Error return value of `json.Unmarshal` is not checked" severity="error" source="errcheck">
+    </error>
+  </file>
+</checkstyle>
