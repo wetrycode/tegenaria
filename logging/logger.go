@@ -49,7 +49,12 @@ func init() {
 	// 设置日志格式为json格式
 	Logger.Formatter = &logrus.JSONFormatter{TimestampFormat: "2006-01-02 15:04:05"}
 	Logger.SetOutput(os.Stdout)
-	level, err := logrus.ParseLevel(settings.Config.Log.Level)
+	_, ex := os.LookupEnv("UNITTEST")
+	logLevel := settings.Config.Log.Level
+	if ex {
+		logLevel = "error"
+	}
+	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {
 		panic(fmt.Errorf("fatal error parse level: %s", err))
 	}

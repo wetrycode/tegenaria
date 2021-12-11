@@ -32,16 +32,22 @@ stages:
       - go env -w GOPROXY="https://goproxy.cn,direct"
       - go install github.com/axw/gocov/gocov@v1.0.0 
       - go install github.com/AlekSi/gocov-xml@latest
+      - go install gotest.tools/gotestsum@latest
       - echo '192.168.31.105 local.proxy' >> /etc/hosts
 
     script:
         - go test -v ./... -coverprofile=cover.out
         - gocov convert cover.out | gocov-xml > coverage.xml
+        - gotestsum --junitfile report.xml --format testname
     artifacts:
         expire_in: 1 day
+        when: always
         paths:
             - cover.out
             - coverage.xml
+            - report.xml
+      reports:
+        junit: report.xml
     retry: 2
 代码质量扫描:
   image: 
