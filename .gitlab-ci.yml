@@ -4,10 +4,53 @@
 # Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
 # Note that environment variables can be set in several places
 # See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
-sonarqube-check:
+stages:
+    - lint
+    - unittest
+    - sonarqube-check
+静态代码检查:
+    image: golangci/golangci-lint:v1.27.0
+    stage: lint
+    extends: .go-cache
+    allow_failure: true
+    before_script:
+      - mkdir -p .go
+      - go version
+      - go env -w GO111MODULE=on
+      - go env -w GOPROXY="https://goproxy.io,direct"
+    script:
+      - golangci-lint run --out-format checkstyle ./... > report.xml
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - report.xml
+        reports:
+            - report.xml
+单元测试:
+    stage: unittest
+    image: golang:1.17.3-alpine
+    before_script:
+      - mkdir -p .go
+      - go version
+      - go env -w GO111MODULE=on
+      - go env -w GOPROXY="https://goproxy.io,direct"
+      - go install github.com/axw/gocov/gocov@v1.0.0 
+    script:
+        - go test -v ./... -coverprofile=cover.out
+        - gocov convert cover.out | gocov-xml > coverage.xml
+    artifacts:
+        expire_in: 1 day
+        paths:
+            - cover.out
+            - coverage.xml
+        reports:
+            - coverage.xml
+    retry: 2
+代码质量扫描:
   image: 
     name: sonarsource/sonar-scanner-cli:latest
     entrypoint: [""]
+  stage: sonarqube-check
   variables:
     SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
     GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
@@ -17,5 +60,7 @@ sonarqube-check:
       - .sonar/cache
   script: 
     - sonar-scanner
-  allow_failure: true
+  dependencies:
+    - 静态代码检查
+    - 单元测试
 

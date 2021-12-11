@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
+	github.com/axw/gocov v1.0.0 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/klauspost/compress v1.13.6 // indirect
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
