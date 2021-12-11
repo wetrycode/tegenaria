@@ -47,8 +47,8 @@ stages:
             - cover.out
             - coverage.xml
             - report.xml
-      reports:
-        junit: report.xml
+        reports:
+          junit: report.xml
     retry: 2
 代码质量扫描:
   image: 
