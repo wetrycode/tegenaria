@@ -23,8 +23,6 @@ stages:
         expire_in: 1 day
         paths:
           - report.xml
-        reports:
-          - report.xml
 单元测试:
     stage: unittest
     image: golang:1.17.3-alpine
@@ -42,8 +40,6 @@ stages:
         paths:
             - cover.out
             - coverage.xml
-        reports:
-          - coverage.xml
     retry: 2
 代码质量扫描:
   image: 
