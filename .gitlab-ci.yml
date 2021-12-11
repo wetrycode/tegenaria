@@ -39,14 +39,14 @@ stages:
     script:
         - go test -v ./... -coverprofile=cover.out
         - gocov convert cover.out | gocov-xml > coverage.xml
-        - gotestsum --junitfile report.xml --format testname
+        - gotestsum --junitfile testreport.xml --format testname
     artifacts:
         expire_in: 1 day
         when: always
         paths:
             - cover.out
             - coverage.xml
-            - report.xml
+            - testreport.xml
         reports:
           junit: report.xml
     retry: 2
