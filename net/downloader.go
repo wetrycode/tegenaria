@@ -1,10 +1,10 @@
-package core
+package net
 
 import (
 	"context"
 	"crypto/tls"
 
-	logger "github.com/geebytes/go-scrapy/logging"
+	logger "github.com/geebytes/Tegenaria/logging"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttpproxy"

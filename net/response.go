@@ -1,9 +1,9 @@
-package core
+package net
 
 import (
 	"encoding/json"
 
-	logger "github.com/geebytes/go-scrapy/logging"
+	logger "github.com/geebytes/Tegenaria/logging"
 	"github.com/sirupsen/logrus"
 )
 
@@ -25,8 +25,8 @@ func (r *Response) Json() map[string]interface{} {
 
 	}()
 	jsonResp := map[string]interface{}{}
-	err:=json.Unmarshal(r.Body, &jsonResp)
-	if err !=nil{
+	err := json.Unmarshal(r.Body, &jsonResp)
+	if err != nil {
 		respLog.Errorf("Get json response error %s", err.Error())
 	}
 	return jsonResp

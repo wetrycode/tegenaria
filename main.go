@@ -2,7 +2,6 @@ package main
 
 import "fmt"
 
-func main(){
-	fmt.Printf("Hello go-scrapy")
+func main() {
+	fmt.Printf("Hello Tegenaria")
 }
-

@@ -1,4 +1,4 @@
-package core
+package net
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"time"
 
-	logger "github.com/geebytes/go-scrapy/logging"
+	logger "github.com/geebytes/Tegenaria/logging"
 	"github.com/sirupsen/logrus"
 )
 

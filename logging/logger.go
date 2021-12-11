@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/geebytes/go-scrapy/settings"
+	"github.com/geebytes/Tegenaria/settings"
 
 	"github.com/google/uuid"
 	"github.com/rifflock/lfshook"
@@ -21,7 +21,7 @@ type DefaultFieldHook struct {
 func (hook *DefaultFieldHook) Fire(entry *logrus.Entry) error {
 	u4 := uuid.New()
 	name, _ := os.Hostname()
-	entry.Data["appName"] = "go-scrapy"
+	entry.Data["appName"] = "Tegenaria"
 	entry.Data["uuid"] = u4.String()
 	entry.Data["hostname"] = name
 	entry.Data["processId"] = ProcessId

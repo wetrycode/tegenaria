@@ -1,22 +1,20 @@
-package core_test
+package net
 
 import (
 	"context"
 	"testing"
-
-	"github.com/geebytes/go-scrapy/core"
 )
 
 func TestRequestGet(t *testing.T) {
-	request := core.NewRequest("http://httpbin.org/get", core.GET)
+	request := NewRequest("http://httpbin.org/get", GET)
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -37,15 +35,15 @@ func TestRequestPost(t *testing.T) {
 		"intparams":  1.0,
 		"boolparams": false,
 	}
-	request := core.NewRequest("http://httpbin.org/post", core.POST, core.WithRequestBody(body))
+	request := NewRequest("http://httpbin.org/post", POST, WithRequestBody(body))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -75,15 +73,15 @@ func TestRequestCookie(t *testing.T) {
 		"test1": "test1",
 		"test2": "test2",
 	}
-	request := core.NewRequest("http://httpbin.org/cookies", core.GET, core.WithRequestCookies(cookies))
+	request := NewRequest("http://httpbin.org/cookies", GET, WithRequestCookies(cookies))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -113,15 +111,15 @@ func TestRequestQueryParams(t *testing.T) {
 		"query2": "1",
 		"query3": "true",
 	}
-	request := core.NewRequest("http://httpbin.org/get", core.GET, core.WithRequestParams(params))
+	request := NewRequest("http://httpbin.org/get", GET, WithRequestParams(params))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -146,15 +144,15 @@ func TestRequestQueryParams(t *testing.T) {
 }
 
 func TestRequestProxy(t *testing.T) {
-	request := core.NewRequest("http://httpbin.org/get", core.GET, core.WithRequestProxy("local.proxy:1081"))
+	request := NewRequest("http://httpbin.org/get", GET, WithRequestProxy("local.proxy:1081"))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -173,15 +171,15 @@ func TestRequestProxy(t *testing.T) {
 
 }
 func TestRequestTLS(t *testing.T) {
-	request := core.NewRequest("https://httpbin.org/get", core.GET, core.WithRequestTLS(false))
+	request := NewRequest("https://httpbin.org/get", GET, WithRequestTLS(false))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -200,15 +198,15 @@ func TestRequestHeaders(t *testing.T) {
 		"Intparams":  "1",
 		"Boolparams": "false",
 	}
-	request := core.NewRequest("http://httpbin.org/headers", core.GET, core.WithRequestHeader(headers))
+	request := NewRequest("http://httpbin.org/headers", GET, WithRequestHeader(headers))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan core.Result, 1)
-	go core.GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan Result, 1)
+	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response

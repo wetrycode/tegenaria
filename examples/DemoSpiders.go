@@ -1,6 +1,6 @@
 package examples
 
-import "github.com/geebytes/go-scrapy/core"
+import "github.com/geebytes/Tegenaria/core"
 
 type DemoSpider struct {
 	Spider *core.Spider //
