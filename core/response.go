@@ -25,6 +25,9 @@ func (r *Response) Json() map[string]interface{} {
 
 	}()
 	jsonResp := map[string]interface{}{}
-	json.Unmarshal(r.Body, &jsonResp)
+	err:=json.Unmarshal(r.Body, &jsonResp)
+	if err !=nil{
+		respLog.Errorf("Get json response error %s", err.Error())
+	}
 	return jsonResp
 }

@@ -39,5 +39,8 @@ func init() {
 	if readErr != nil {
 		panic(fmt.Errorf("fatal error config file: %s", readErr))
 	}
-	runtimeViper.Unmarshal(&Config)
+	err:=runtimeViper.Unmarshal(&Config)
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %s", readErr))
+	}
 }
