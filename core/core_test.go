@@ -146,7 +146,7 @@ func TestRequestQueryParams(t *testing.T) {
 }
 
 func TestRequestProxy(t *testing.T) {
-	request := core.NewRequest("http://httpbin.org/get", core.GET, core.WithRequestProxy("192.168.154.1:1081"))
+	request := core.NewRequest("http://httpbin.org/get", core.GET, core.WithRequestProxy("local.proxy:1081"))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)

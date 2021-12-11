@@ -31,6 +31,8 @@ stages:
       - go env -w GO111MODULE=on
       - go env -w GOPROXY="https://goproxy.io,direct"
       - go install github.com/axw/gocov/gocov@v1.0.0 
+      - echo '192.168.31.105 local.proxy' >> /etc/hosts
+
     script:
         - go test -v ./... -coverprofile=cover.out
         - gocov convert cover.out | gocov-xml > coverage.xml
