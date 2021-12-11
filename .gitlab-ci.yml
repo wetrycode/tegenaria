@@ -11,7 +11,6 @@ stages:
 静态代码检查:
     image: golangci/golangci-lint:v1.27.0
     stage: lint
-    extends: .go-cache
     allow_failure: true
     before_script:
       - mkdir -p .go
@@ -23,9 +22,9 @@ stages:
     artifacts:
         expire_in: 1 day
         paths:
-            - report.xml
+          - report.xml
         reports:
-            - report.xml
+          - report.xml
 单元测试:
     stage: unittest
     image: golang:1.17.3-alpine
@@ -44,7 +43,7 @@ stages:
             - cover.out
             - coverage.xml
         reports:
-            - coverage.xml
+          - coverage.xml
     retry: 2
 代码质量扫描:
   image: 
