@@ -31,6 +31,7 @@ stages:
       - go env -w GO111MODULE=on
       - go env -w GOPROXY="https://goproxy.cn,direct"
       - go install github.com/axw/gocov/gocov@v1.0.0 
+      - go install github.com/AlekSi/gocov-xml@latest
       - echo '192.168.31.105 local.proxy' >> /etc/hosts
 
     script:
