@@ -33,6 +33,7 @@ stages:
       - go install github.com/axw/gocov/gocov@v1.0.0 
       - go install github.com/AlekSi/gocov-xml@latest
       - go install gotest.tools/gotestsum@latest
+      - export UNITTEST=true
       - echo '192.168.31.105 local.proxy' >> /etc/hosts
 
     script:
