@@ -9,13 +9,13 @@ stages:
     - unittest
     - sonarqube-check
 静态代码检查:
-    image: golangci/golangci-lint:latest
+    image: registry.cn-shanghai.aliyuncs.com/geetest/golangci-lint:latest
     stage: lint
     before_script:
       - mkdir -p .go
       - go version
       - go env -w GO111MODULE=on
-      - go env -w GOPROXY="https://goproxy.io,direct"
+      - go env -w GOPROXY="https://goproxy.cn,direct"
     script:
       - golangci-lint run --issues-exit-code 0 --out-format checkstyle ./... > report.xml
     artifacts:
@@ -24,12 +24,12 @@ stages:
           - report.xml
 单元测试:
     stage: unittest
-    image: golang:1.17
+    image: registry.cn-shanghai.aliyuncs.com/geetest/golang:1.17
     before_script:
       - mkdir -p .go
       - go version
       - go env -w GO111MODULE=on
-      - go env -w GOPROXY="https://goproxy.io,direct"
+      - go env -w GOPROXY="https://goproxy.cn,direct"
       - go install github.com/axw/gocov/gocov@v1.0.0 
       - echo '192.168.31.105 local.proxy' >> /etc/hosts
 
