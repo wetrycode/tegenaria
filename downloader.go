@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/url"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
@@ -46,6 +47,7 @@ func (d *SpiderDownloader) CheckStatus(statusCode int64, allowStatus []int64) bo
 	return true
 }
 func (d *SpiderDownloader) Download(ctx context.Context, request *Request, result chan<- *RequestResult) {
+	now := time.Now()
 	_, cancel := context.WithCancel(ctx)
 	r := &RequestResult{}
 	req := fasthttp.AcquireRequest()
@@ -121,11 +123,13 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		header[string(key)] = value
 	})
 	r.Response = &Response{
-		Text:   resp.String(),
-		Status: resp.StatusCode(),
-		Body:   b,
-		Header: header,
-		Req:    request,
+		Text:          resp.String(),
+		Status:        resp.StatusCode(),
+		Body:          b,
+		Header:        header,
+		Req:           request,
+		Delay:         time.Since(now).Seconds(),
+		ContentLength: resp.Header.ContentLength(),
 	}
 	log.Infof("Request %s is successful", request.Url)
 	r.Error = nil

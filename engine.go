@@ -12,19 +12,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type SpiderStats struct {
+	ItemScraped       uint64
+	RequestDownloaded uint64
+	NetworkTraffic    int64
+}
+
 type SpiderEnginer struct {
 	spiders            *Spiders
 	requestsChan       chan *Request
 	spidersChan        chan SpiderInterface
 	itemsChan          chan ItemInterface
 	respChan           chan *Response
+	taskFinishChan     chan int
 	requestResultChan  chan *RequestResult
 	errorChan          chan error
 	startRequestFinish bool
-	requestRunning     *uint
-	pipelinesRunning   *uint
-	parseRunning       *uint
-	requestResultCount *uint
+	goroutineRunning   *uint
 	pipelines          ItemPipelines
 	Ctx                context.Context
 	DownloadTimeout    time.Duration
@@ -38,47 +42,46 @@ type SpiderEnginer struct {
 	isRunning          bool
 	isClosed           bool
 	schedulerNum       uint
+	Stats              *SpiderStats
 }
 
-var Enginer *SpiderEnginer
-var once sync.Once
-var enginerLog *logrus.Entry = GetLogger("enginer")
 var (
-	requestRunning     uint = 0
-	pipelinesRunning   uint = 0
-	parseRunning       uint = 0
-	requestResultCount uint = 0
+	Enginer          *SpiderEnginer
+	once             sync.Once
+	enginerLog       *logrus.Entry = GetLogger("enginer")
+	goroutineRunning uint          = 0
 )
 
 type EnginerOption func(r *SpiderEnginer)
 
-func (e *SpiderEnginer) eninerScheduler(spider SpiderInterface) {
+func (e *SpiderEnginer) enginerScheduler(ctx context.Context, spider SpiderInterface) {
 Loop:
 	for {
 		if e.isRunning {
 			select {
 			case request := <-e.requestsChan:
-				*(e.requestRunning)++
+				*(e.goroutineRunning)++
 				e.waitGroup.Add(1)
 				go e.doDownload(request)
 			case requestResult := <-e.requestResultChan:
-				*(e.requestResultCount)++
+				*(e.goroutineRunning)++
 				e.waitGroup.Add(1)
-
 				go e.doRequestResult(requestResult)
 			case response := <-e.respChan:
-				*(e.parseRunning)++
+				*(e.goroutineRunning)++
 				e.waitGroup.Add(1)
-
 				go e.doParse(spider, response)
 			case item := <-e.itemsChan:
 				e.waitGroup.Add(1)
-				*(e.pipelinesRunning)++
+				*(e.goroutineRunning)++
 				go e.doPipelinesHandlers(spider, item)
+			case err := <-e.errorChan:
+				e.waitGroup.Add(1)
+				*(e.goroutineRunning)++
+				go e.doError(err)
+			case <-ctx.Done():
+				break Loop
 			default:
-				if e.readyDone() {
-					break Loop
-				}
 			}
 		}
 
@@ -89,6 +92,7 @@ Loop:
 func (e *SpiderEnginer) Start(spiderName string) {
 	defer func() {
 		e.Close()
+		enginerLog.Info("Spider enginer is closed!")
 		if p := recover(); p != nil {
 			enginerLog.Errorf("Close engier fail")
 		}
@@ -99,29 +103,31 @@ func (e *SpiderEnginer) Start(spiderName string) {
 	}
 	cpus := runtime.NumCPU()
 	runtime.GOMAXPROCS(cpus)
-	e.waitGroup.Add(1)
+	e.waitGroup.Add(2)
+	ctx, cancel := context.WithCancel(e.Ctx)
+	go e.readyDone(ctx, cancel)
 	go e.StartSpiders(spiderName)
 	for i := 0; i < int(e.schedulerNum); i++ {
 		e.waitGroup.Add(1)
-		go e.eninerScheduler(spider)
+		go e.enginerScheduler(ctx, spider)
 	}
 	e.waitGroup.Wait()
 	e.isDone = true
-	e.Close()
-
 }
 
 func (e *SpiderEnginer) checkTaskStatus() bool {
-	return (*e.requestRunning + *e.requestResultCount + *e.parseRunning + *e.pipelinesRunning) == 0
+	return *e.goroutineRunning == 0
 }
 func (e *SpiderEnginer) checkChanStatus() bool {
-	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan)) == 0
+	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan) + len(e.errorChan)) == 0
 }
-func (e *SpiderEnginer) readyDone() bool {
-	if e.startRequestFinish && e.checkTaskStatus() && e.checkChanStatus() {
-		return true
-	} else {
-		return false
+func (e *SpiderEnginer) readyDone(ctx context.Context, cancel context.CancelFunc) {
+	for {
+		if e.startRequestFinish && e.checkTaskStatus() && e.checkChanStatus() {
+			cancel()
+			e.waitGroup.Done()
+		}
+		time.Sleep(time.Second)
 	}
 
 }
@@ -138,17 +144,18 @@ func (e *SpiderEnginer) StartSpiders(spiderName string) {
 	}
 	spider.StartRequest(e.requestsChan)
 }
-func (e *SpiderEnginer) ProcessInput(ch chan interface{}) {}
-func (e *SpiderEnginer) ProcessOutput(ch chan interface{}) {
+func (e *SpiderEnginer) doError(err error) {
+	*(e.goroutineRunning)--
+	e.waitGroup.Done()
 }
-func (e *SpiderEnginer) ProcessException(ch chan interface{}) {}
 
 func (e *SpiderEnginer) doDownload(request *Request) {
 	defer func() {
-		*(e.requestRunning)--
+		*(e.goroutineRunning)--
 		e.waitGroup.Done()
 	}()
 	if e.doFilter(request) {
+		e.Stats.RequestDownloaded++
 		e.requestDownloader.Download(e.Ctx, request, e.requestResultChan)
 	}
 }
@@ -165,7 +172,7 @@ func (e *SpiderEnginer) doFilter(r *Request) bool {
 }
 func (e *SpiderEnginer) doRequestResult(result *RequestResult) {
 	defer func() {
-		*(e.requestResultCount)--
+		*(e.goroutineRunning)--
 		e.waitGroup.Done()
 	}()
 	err := result.Error
@@ -185,16 +192,17 @@ func (e *SpiderEnginer) doRequestResult(result *RequestResult) {
 }
 func (e *SpiderEnginer) doParse(spider SpiderInterface, resp *Response) {
 	defer func() {
-		*(e.parseRunning)--
+		*(e.goroutineRunning)--
 		e.waitGroup.Done()
 
 	}()
+	e.Stats.NetworkTraffic += int64(resp.ContentLength)
 	spider.Parser(resp, e.itemsChan, e.requestsChan)
 }
 
 func (e *SpiderEnginer) doPipelinesHandlers(spider SpiderInterface, item ItemInterface) {
 	defer func() {
-		*(e.pipelinesRunning)--
+		*(e.goroutineRunning)--
 		e.waitGroup.Done()
 
 	}()
@@ -202,8 +210,10 @@ func (e *SpiderEnginer) doPipelinesHandlers(spider SpiderInterface, item ItemInt
 		err := pipeline.ProcessItem(spider, item)
 		if err != nil {
 			e.errorChan <- err
+			return
 		}
 	}
+	e.Stats.ItemScraped++
 
 }
 func (e *SpiderEnginer) Close() {
@@ -220,6 +230,8 @@ func (e *SpiderEnginer) Close() {
 			close(e.itemsChan)
 			close(e.requestResultChan)
 			close(e.respChan)
+			close(e.taskFinishChan)
+			close(e.errorChan)
 		})
 	}
 
@@ -276,12 +288,10 @@ func NewSpiderEnginer(opts ...EnginerOption) *SpiderEnginer {
 			respChan:           make(chan *Response),
 			requestResultChan:  make(chan *RequestResult),
 			errorChan:          make(chan error),
+			taskFinishChan:     make(chan int),
 			startRequestFinish: false,
-			requestRunning:     &requestRunning,
-			pipelinesRunning:   &pipelinesRunning,
-			parseRunning:       &parseRunning,
-			requestResultCount: &requestResultCount,
-			pipelines:          []PipelinesInterface{},
+			goroutineRunning:   &goroutineRunning,
+			pipelines:          make(ItemPipelines, 0),
 			Ctx:                context.TODO(),
 			DownloadTimeout:    time.Second * 10,
 			requestDownloader:  GoSpiderDownloader,
@@ -293,6 +303,7 @@ func NewSpiderEnginer(opts ...EnginerOption) *SpiderEnginer {
 			isDone:             false,
 			isRunning:          false,
 			schedulerNum:       3,
+			Stats:              &SpiderStats{0, 0, 0.0},
 		}
 		for _, o := range opts {
 			o(Enginer)

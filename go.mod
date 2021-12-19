@@ -16,7 +16,7 @@ require (
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spaolacci/murmur3 v1.1.0
-	github.com/spf13/viper v1.9.0
+	github.com/spf13/viper v1.10.1
 	github.com/valyala/fasthttp v1.31.0
 	github.com/wxnacy/wgo v1.0.4 // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect
