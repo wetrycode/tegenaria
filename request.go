@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	bloom "github.com/bits-and-blooms/bloom/v3"
 	"github.com/sirupsen/logrus"
 	"github.com/spaolacci/murmur3"
 )
@@ -168,7 +169,7 @@ func (r *Request) encodeHeader() string {
 	}
 	return buf.String()
 }
-func (r *Request) Fingerprint() []byte {
+func (r *Request) fingerprint() []byte {
 	sha := murmur3.New128()
 	io.WriteString(sha, r.Method)
 	u := r.canonicalizeUrl(false)
@@ -182,4 +183,9 @@ func (r *Request) Fingerprint() []byte {
 	}
 	res := sha.Sum(nil)
 	return res
+}
+
+func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) bool {
+	// 不存在
+	return bloomFilter.TestOrAdd(r.fingerprint())
 }

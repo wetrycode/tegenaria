@@ -161,12 +161,11 @@ func (e *SpiderEnginer) doDownload(request *Request) {
 }
 func (e *SpiderEnginer) doFilter(r *Request) bool {
 	if e.filterDuplicateReq {
-		// 不存在
-		if !e.bloomFilter.TestOrAdd(r.Fingerprint()) {
-			return true
+		result := r.doUnique(e.bloomFilter)
+		if result {
+			enginerLog.Info("Request is not unique")
 		}
-		enginerLog.Info("Request is not unique")
-		return false
+		return !result
 	}
 	return true
 }

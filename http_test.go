@@ -242,18 +242,15 @@ func TestFingerprint(t *testing.T) {
 	request3 := NewRequest("http://httpbin.org/headers1", GET, WithRequestHeader(headers))
 
 	bloomFilter := bloom.New(1024*1024, 5)
-	res1 := bloomFilter.TestOrAdd(request1.Fingerprint())
-	res2 := bloomFilter.TestOrAdd(request2.Fingerprint())
-	res3 := bloomFilter.TestOrAdd(request3.Fingerprint())
-	if res1 {
-		t.Errorf("Request1 igerprint sum error expected=%v, get=%v", false, res1)
+	if request1.doUnique(bloomFilter) {
+		t.Errorf("Request1 igerprint sum error expected=%v, get=%v", false, true)
 	}
-	if !res2 {
-		t.Errorf("Request2 igerprint sum error expected=%v, get=%v", true, res2)
+	if !request2.doUnique(bloomFilter) {
+		t.Errorf("Request2 igerprint sum error expected=%v, get=%v", true, false)
 
 	}
-	if res3 {
-		t.Errorf("Request3 igerprint sum error expected=%v, get=%v", false, res3)
+	if request3.doUnique(bloomFilter) {
+		t.Errorf("Request3 igerprint sum error expected=%v, get=%v", false, true)
 
 	}
 }
