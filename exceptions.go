@@ -1,4 +1,4 @@
-package exceptions
+package tegenaria
 
 import "errors"
 
@@ -8,4 +8,5 @@ var (
 	ErrDuplicateSpiderName error = errors.New("Register a duplicate spider name error")
 	ErrEmptySpiderName     error = errors.New("Register a empty spider name error")
 	ErrSpiderNotExist      error = errors.New("Not found spider")
+	ErrNotAllowStatusCode  error = errors.New("Not allow handle status code")
 )

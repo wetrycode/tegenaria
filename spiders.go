@@ -1,16 +1,10 @@
-package spiders
+package tegenaria
 
-import (
-	"sync"
-
-	"github.com/geebytes/Tegenaria/exceptions"
-	"github.com/geebytes/Tegenaria/items"
-	"github.com/geebytes/Tegenaria/net"
-)
+import "sync"
 
 type SpiderInterface interface {
-	StartRequest() error
-	Parser(net.Response) (*items.ItemInterface, error)
+	StartRequest(req chan<- *Request)
+	Parser(resp *Response, item chan<- ItemInterface, req chan<- *Request)
 	ErrorHandler()
 	GetName() string
 }
@@ -23,8 +17,8 @@ type Spiders struct {
 	SpidersModules map[string]SpiderInterface
 }
 
-var once sync.Once
 var SpidersList *Spiders
+var onceSpiders sync.Once
 
 func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 	return &BaseSpider{
@@ -32,17 +26,15 @@ func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 		FeedUrls: feedUrls,
 	}
 }
-func (s *BaseSpider) StartRequest() error {
-	return nil
+func (s *BaseSpider) StartRequest(req chan<- *Request) {
 }
-func (s *BaseSpider) Parser(net.Response) (*items.ItemInterface, error) {
-	return nil, nil
+func (s *BaseSpider) Parser(resp <-chan *Response, item chan<- *ItemInterface, req chan<- *Request) {
 }
 func (s *BaseSpider) ErrorHandler() {
 
 }
 func NewSpiders() *Spiders {
-	once.Do(func() {
+	onceSpiders.Do(func() {
 		SpidersList = &Spiders{
 			SpidersModules: make(map[string]SpiderInterface),
 		}
@@ -51,10 +43,10 @@ func NewSpiders() *Spiders {
 }
 func (s *Spiders) Register(spider SpiderInterface) error {
 	if len(spider.GetName()) == 0 {
-		return exceptions.ErrEmptySpiderName
+		return ErrEmptySpiderName
 	}
 	if _, ok := s.SpidersModules[spider.GetName()]; ok {
-		return exceptions.ErrDuplicateSpiderName
+		return ErrDuplicateSpiderName
 	} else {
 		s.SpidersModules[spider.GetName()] = spider
 		return nil
@@ -62,7 +54,7 @@ func (s *Spiders) Register(spider SpiderInterface) error {
 }
 func (s *Spiders) GetSpider(name string) (SpiderInterface, error) {
 	if _, ok := s.SpidersModules[name]; !ok {
-		return nil, exceptions.ErrSpiderNotExist
+		return nil, ErrSpiderNotExist
 	} else {
 		return s.SpidersModules[name], nil
 	}

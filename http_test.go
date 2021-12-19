@@ -1,8 +1,10 @@
-package net
+package tegenaria
 
 import (
 	"context"
 	"testing"
+
+	bloom "github.com/bits-and-blooms/bloom/v3"
 )
 
 func TestRequestGet(t *testing.T) {
@@ -13,7 +15,7 @@ func TestRequestGet(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
+	resultChan := make(chan *RequestResult, 1)
 	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
@@ -42,7 +44,7 @@ func TestRequestPost(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
+	resultChan := make(chan *RequestResult, 1)
 	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
@@ -80,8 +82,8 @@ func TestRequestCookie(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
-	go GoSpiderDownloader.Do(ctx, request, resultChan)
+	resultChan := make(chan *RequestResult, 1)
+	go GoSpiderDownloader.Download(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
 	resp := result.Response
@@ -118,7 +120,7 @@ func TestRequestQueryParams(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
+	resultChan := make(chan *RequestResult, 1)
 	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
@@ -151,7 +153,7 @@ func TestRequestProxy(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
+	resultChan := make(chan *RequestResult, 1)
 	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
@@ -178,7 +180,7 @@ func TestRequestTLS(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
+	resultChan := make(chan *RequestResult, 1)
 	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
@@ -205,7 +207,7 @@ func TestRequestHeaders(t *testing.T) {
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan Result, 1)
+	resultChan := make(chan *RequestResult, 1)
 	go GoSpiderDownloader.Do(ctx, request, resultChan)
 	result := <-resultChan
 	err := result.Error
@@ -227,5 +229,31 @@ func TestRequestHeaders(t *testing.T) {
 		} else {
 			t.Errorf("header request error %s not in response headers", key)
 		}
+	}
+}
+func TestFingerprint(t *testing.T) {
+	headers := map[string]string{
+		"Params1":    "params1",
+		"Intparams":  "1",
+		"Boolparams": "false",
+	}
+	request1 := NewRequest("http://httpbin.org/headers", GET, WithRequestHeader(headers))
+	request2 := NewRequest("http://httpbin.org/headers", GET, WithRequestHeader(headers))
+	request3 := NewRequest("http://httpbin.org/headers1", GET, WithRequestHeader(headers))
+
+	bloomFilter := bloom.New(1024*1024, 5)
+	res1 := bloomFilter.TestOrAdd(request1.Fingerprint())
+	res2 := bloomFilter.TestOrAdd(request2.Fingerprint())
+	res3 := bloomFilter.TestOrAdd(request3.Fingerprint())
+	if res1 {
+		t.Errorf("Request1 igerprint sum error expected=%v, get=%v", false, res1)
+	}
+	if !res2 {
+		t.Errorf("Request2 igerprint sum error expected=%v, get=%v", true, res2)
+
+	}
+	if res3 {
+		t.Errorf("Request3 igerprint sum error expected=%v, get=%v", false, res3)
+
 	}
 }

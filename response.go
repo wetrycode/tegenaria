@@ -1,9 +1,8 @@
-package net
+package tegenaria
 
 import (
 	"encoding/json"
 
-	logger "github.com/geebytes/Tegenaria/logging"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,7 +14,7 @@ type Response struct {
 	Req    *Request
 }
 
-var respLog *logrus.Entry = logger.GetLogger("response")
+var respLog *logrus.Entry = GetLogger("response")
 
 func (r *Response) Json() map[string]interface{} {
 	defer func() {

@@ -1,3 +1,0 @@
-log:
-  path: "/var/logs/Tegenaria"
-  level: "debug"

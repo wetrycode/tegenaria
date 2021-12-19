@@ -1,22 +1,16 @@
-package spiders
+package tegenaria
 
 import (
 	"testing"
-
-	"github.com/geebytes/Tegenaria/exceptions"
-	"github.com/geebytes/Tegenaria/items"
-	"github.com/geebytes/Tegenaria/net"
 )
 
 type TestSpider struct {
 	*BaseSpider
 }
 
-func (s *TestSpider) StartRequest() error {
-	return nil
+func (s *TestSpider) StartRequest(req chan<- *Request) {
 }
-func (s *TestSpider) Parser(net.Response) (*items.ItemInterface, error) {
-	return nil, nil
+func (s *TestSpider) Parser(resp *Response, item chan<- ItemInterface, req chan<- *Request) {
 }
 func (s *TestSpider) ErrorHandler() {
 
@@ -44,7 +38,7 @@ func TestSpiders(t *testing.T) {
 	if err == nil {
 		t.Error("Register duplicate spider name")
 	} else {
-		if err.Error() != exceptions.ErrDuplicateSpiderName.Error() {
+		if err.Error() != ErrDuplicateSpiderName.Error() {
 			t.Errorf("Unexpected error register %s", err.Error())
 		}
 	}
@@ -58,7 +52,7 @@ func TestSpiders(t *testing.T) {
 		}
 	}
 	_, err1 := spiders.GetSpider("spider4")
-	if err1.Error() != exceptions.ErrSpiderNotExist.Error() {
+	if err1.Error() != ErrSpiderNotExist.Error() {
 		t.Errorf("Get spider by name unexpected error %s", err.Error())
 
 	}
