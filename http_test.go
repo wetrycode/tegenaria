@@ -7,8 +7,9 @@ import (
 	bloom "github.com/bits-and-blooms/bloom/v3"
 )
 
+func parser(resp *Response, item chan<- ItemInterface, req chan<- *Request) {}
 func TestRequestGet(t *testing.T) {
-	request := NewRequest("http://httpbin.org/get", GET)
+	request := NewRequest("http://httpbin.org/get", GET, parser)
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -37,7 +38,7 @@ func TestRequestPost(t *testing.T) {
 		"intparams":  1.0,
 		"boolparams": false,
 	}
-	request := NewRequest("http://httpbin.org/post", POST, WithRequestBody(body))
+	request := NewRequest("http://httpbin.org/post", POST, parser, WithRequestBody(body))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -75,7 +76,7 @@ func TestRequestCookie(t *testing.T) {
 		"test1": "test1",
 		"test2": "test2",
 	}
-	request := NewRequest("http://httpbin.org/cookies", GET, WithRequestCookies(cookies))
+	request := NewRequest("http://httpbin.org/cookies", GET, parser, WithRequestCookies(cookies))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -113,7 +114,7 @@ func TestRequestQueryParams(t *testing.T) {
 		"query2": "1",
 		"query3": "true",
 	}
-	request := NewRequest("http://httpbin.org/get", GET, WithRequestParams(params))
+	request := NewRequest("http://httpbin.org/get", GET, parser, WithRequestParams(params))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -146,7 +147,7 @@ func TestRequestQueryParams(t *testing.T) {
 }
 
 func TestRequestProxy(t *testing.T) {
-	request := NewRequest("http://httpbin.org/get", GET, WithRequestProxy("local.proxy:1081"))
+	request := NewRequest("http://httpbin.org/get", GET, parser, WithRequestProxy("local.proxy:1081"))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -173,7 +174,7 @@ func TestRequestProxy(t *testing.T) {
 
 }
 func TestRequestTLS(t *testing.T) {
-	request := NewRequest("https://httpbin.org/get", GET, WithRequestTLS(false))
+	request := NewRequest("https://httpbin.org/get", GET, parser, WithRequestTLS(false))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -200,7 +201,7 @@ func TestRequestHeaders(t *testing.T) {
 		"Intparams":  "1",
 		"Boolparams": "false",
 	}
-	request := NewRequest("http://httpbin.org/headers", GET, WithRequestHeader(headers))
+	request := NewRequest("http://httpbin.org/headers", GET, parser, WithRequestHeader(headers))
 	var MainCtx context.Context = context.Background()
 
 	ctx, cancel := context.WithCancel(MainCtx)
@@ -237,9 +238,9 @@ func TestFingerprint(t *testing.T) {
 		"Intparams":  "1",
 		"Boolparams": "false",
 	}
-	request1 := NewRequest("http://httpbin.org/headers", GET, WithRequestHeader(headers))
-	request2 := NewRequest("http://httpbin.org/headers", GET, WithRequestHeader(headers))
-	request3 := NewRequest("http://httpbin.org/headers1", GET, WithRequestHeader(headers))
+	request1 := NewRequest("http://httpbin.org/headers", GET, parser, WithRequestHeader(headers))
+	request2 := NewRequest("http://httpbin.org/headers", GET, parser, WithRequestHeader(headers))
+	request3 := NewRequest("http://httpbin.org/headers1", GET, parser, WithRequestHeader(headers))
 
 	bloomFilter := bloom.New(1024*1024, 5)
 	if request1.doUnique(bloomFilter) {

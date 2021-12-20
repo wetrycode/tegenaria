@@ -29,8 +29,10 @@ type Request struct {
 	Meta           map[string]interface{}
 	AllowRedirects bool
 	MaxRedirects   int
+	paeser         Paeser
 }
 type Option func(r *Request)
+type Paeser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
 
 var reqLog *logrus.Entry = GetLogger("request")
 
@@ -119,7 +121,7 @@ func (r *Request) updateQueryParams() {
 		r.Url = u.String()
 	}
 }
-func NewRequest(url string, method string, opts ...Option) *Request {
+func NewRequest(url string, method string, parser Paeser, opts ...Option) *Request {
 
 	request := &Request{
 		Url:            url,
@@ -134,6 +136,7 @@ func NewRequest(url string, method string, opts ...Option) *Request {
 		Meta:           map[string]interface{}{},
 		AllowRedirects: true,
 		MaxRedirects:   -1,
+		paeser:         parser,
 	}
 	for _, o := range opts {
 		o(request)

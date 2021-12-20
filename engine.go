@@ -169,7 +169,7 @@ func (e *SpiderEnginer) doFilter(r *Request) bool {
 	if e.filterDuplicateReq {
 		result := r.doUnique(e.bloomFilter)
 		if result {
-			enginerLog.Info("Request is not unique")
+			enginerLog.Debugf("Request is not unique")
 		}
 		return !result
 	}
@@ -202,7 +202,7 @@ func (e *SpiderEnginer) doParse(spider SpiderInterface, resp *Response) {
 
 	}()
 	e.Stats.NetworkTraffic += int64(resp.ContentLength)
-	spider.Parser(resp, e.itemsChan, e.requestsChan)
+	resp.Req.paeser(resp, e.itemsChan, e.requestsChan)
 }
 
 func (e *SpiderEnginer) doPipelinesHandlers(spider SpiderInterface, item ItemInterface) {

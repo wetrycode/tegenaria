@@ -28,7 +28,7 @@ func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 }
 func (s *BaseSpider) StartRequest(req chan<- *Request) {
 }
-func (s *BaseSpider) Parser(resp <-chan *Response, item chan<- *ItemInterface, req chan<- *Request) {
+func (s *BaseSpider) Parser(resp *Response, item chan<- *ItemInterface, req chan<- *Request) {
 }
 func (s *BaseSpider) ErrorHandler() {
 
