@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
@@ -28,7 +29,7 @@ type SpiderEnginer struct {
 	requestResultChan  chan *RequestResult
 	errorChan          chan error
 	startRequestFinish bool
-	goroutineRunning   *uint
+	goroutineRunning   *int64
 	pipelines          ItemPipelines
 	Ctx                context.Context
 	DownloadTimeout    time.Duration
@@ -49,7 +50,7 @@ var (
 	Enginer          *SpiderEnginer
 	once             sync.Once
 	enginerLog       *logrus.Entry = GetLogger("enginer")
-	goroutineRunning uint          = 0
+	goroutineRunning int64          = 0
 )
 
 type EnginerOption func(r *SpiderEnginer)
@@ -60,7 +61,7 @@ Loop:
 		if e.isRunning {
 			select {
 			case request := <-e.requestsChan:
-				*(e.goroutineRunning)++
+				atomic.AddInt64(e.goroutineRunning, 1)
 				e.waitGroup.Add(1)
 				go e.doDownload(request)
 			case requestResult := <-e.requestResultChan:
@@ -68,16 +69,16 @@ Loop:
 				e.waitGroup.Add(1)
 				go e.doRequestResult(requestResult)
 			case response := <-e.respChan:
-				*(e.goroutineRunning)++
+				atomic.AddInt64(e.goroutineRunning, 1)
 				e.waitGroup.Add(1)
 				go e.doParse(spider, response)
 			case item := <-e.itemsChan:
 				e.waitGroup.Add(1)
-				*(e.goroutineRunning)++
+				atomic.AddInt64(e.goroutineRunning, 1)
 				go e.doPipelinesHandlers(spider, item)
 			case err := <-e.errorChan:
 				e.waitGroup.Add(1)
-				*(e.goroutineRunning)++
+				atomic.AddInt64(e.goroutineRunning, 1)
 				go e.doError(err)
 			case <-ctx.Done():
 				break Loop
@@ -86,6 +87,7 @@ Loop:
 		}
 
 	}
+	enginerLog.Info("调度器完成调度")
 	e.isClosed = true
 	e.waitGroup.Done()
 }
@@ -111,11 +113,13 @@ func (e *SpiderEnginer) Start(spiderName string) {
 		e.waitGroup.Add(1)
 		go e.enginerScheduler(ctx, spider)
 	}
+
 	e.waitGroup.Wait()
 	e.isDone = true
 }
 
 func (e *SpiderEnginer) checkTaskStatus() bool {
+	enginerLog.Infof("正在运行的协程任务数: %d", *e.goroutineRunning)
 	return *e.goroutineRunning == 0
 }
 func (e *SpiderEnginer) checkChanStatus() bool {
@@ -125,6 +129,7 @@ func (e *SpiderEnginer) readyDone(ctx context.Context, cancel context.CancelFunc
 	for {
 		if e.startRequestFinish && e.checkTaskStatus() && e.checkChanStatus() {
 			cancel()
+			enginerLog.Info("准备关闭调度器")
 			e.waitGroup.Done()
 		}
 		time.Sleep(time.Second)
@@ -145,14 +150,15 @@ func (e *SpiderEnginer) StartSpiders(spiderName string) {
 	spider.StartRequest(e.requestsChan)
 }
 func (e *SpiderEnginer) doError(err error) {
-	*(e.goroutineRunning)--
+	atomic.AddInt64(e.goroutineRunning, -1)
 	e.waitGroup.Done()
 }
 
 func (e *SpiderEnginer) doDownload(request *Request) {
 	defer func() {
-		*(e.goroutineRunning)--
 		e.waitGroup.Done()
+		atomic.AddInt64(e.goroutineRunning, -1)
+
 	}()
 	if e.doFilter(request) {
 		e.Stats.RequestDownloaded++
@@ -171,7 +177,7 @@ func (e *SpiderEnginer) doFilter(r *Request) bool {
 }
 func (e *SpiderEnginer) doRequestResult(result *RequestResult) {
 	defer func() {
-		*(e.goroutineRunning)--
+		atomic.AddInt64(e.goroutineRunning, -1)
 		e.waitGroup.Done()
 	}()
 	err := result.Error
@@ -191,7 +197,7 @@ func (e *SpiderEnginer) doRequestResult(result *RequestResult) {
 }
 func (e *SpiderEnginer) doParse(spider SpiderInterface, resp *Response) {
 	defer func() {
-		*(e.goroutineRunning)--
+		atomic.AddInt64(e.goroutineRunning, -1)
 		e.waitGroup.Done()
 
 	}()
@@ -201,7 +207,7 @@ func (e *SpiderEnginer) doParse(spider SpiderInterface, resp *Response) {
 
 func (e *SpiderEnginer) doPipelinesHandlers(spider SpiderInterface, item ItemInterface) {
 	defer func() {
-		*(e.goroutineRunning)--
+		atomic.AddInt64(e.goroutineRunning, -1)
 		e.waitGroup.Done()
 
 	}()
