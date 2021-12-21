@@ -15,6 +15,7 @@ require (
 	github.com/liyue201/gostl v1.0.1
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5
 	github.com/sirupsen/logrus v1.8.1
+	github.com/smallnest/queue v0.0.0-20201001101855-6d53a4f556a1 // indirect
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/viper v1.10.1
 	github.com/valyala/fasthttp v1.31.0

@@ -19,7 +19,7 @@ type SpiderStats struct {
 	NetworkTraffic    int64
 }
 
-type SpiderEnginer struct {
+type SpiderEngine struct {
 	spiders            *Spiders
 	requestsChan       chan *Request
 	spidersChan        chan SpiderInterface
@@ -37,7 +37,7 @@ type SpiderEnginer struct {
 	allowStatusCode    []int64
 	filterDuplicateReq bool
 	bloomFilter        *bloom.BloomFilter
-	enginerStatus      int
+	engineStatus      int
 	waitGroup          *sync.WaitGroup
 	isDone             bool
 	isRunning          bool
@@ -47,15 +47,15 @@ type SpiderEnginer struct {
 }
 
 var (
-	Enginer          *SpiderEnginer
+	Engine          *SpiderEngine
 	once             sync.Once
-	enginerLog       *logrus.Entry = GetLogger("enginer")
-	goroutineRunning int64          = 0
+	engineLog       *logrus.Entry = GetLogger("engine")
+	goroutineRunning int64         = 0
 )
 
-type EnginerOption func(r *SpiderEnginer)
+type EngineOption func(r *SpiderEngine)
 
-func (e *SpiderEnginer) enginerScheduler(ctx context.Context, spider SpiderInterface) {
+func (e *SpiderEngine) engineScheduler(ctx context.Context, spider SpiderInterface) {
 Loop:
 	for {
 		if e.isRunning {
@@ -87,16 +87,16 @@ Loop:
 		}
 
 	}
-	enginerLog.Info("调度器完成调度")
+	engineLog.Info("调度器完成调度")
 	e.isClosed = true
 	e.waitGroup.Done()
 }
-func (e *SpiderEnginer) Start(spiderName string) {
+func (e *SpiderEngine) Start(spiderName string) {
 	defer func() {
 		e.Close()
-		enginerLog.Info("Spider enginer is closed!")
+		engineLog.Info("Spider enginer is closed!")
 		if p := recover(); p != nil {
-			enginerLog.Errorf("Close engier fail")
+			engineLog.Errorf("Close engier fail")
 		}
 	}()
 	spider, ok := e.spiders.SpidersModules[spiderName]
@@ -111,32 +111,32 @@ func (e *SpiderEnginer) Start(spiderName string) {
 	go e.StartSpiders(spiderName)
 	for i := 0; i < int(e.schedulerNum); i++ {
 		e.waitGroup.Add(1)
-		go e.enginerScheduler(ctx, spider)
+		go e.engineScheduler(ctx, spider)
 	}
 
 	e.waitGroup.Wait()
 	e.isDone = true
 }
 
-func (e *SpiderEnginer) checkTaskStatus() bool {
-	enginerLog.Infof("正在运行的协程任务数: %d", *e.goroutineRunning)
+func (e *SpiderEngine) checkTaskStatus() bool {
+	engineLog.Infof("正在运行的协程任务数: %d", *e.goroutineRunning)
 	return *e.goroutineRunning == 0
 }
-func (e *SpiderEnginer) checkChanStatus() bool {
+func (e *SpiderEngine) checkChanStatus() bool {
 	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan) + len(e.errorChan)) == 0
 }
-func (e *SpiderEnginer) readyDone(ctx context.Context, cancel context.CancelFunc) {
+func (e *SpiderEngine) readyDone(ctx context.Context, cancel context.CancelFunc) {
 	for {
 		if e.startRequestFinish && e.checkTaskStatus() && e.checkChanStatus() {
 			cancel()
-			enginerLog.Info("准备关闭调度器")
+			engineLog.Info("准备关闭调度器")
 			e.waitGroup.Done()
 		}
 		time.Sleep(time.Second)
 	}
 
 }
-func (e *SpiderEnginer) StartSpiders(spiderName string) {
+func (e *SpiderEngine) StartSpiders(spiderName string) {
 	spider, ok := e.spiders.SpidersModules[spiderName]
 	defer func() {
 		e.startRequestFinish = true
@@ -149,12 +149,12 @@ func (e *SpiderEnginer) StartSpiders(spiderName string) {
 	}
 	spider.StartRequest(e.requestsChan)
 }
-func (e *SpiderEnginer) doError(err error) {
+func (e *SpiderEngine) doError(err error) {
 	atomic.AddInt64(e.goroutineRunning, -1)
 	e.waitGroup.Done()
 }
 
-func (e *SpiderEnginer) doDownload(request *Request) {
+func (e *SpiderEngine) doDownload(request *Request) {
 	defer func() {
 		e.waitGroup.Done()
 		atomic.AddInt64(e.goroutineRunning, -1)
@@ -165,17 +165,17 @@ func (e *SpiderEnginer) doDownload(request *Request) {
 		e.requestDownloader.Download(e.Ctx, request, e.requestResultChan)
 	}
 }
-func (e *SpiderEnginer) doFilter(r *Request) bool {
+func (e *SpiderEngine) doFilter(r *Request) bool {
 	if e.filterDuplicateReq {
 		result := r.doUnique(e.bloomFilter)
 		if result {
-			enginerLog.Debugf("Request is not unique")
+			engineLog.Debugf("Request is not unique")
 		}
 		return !result
 	}
 	return true
 }
-func (e *SpiderEnginer) doRequestResult(result *RequestResult) {
+func (e *SpiderEngine) doRequestResult(result *RequestResult) {
 	defer func() {
 		atomic.AddInt64(e.goroutineRunning, -1)
 		e.waitGroup.Done()
@@ -183,29 +183,29 @@ func (e *SpiderEnginer) doRequestResult(result *RequestResult) {
 	err := result.Error
 	if err != nil {
 		e.errorChan <- err
-		enginerLog.Errorf("Request is fail with error %s", err.Error())
+		engineLog.Errorf("Request is fail with error %s", err.Error())
 	} else {
 		if e.requestDownloader.CheckStatus(int64(result.Response.Status), e.allowStatusCode) {
 			e.respChan <- result.Response
 		} else {
-			enginerLog.Warningf("Not allow handle status code %d", result.Response.Status)
+			engineLog.Warningf("Not allow handle status code %d", result.Response.Status)
 			e.errorChan <- fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.Response.Status)
 		}
 
 	}
 
 }
-func (e *SpiderEnginer) doParse(spider SpiderInterface, resp *Response) {
+func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Response) {
 	defer func() {
 		atomic.AddInt64(e.goroutineRunning, -1)
 		e.waitGroup.Done()
 
 	}()
 	e.Stats.NetworkTraffic += int64(resp.ContentLength)
-	resp.Req.paeser(resp, e.itemsChan, e.requestsChan)
+	resp.Req.parser(resp, e.itemsChan, e.requestsChan)
 }
 
-func (e *SpiderEnginer) doPipelinesHandlers(spider SpiderInterface, item ItemInterface) {
+func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item ItemInterface) {
 	defer func() {
 		atomic.AddInt64(e.goroutineRunning, -1)
 		e.waitGroup.Done()
@@ -221,10 +221,10 @@ func (e *SpiderEnginer) doPipelinesHandlers(spider SpiderInterface, item ItemInt
 	e.Stats.ItemScraped++
 
 }
-func (e *SpiderEnginer) Close() {
+func (e *SpiderEngine) Close() {
 	defer func() {
 		if p := recover(); p != nil {
-			enginerLog.Errorf("Close engier fail")
+			engineLog.Errorf("Close engier fail")
 			panic("Close engier fail")
 		}
 	}()
@@ -241,51 +241,51 @@ func (e *SpiderEnginer) Close() {
 	}
 
 }
-func (e *SpiderEnginer) RegisterPipelines(pipeline PipelinesInterface) {
+func (e *SpiderEngine) RegisterPipelines(pipeline PipelinesInterface) {
 	e.pipelines = append(e.pipelines, pipeline)
 	sort.Sort(e.pipelines)
 
 }
-func (e *SpiderEnginer) RegisterSpider(spider SpiderInterface) {
+func (e *SpiderEngine) RegisterSpider(spider SpiderInterface) {
 	e.spiders.Register(spider)
 }
 
-func WithSpidersContext(ctx context.Context) EnginerOption {
-	return func(r *SpiderEnginer) {
+func WithSpidersContext(ctx context.Context) EngineOption {
+	return func(r *SpiderEngine) {
 		r.Ctx = ctx
 	}
 }
 
-func WithSpidersTimeout(timeout time.Duration) EnginerOption {
-	return func(r *SpiderEnginer) {
+func WithSpidersTimeout(timeout time.Duration) EngineOption {
+	return func(r *SpiderEngine) {
 		r.DownloadTimeout = timeout
 	}
 }
-func WithSpidersDownloader(downloader Downloader) EnginerOption {
-	return func(r *SpiderEnginer) {
+func WithSpidersDownloader(downloader Downloader) EngineOption {
+	return func(r *SpiderEngine) {
 		r.requestDownloader = downloader
 	}
 }
-func WithAllowStatusCode(allowStatusCode []int64) EnginerOption {
-	return func(r *SpiderEnginer) {
+func WithAllowStatusCode(allowStatusCode []int64) EngineOption {
+	return func(r *SpiderEngine) {
 		r.allowStatusCode = allowStatusCode
 	}
 }
-func WithUniqueReq(uniqueReq bool) EnginerOption {
-	return func(r *SpiderEnginer) {
+func WithUniqueReq(uniqueReq bool) EngineOption {
+	return func(r *SpiderEngine) {
 		r.filterDuplicateReq = uniqueReq
 	}
 }
 
-func WithSchedulerNum(schedulerNum uint) EnginerOption {
-	return func(r *SpiderEnginer) {
+func WithSchedulerNum(schedulerNum uint) EngineOption {
+	return func(r *SpiderEngine) {
 		r.schedulerNum = schedulerNum
 	}
 }
 
-func NewSpiderEnginer(opts ...EnginerOption) *SpiderEnginer {
+func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 	once.Do(func() {
-		Enginer = &SpiderEnginer{
+		Engine = &SpiderEngine{
 			spiders:            NewSpiders(),
 			requestsChan:       make(chan *Request, 1024*10),
 			spidersChan:        make(chan SpiderInterface),
@@ -303,7 +303,7 @@ func NewSpiderEnginer(opts ...EnginerOption) *SpiderEnginer {
 			allowStatusCode:    []int64{},
 			filterDuplicateReq: true,
 			bloomFilter:        bloom.New(1024*1024, 5),
-			enginerStatus:      0,
+			engineStatus:      0,
 			waitGroup:          &sync.WaitGroup{},
 			isDone:             false,
 			isRunning:          false,
@@ -311,8 +311,8 @@ func NewSpiderEnginer(opts ...EnginerOption) *SpiderEnginer {
 			Stats:              &SpiderStats{0, 0, 0.0},
 		}
 		for _, o := range opts {
-			o(Enginer)
+			o(Engine)
 		}
 	})
-	return Enginer
+	return Engine
 }

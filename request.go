@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
@@ -29,10 +30,17 @@ type Request struct {
 	Meta           map[string]interface{}
 	AllowRedirects bool
 	MaxRedirects   int
-	paeser         Paeser
+	parser         Parser
 }
+
+var requestPool *sync.Pool = &sync.Pool{
+	New: func() interface{} {
+		return new(Request)
+	},
+}
+
 type Option func(r *Request)
-type Paeser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
+type Parser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
 
 var reqLog *logrus.Entry = GetLogger("request")
 
@@ -121,7 +129,12 @@ func (r *Request) updateQueryParams() {
 		r.Url = u.String()
 	}
 }
-func NewRequest(url string, method string, parser Paeser, opts ...Option) *Request {
+func NewRequest(url string, method string, parser Parser, opts ...Option) *Request {
+	// request := requestPool.Get().(*Request)
+	// request.Url = url
+	// request.Method = method
+	// request.parser = parser
+	// request.Timeout = 10 * time.Second
 
 	request := &Request{
 		Url:            url,
@@ -136,7 +149,7 @@ func NewRequest(url string, method string, parser Paeser, opts ...Option) *Reque
 		Meta:           map[string]interface{}{},
 		AllowRedirects: true,
 		MaxRedirects:   -1,
-		paeser:         parser,
+		parser:         parser,
 	}
 	for _, o := range opts {
 		o(request)
@@ -191,4 +204,21 @@ func (r *Request) fingerprint() []byte {
 func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) bool {
 	// 不存在
 	return bloomFilter.TestOrAdd(r.fingerprint())
+}
+func (r *Request) freeRequest() {
+	r.parser = func(resp *Response, item chan<- ItemInterface, req chan<- *Request) {}
+	r.AllowRedirects = true
+	r.Meta = make(map[string]interface{})
+	r.MaxRedirects = -1
+	r.Url = ""
+	r.Header = make(map[string]string)
+	r.Method = ""
+	r.Body = r.Body[:0]
+	r.Params = make(map[string]string)
+	r.Proxy = ""
+	r.Cookies = make(map[string]string)
+	r.Timeout = 10 * time.Second
+	r.TLS = false
+	requestPool.Put(r)
+
 }

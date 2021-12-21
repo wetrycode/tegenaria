@@ -122,15 +122,15 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 	resp.Header.VisitAll(func(key, value []byte) {
 		header[string(key)] = value
 	})
-	r.Response = &Response{
-		Text:          resp.String(),
-		Status:        resp.StatusCode(),
-		Body:          b,
-		Header:        header,
-		Req:           request,
-		Delay:         time.Since(now).Seconds(),
-		ContentLength: resp.Header.ContentLength(),
-	}
+	r.Response = NewResponse()
+	r.Response.Text = resp.String()
+	r.Response.Status = resp.StatusCode()
+	r.Response.Body = b
+	r.Response.Header = header
+	r.Response.Req = request
+	r.Response.Delay = time.Since(now).Seconds()
+	r.Response.ContentLength = resp.Header.ContentLength()
+
 	log.Infof("Request %s is successful", request.Url)
 	r.Error = nil
 	result <- r
