@@ -20,6 +20,7 @@ require (
 	github.com/spf13/viper v1.10.1
 	github.com/valyala/fasthttp v1.31.0
 	github.com/wxnacy/wgo v1.0.4
+	github.com/yireyun/go-queue v0.0.0-20210520035143-72b190eafcba // indirect
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 	gopkg.in/fsnotify.v1 v1.4.7 // indirect

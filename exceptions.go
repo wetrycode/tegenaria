@@ -9,4 +9,5 @@ var (
 	ErrEmptySpiderName     error = errors.New("Register a empty spider name error")
 	ErrSpiderNotExist      error = errors.New("Not found spider")
 	ErrNotAllowStatusCode  error = errors.New("Not allow handle status code")
+	ErrGetCacheItem        error = errors.New("Getting item from cache error")
 )

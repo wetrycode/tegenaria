@@ -1,46 +1,38 @@
 package tegenaria
 
 import (
-	"sync/atomic"
-
-	"github.com/smallnest/queue"
+	queue "github.com/yireyun/go-queue"
 )
 
 type CacheInterface interface {
 	enqueue(req *Request) error
 	dequeue() (interface{}, error)
 	getSize() int64
-	isEmpty()bool
 }
 type requestCache struct {
-	queue *queue.LKQueue
-	size  *int64
+	queue *queue.EsQueue
 }
-var size int64 = 0
+
 
 func (c *requestCache) enqueue(req *Request) error {
-	c.queue.Enqueue(req)
-	atomic.AddInt64(c.size, 1)
+	c.queue.Put(req)
 	return nil
 }
 
 func (c *requestCache) dequeue() (interface{}, error) {
-	q :=c.queue.Dequeue()
-	if q != nil{
-		atomic.AddInt64(c.size, -1)
+	val, ok, _ := c.queue.Get()
+	if !ok {
+		return nil, ErrGetCacheItem
+	} else {
+		return val, nil
 	}
-	return q, nil
+
 }
 func (c *requestCache) getSize() int64 {
-	return atomic.LoadInt64(c.size)
+	return int64(c.queue.Quantity())
 }
-func NewrequestCache() *requestCache {
+func NewRequestCache() *requestCache {
 	return &requestCache{
-		queue: queue.NewLKQueue(),
-		size:  &size,
+		queue: queue.NewQueue(1024),
 	}
-}
-func (c *requestCache)isEmpty()bool{
-	return true
-	// return atomic.CompareAndSwapInt64()
 }
