@@ -37,7 +37,7 @@ type SpiderEngine struct {
 	allowStatusCode    []int64
 	filterDuplicateReq bool
 	bloomFilter        *bloom.BloomFilter
-	engineStatus      int
+	engineStatus       int
 	waitGroup          *sync.WaitGroup
 	isDone             bool
 	isRunning          bool
@@ -47,9 +47,9 @@ type SpiderEngine struct {
 }
 
 var (
-	Engine          *SpiderEngine
+	Engine           *SpiderEngine
 	once             sync.Once
-	engineLog       *logrus.Entry = GetLogger("engine")
+	engineLog        *logrus.Entry = GetLogger("engine")
 	goroutineRunning int64         = 0
 )
 
@@ -65,7 +65,7 @@ Loop:
 				e.waitGroup.Add(1)
 				go e.doDownload(request)
 			case requestResult := <-e.requestResultChan:
-				*(e.goroutineRunning)++
+				atomic.AddInt64(e.goroutineRunning, 1)
 				e.waitGroup.Add(1)
 				go e.doRequestResult(requestResult)
 			case response := <-e.respChan:
@@ -94,7 +94,7 @@ Loop:
 func (e *SpiderEngine) Start(spiderName string) {
 	defer func() {
 		e.Close()
-		engineLog.Info("Spider enginer is closed!")
+		engineLog.Info("Spider engine is closed!")
 		if p := recover(); p != nil {
 			engineLog.Errorf("Close engier fail")
 		}
@@ -103,8 +103,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 	if !ok {
 		panic(fmt.Sprintf("Spider %s not found", spider))
 	}
-	cpus := runtime.NumCPU()
-	runtime.GOMAXPROCS(cpus)
+	runtime.GOMAXPROCS(int(e.schedulerNum))
 	e.waitGroup.Add(2)
 	ctx, cancel := context.WithCancel(e.Ctx)
 	go e.readyDone(ctx, cancel)
@@ -131,8 +130,9 @@ func (e *SpiderEngine) readyDone(ctx context.Context, cancel context.CancelFunc)
 			cancel()
 			engineLog.Info("准备关闭调度器")
 			e.waitGroup.Done()
+			return
 		}
-		time.Sleep(time.Second)
+		runtime.Gosched()
 	}
 
 }
@@ -289,10 +289,10 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			spiders:            NewSpiders(),
 			requestsChan:       make(chan *Request, 1024*10),
 			spidersChan:        make(chan SpiderInterface),
-			itemsChan:          make(chan ItemInterface),
-			respChan:           make(chan *Response),
-			requestResultChan:  make(chan *RequestResult),
-			errorChan:          make(chan error),
+			itemsChan:          make(chan ItemInterface, 1024*10),
+			respChan:           make(chan *Response, 1024*10),
+			requestResultChan:  make(chan *RequestResult, 1024*10),
+			errorChan:          make(chan error, 1024*10),
 			taskFinishChan:     make(chan int),
 			startRequestFinish: false,
 			goroutineRunning:   &goroutineRunning,
@@ -303,11 +303,11 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			allowStatusCode:    []int64{},
 			filterDuplicateReq: true,
 			bloomFilter:        bloom.New(1024*1024, 5),
-			engineStatus:      0,
+			engineStatus:       0,
 			waitGroup:          &sync.WaitGroup{},
 			isDone:             false,
 			isRunning:          false,
-			schedulerNum:       3,
+			schedulerNum:       4,
 			Stats:              &SpiderStats{0, 0, 0.0},
 		}
 		for _, o := range opts {
