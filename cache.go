@@ -13,10 +13,13 @@ type requestCache struct {
 	queue *queue.EsQueue
 }
 
-
 func (c *requestCache) enqueue(req *Request) error {
-	c.queue.Put(req)
-	return nil
+	for {
+		ok, _ := c.queue.Put(req)
+		if ok {
+			return nil
+		}
+	}
 }
 
 func (c *requestCache) dequeue() (interface{}, error) {
@@ -33,6 +36,6 @@ func (c *requestCache) getSize() int64 {
 }
 func NewRequestCache() *requestCache {
 	return &requestCache{
-		queue: queue.NewQueue(1024),
+		queue: queue.NewQueue(1024 * 2),
 	}
 }

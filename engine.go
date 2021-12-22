@@ -26,7 +26,6 @@ type SpiderEngine struct {
 	spidersChan        chan SpiderInterface
 	itemsChan          chan ItemInterface
 	respChan           chan *Response
-	taskFinishChan     chan int
 	requestResultChan  chan *RequestResult
 	errorChan          chan error
 	cacheChan          chan *Request
@@ -48,6 +47,7 @@ type SpiderEngine struct {
 	schedulerNum       uint
 	Stats              *SpiderStats
 	cache              CacheInterface
+	cacheReadNum       uint
 }
 
 var (
@@ -96,7 +96,7 @@ Loop:
 		runtime.Gosched()
 
 	}
-	engineLog.Info("调度器完成调度")
+	engineLog.Info("Scheduler is done")
 	e.isClosed = true
 	e.waitGroup.Done()
 }
@@ -113,11 +113,14 @@ func (e *SpiderEngine) Start(spiderName string) {
 		panic(fmt.Sprintf("Spider %s not found", spider))
 	}
 	runtime.GOMAXPROCS(int(e.schedulerNum))
-	e.mainWaitGroup.Add(3)
+	e.mainWaitGroup.Add(2)
 	ctx, cancel := context.WithCancel(e.Ctx)
 	go e.readyDone(ctx, cancel)
 	go e.StartSpiders(spiderName)
-	go e.readCache(ctx)
+	for n := 0; n < int(e.cacheReadNum); n++ {
+		e.mainWaitGroup.Add(1)
+		go e.readCache(ctx)
+	}
 	for i := 0; i < int(e.schedulerNum); i++ {
 		e.waitGroup.Add(1)
 		go e.engineScheduler(ctx, spider)
@@ -125,7 +128,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 	e.mainWaitGroup.Wait()
 	e.waitGroup.Wait()
 	e.isDone = true
-	engineLog.Infof("下载总量为 %d 错误总量为%d item生成量%d", e.Stats.RequestDownloaded, e.Stats.ErrorCount, e.Stats.ItemScraped)
+	engineLog.Infof("DownloadCount %d ErrorCount %d ItemScraped %d", e.Stats.RequestDownloaded, e.Stats.ErrorCount, e.Stats.ItemScraped)
 }
 
 func (e *SpiderEngine) checkTaskStatus() bool {
@@ -138,7 +141,7 @@ func (e *SpiderEngine) readyDone(ctx context.Context, cancel context.CancelFunc)
 	for {
 		if e.startRequestFinish && e.checkTaskStatus() && e.checkChanStatus() {
 			cancel()
-			engineLog.Info("准备关闭调度器")
+			engineLog.Info("Scheduler ready done")
 			e.mainWaitGroup.Done()
 			return
 		}
@@ -253,7 +256,7 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item ItemInte
 			return
 		}
 	}
-	atomic.AddUint64(&e.Stats.ItemScraped,1)
+	atomic.AddUint64(&e.Stats.ItemScraped, 1)
 
 }
 func (e *SpiderEngine) Close() {
@@ -270,7 +273,6 @@ func (e *SpiderEngine) Close() {
 			close(e.itemsChan)
 			close(e.requestResultChan)
 			close(e.respChan)
-			close(e.taskFinishChan)
 			close(e.errorChan)
 		})
 	}
@@ -317,6 +319,11 @@ func WithSchedulerNum(schedulerNum uint) EngineOption {
 		r.schedulerNum = schedulerNum
 	}
 }
+func WithReadCacheNum(cacheReadNum uint) EngineOption {
+	return func(r *SpiderEngine) {
+		r.cacheReadNum = cacheReadNum
+	}
+}
 
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 	once.Do(func() {
@@ -329,7 +336,6 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			requestResultChan:  make(chan *RequestResult, 1024),
 			errorChan:          make(chan error, 1024),
 			cacheChan:          make(chan *Request, 1024),
-			taskFinishChan:     make(chan int),
 			startRequestFinish: false,
 			goroutineRunning:   &goroutineRunning,
 			pipelines:          make(ItemPipelines, 0),
@@ -338,7 +344,7 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			requestDownloader:  GoSpiderDownloader,
 			allowStatusCode:    []int64{},
 			filterDuplicateReq: true,
-			bloomFilter:        bloom.New(1024*5, 5),
+			bloomFilter:        bloom.New(1024*4, 5),
 			engineStatus:       0,
 			waitGroup:          &sync.WaitGroup{},
 			mainWaitGroup:      &sync.WaitGroup{},
@@ -347,6 +353,7 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			schedulerNum:       4,
 			Stats:              &SpiderStats{0, 0, 0.0, 0},
 			cache:              NewRequestCache(),
+			cacheReadNum:       2,
 		}
 		for _, o := range opts {
 			o(Engine)
