@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -34,7 +35,16 @@ const (
 
 var log *logrus.Entry = GetLogger("downloader")
 var GoSpiderDownloader *SpiderDownloader = &SpiderDownloader{}
+var globalClient *fasthttp.Client = nil
+var onceClient sync.Once
 
+func newClient(client fasthttp.Client) {
+	onceClient.Do(func() {
+		if globalClient == nil {
+			globalClient = &client
+		}
+	})
+}
 func checkUrlVaildate(requestUrl string) error {
 	_, err := url.ParseRequestURI(requestUrl)
 	return err
@@ -81,14 +91,16 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		req.Header.Set(key, value)
 	}
 	// Set tls设置
-	c := &fasthttp.Client{
+	c := fasthttp.Client{
 		TLSConfig: &tls.Config{
 			InsecureSkipVerify: request.TLS,
 		},
 		MaxConnDuration:    request.Timeout,
 		ReadTimeout:        request.Timeout,
 		MaxConnWaitTimeout: request.Timeout,
+		MaxConnsPerHost:    request.maxConnsPerHost,
 	}
+	newClient(c)
 	// set cookies
 	if len(request.Cookies) != 0 {
 		for key, value := range request.Cookies {
@@ -98,17 +110,17 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 	}
 	// Set request proxy without protocol
 	if len(request.Proxy) != 0 {
-		c.Dial = fasthttpproxy.FasthttpHTTPDialer(request.Proxy)
+		globalClient.Dial = fasthttpproxy.FasthttpHTTPDialer(request.Proxy)
 	}
 	if request.AllowRedirects {
-		if err := c.DoRedirects(req, resp, request.MaxRedirects); err != nil {
+		if err := globalClient.DoRedirects(req, resp, request.MaxRedirects); err != nil {
 			r.Response = nil
 			r.Error = err
 			result <- r
 			return
 		}
 	} else {
-		if err := c.DoTimeout(req, resp, request.Timeout); err != nil {
+		if err := globalClient.DoTimeout(req, resp, request.Timeout); err != nil {
 			r.Response = nil
 			r.Error = err
 			result <- r

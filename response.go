@@ -50,16 +50,16 @@ func (r *Response) String() string {
 	return *(*string)(unsafe.Pointer(&r.Body))
 }
 func NewResponse() *Response {
-	// response := responsePool.Get().(*Response)
-	// return response
-	return new(Response)
+	response := responsePool.Get().(*Response)
+	return response
+	// return new(Response)
 
 }
 func (r *Response) freeResponse() {
 	r.Text = ""
 	r.Status = -1
 	r.Body = r.Body[:0]
-	r.Header = make(map[string][]byte)
+	r.Header = nil
 	r.Delay = 0
 	r.Req.freeRequest()
 	responsePool.Put(r)

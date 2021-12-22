@@ -25,7 +25,6 @@ func (hook *DefaultFieldHook) Fire(entry *logrus.Entry) error {
 	entry.Data["uuid"] = u4.String()
 	entry.Data["hostname"] = name
 	entry.Data["function"] = entry.Caller.Function
-	entry.Data["line"] = entry.Caller.Line
 	return nil
 }
 

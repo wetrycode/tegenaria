@@ -31,6 +31,7 @@ type Request struct {
 	AllowRedirects bool
 	MaxRedirects   int
 	parser         Parser
+	maxConnsPerHost int
 }
 
 var requestPool *sync.Pool = &sync.Pool{
@@ -44,7 +45,7 @@ type Parser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
 
 var reqLog *logrus.Entry = GetLogger("request")
 
-func WithRequestBody(body map[string]interface{}) Option {
+func RequestWithRequestBody(body map[string]interface{}) Option {
 	return func(r *Request) {
 		defer func() {
 			if p := recover(); p != nil {
@@ -59,55 +60,60 @@ func WithRequestBody(body map[string]interface{}) Option {
 		}
 	}
 }
-func WithRequestParams(params map[string]string) Option {
+func RequestWithRequestParams(params map[string]string) Option {
 	return func(r *Request) {
 		r.Params = params
 
 	}
 }
-func WithRequestProxy(proxy string) Option {
+func RequestWithRequestProxy(proxy string) Option {
 	return func(r *Request) {
 		r.Proxy = proxy
 	}
 }
-func WithRequestHeader(header map[string]string) Option {
+func RequestWithRequestHeader(header map[string]string) Option {
 	return func(r *Request) {
 		r.Header = header
 	}
 }
-func WithRequestCookies(cookies map[string]string) Option {
+func RequestWithRequestCookies(cookies map[string]string) Option {
 	return func(r *Request) {
 		r.Cookies = cookies
 	}
 }
-func WithRequestTimeout(timeout time.Duration) Option {
+func RequestWithRequestTimeout(timeout time.Duration) Option {
 	return func(r *Request) {
 		r.Timeout = timeout
 	}
 }
-func WithRequestTLS(tls bool) Option {
+func RequestWithRequestTLS(tls bool) Option {
 	return func(r *Request) {
 		r.TLS = tls
 	}
 }
-func WithRequestMethod(method string) Option {
+func RequestWithRequestMethod(method string) Option {
 	return func(r *Request) {
 		r.Method = method
 	}
 }
-func WithRequestMeta(meta map[string]interface{}) Option {
+func RequestWithRequestMeta(meta map[string]interface{}) Option {
 	return func(r *Request) {
 		r.Meta = meta
 	}
 }
-func WithAllowRedirects(allowRedirects bool) Option {
+func RequestWithAllowRedirects(allowRedirects bool) Option {
 	return func(r *Request) {
 		r.AllowRedirects = allowRedirects
 	}
 }
-func WithMaxRedirects(maxRedirects int) Option {
+func RequestWithMaxRedirects(maxRedirects int) Option {
 	return func(r *Request) {
 		r.MaxRedirects = maxRedirects
+	}
+}
+func RequestWithMaxConnsPerHost(maxConnsPerHost int) Option {
+	return func(r *Request) {
+		r.maxConnsPerHost = maxConnsPerHost
 	}
 }
 func (r *Request) updateQueryParams() {
@@ -130,27 +136,28 @@ func (r *Request) updateQueryParams() {
 	}
 }
 func NewRequest(url string, method string, parser Parser, opts ...Option) *Request {
-	// request := requestPool.Get().(*Request)
-	// request.Url = url
-	// request.Method = method
-	// request.parser = parser
-	// request.Timeout = 10 * time.Second
+	request := requestPool.Get().(*Request)
+	request.Url = url
+	request.Method = method
+	request.parser = parser
+	request.Timeout = 10 * time.Second
 
-	request := &Request{
-		Url:            url,
-		Header:         map[string]string{},
-		Method:         method,
-		Body:           []byte{},
-		Params:         map[string]string{},
-		Proxy:          "",
-		Cookies:        map[string]string{},
-		Timeout:        10 * time.Second,
-		TLS:            false,
-		Meta:           map[string]interface{}{},
-		AllowRedirects: true,
-		MaxRedirects:   -1,
-		parser:         parser,
-	}
+	// request := &Request{
+	// 	Url:            url,
+	// 	Header:         map[string]string{},
+	// 	Method:         method,
+	// 	Body:           []byte{},
+	// 	Params:         map[string]string{},
+	// 	Proxy:          "",
+	// 	Cookies:        map[string]string{},
+	// 	Timeout:        10 * time.Second,
+	// 	TLS:            false,
+	// 	Meta:           map[string]interface{}{},
+	// 	AllowRedirects: true,
+	// 	MaxRedirects:   -1,
+	// 	parser:         parser,
+	// 	maxConnsPerHost: 4096,
+	// }
 	for _, o := range opts {
 		o(request)
 	}
@@ -208,17 +215,18 @@ func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) bool {
 func (r *Request) freeRequest() {
 	r.parser = func(resp *Response, item chan<- ItemInterface, req chan<- *Request) {}
 	r.AllowRedirects = true
-	r.Meta = make(map[string]interface{})
+	r.Meta = nil
 	r.MaxRedirects = -1
 	r.Url = ""
-	r.Header = make(map[string]string)
+	r.Header = nil
 	r.Method = ""
 	r.Body = r.Body[:0]
-	r.Params = make(map[string]string)
+	r.Params = nil
 	r.Proxy = ""
-	r.Cookies = make(map[string]string)
+	r.Cookies = nil
 	r.Timeout = 10 * time.Second
 	r.TLS = false
+	r.maxConnsPerHost = 512
 	requestPool.Put(r)
 
 }

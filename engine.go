@@ -48,6 +48,8 @@ type SpiderEngine struct {
 	Stats              *SpiderStats
 	cache              CacheInterface
 	cacheReadNum       uint
+	concurrencyNum     int64
+	currentRequest     int64
 }
 
 var (
@@ -68,10 +70,6 @@ Loop:
 				atomic.AddInt64(e.goroutineRunning, 1)
 				e.waitGroup.Add(1)
 				go e.writeCache(req)
-			case request := <-e.cacheChan:
-				atomic.AddInt64(e.goroutineRunning, 1)
-				e.waitGroup.Add(1)
-				go e.doDownload(request)
 			case requestResult := <-e.requestResultChan:
 				atomic.AddInt64(e.goroutineRunning, 1)
 				e.waitGroup.Add(1)
@@ -113,10 +111,11 @@ func (e *SpiderEngine) Start(spiderName string) {
 		panic(fmt.Sprintf("Spider %s not found", spider))
 	}
 	runtime.GOMAXPROCS(int(e.schedulerNum))
-	e.mainWaitGroup.Add(2)
+	e.mainWaitGroup.Add(3)
 	ctx, cancel := context.WithCancel(e.Ctx)
 	go e.readyDone(ctx, cancel)
 	go e.StartSpiders(spiderName)
+	go e.recvRequest(ctx)
 	for n := 0; n < int(e.cacheReadNum); n++ {
 		e.mainWaitGroup.Add(1)
 		go e.readCache(ctx)
@@ -147,6 +146,32 @@ func (e *SpiderEngine) readyDone(ctx context.Context, cancel context.CancelFunc)
 		}
 		time.Sleep(time.Second)
 		runtime.Gosched()
+	}
+
+}
+func (e *SpiderEngine) recvRequest(ctx context.Context) {
+	defer e.mainWaitGroup.Done()
+	for {
+		if e.isRunning {
+			select {
+			case req := <-e.cacheChan:
+				for {
+					// 并发控制
+					if atomic.LoadInt64(&e.currentRequest) <= e.concurrencyNum {
+						e.waitGroup.Add(1)
+						atomic.AddInt64(e.goroutineRunning, 1)
+						go e.doDownload(req)
+						break
+					}
+					runtime.Gosched()
+				}
+
+			case <-ctx.Done():
+				return
+			default:
+			}
+			runtime.Gosched()
+		}
 	}
 
 }
@@ -199,8 +224,11 @@ func (e *SpiderEngine) doDownload(request *Request) {
 
 	}()
 	if e.doFilter(request) {
+		atomic.AddInt64(&e.currentRequest, 1)
 		atomic.AddUint64(&e.Stats.RequestDownloaded, 1)
 		e.requestDownloader.Download(e.Ctx, request, e.requestResultChan)
+		atomic.AddInt64(&e.currentRequest, -1)
+
 	}
 }
 func (e *SpiderEngine) doFilter(r *Request) bool {
@@ -241,6 +269,7 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Response) {
 	}()
 	e.Stats.NetworkTraffic += int64(resp.ContentLength)
 	resp.Req.parser(resp, e.itemsChan, e.requestsChan)
+	resp.freeResponse()
 }
 
 func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item ItemInterface) {
@@ -287,41 +316,51 @@ func (e *SpiderEngine) RegisterSpider(spider SpiderInterface) {
 	e.spiders.Register(spider)
 }
 
-func WithSpidersContext(ctx context.Context) EngineOption {
+func EngineWithSpidersContext(ctx context.Context) EngineOption {
 	return func(r *SpiderEngine) {
 		r.Ctx = ctx
 	}
 }
 
-func WithSpidersTimeout(timeout time.Duration) EngineOption {
+func EngineWithSpidersTimeout(timeout time.Duration) EngineOption {
 	return func(r *SpiderEngine) {
 		r.DownloadTimeout = timeout
 	}
 }
-func WithSpidersDownloader(downloader Downloader) EngineOption {
+func EngineWithSpidersDownloader(downloader Downloader) EngineOption {
 	return func(r *SpiderEngine) {
 		r.requestDownloader = downloader
 	}
 }
-func WithAllowStatusCode(allowStatusCode []int64) EngineOption {
+func EngineWithAllowStatusCode(allowStatusCode []int64) EngineOption {
 	return func(r *SpiderEngine) {
 		r.allowStatusCode = allowStatusCode
 	}
 }
-func WithUniqueReq(uniqueReq bool) EngineOption {
+func EngineWithUniqueReq(uniqueReq bool) EngineOption {
 	return func(r *SpiderEngine) {
 		r.filterDuplicateReq = uniqueReq
 	}
 }
 
-func WithSchedulerNum(schedulerNum uint) EngineOption {
+func EngineWithSchedulerNum(schedulerNum uint) EngineOption {
 	return func(r *SpiderEngine) {
 		r.schedulerNum = schedulerNum
 	}
 }
-func WithReadCacheNum(cacheReadNum uint) EngineOption {
+func EngineWithReadCacheNum(cacheReadNum uint) EngineOption {
 	return func(r *SpiderEngine) {
 		r.cacheReadNum = cacheReadNum
+	}
+}
+func EngineWithRequestNum(requestNum uint) EngineOption {
+	return func(r *SpiderEngine) {
+		r.cacheChan = make(chan *Request, requestNum)
+	}
+}
+func EngineWithConcurrencyNum(concurrencyNum int64) EngineOption {
+	return func(r *SpiderEngine) {
+		r.concurrencyNum = concurrencyNum
 	}
 }
 
@@ -354,6 +393,8 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			Stats:              &SpiderStats{0, 0, 0.0, 0},
 			cache:              NewRequestCache(),
 			cacheReadNum:       2,
+			concurrencyNum:     32,
+			currentRequest:     0,
 		}
 		for _, o := range opts {
 			o(Engine)
