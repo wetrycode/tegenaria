@@ -1,7 +1,9 @@
 package tegenaria
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"sync"
 	"unsafe"
 
@@ -9,15 +11,21 @@ import (
 )
 
 type Response struct {
-	Text          string
+	// Text          string
 	Status        int
 	Body          []byte
-	Header        map[string][]byte
+	Header        map[string][]string
 	Req           *Request
 	Delay         float64
 	ContentLength int
+	StreamReader  io.ReadCloser
 }
 
+var ResponseBufferPool *sync.Pool = &sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 4096))
+	},
+}
 var responsePool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
 		return new(Response)
@@ -52,11 +60,10 @@ func (r *Response) String() string {
 func NewResponse() *Response {
 	response := responsePool.Get().(*Response)
 	return response
-	// return new(Response)
 
 }
 func (r *Response) freeResponse() {
-	r.Text = ""
+	// r.Text = ""
 	r.Status = -1
 	r.Body = r.Body[:0]
 	r.Header = nil

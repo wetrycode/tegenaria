@@ -9,8 +9,10 @@ require (
 	github.com/bits-and-blooms/bitset v1.2.1 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
 	github.com/c-bata/go-prompt v0.2.6 // indirect
+	github.com/gin-gonic/gin v1.7.7 // indirect
 	github.com/google/uuid v1.3.0
 	github.com/hpcloud/tail v1.0.0 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.13.6 // indirect
 	github.com/liyue201/gostl v1.0.1
 	github.com/rifflock/lfshook v0.0.0-20180920164130-b9218ef580f5

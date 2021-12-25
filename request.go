@@ -2,7 +2,6 @@ package tegenaria
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -12,26 +11,36 @@ import (
 	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
 	"github.com/spaolacci/murmur3"
 )
 
+type Proxy struct {
+	HTTP  string
+	HTTPS string
+	SOCKS string
+}
+
 // Request a url
 type Request struct {
-	Url            string            // Request URL
-	Header         map[string]string // Request header
-	Method         string            // Request Method
-	Body           []byte            // Request body
-	Params         map[string]string // Request query params
-	Proxy          string            // Request proxy addr
-	Cookies        map[string]string
-	Timeout        time.Duration
-	TLS            bool
-	Meta           map[string]interface{}
-	AllowRedirects bool
-	MaxRedirects   int
-	parser         Parser
+	Url             string            // Request URL
+	Header          map[string]string // Request header
+	Method          string            // Request Method
+	Body            []byte            // Request body
+	Params          map[string]string // Request query params
+	Proxy           *Proxy            // Request proxy addr
+	Cookies         map[string]string
+	Timeout         time.Duration
+	TLS             bool
+	Meta            map[string]interface{}
+	AllowRedirects  bool
+	MaxRedirects    int
+	parser          Parser
 	maxConnsPerHost int
+	MaxRedirectNum  int
+	BodyReader      io.Reader
+	ResponseWriter  io.Writer
 }
 
 var requestPool *sync.Pool = &sync.Pool{
@@ -43,17 +52,18 @@ var requestPool *sync.Pool = &sync.Pool{
 type Option func(r *Request)
 type Parser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
 
+var bufferPool *sync.Pool = &sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 4096))
+	},
+}
 var reqLog *logrus.Entry = GetLogger("request")
 
 func RequestWithRequestBody(body map[string]interface{}) Option {
 	return func(r *Request) {
-		defer func() {
-			if p := recover(); p != nil {
-				reqLog.Errorf("panic recover! p: %v", p)
-			}
-		}()
 		var err error
-		r.Body, err = json.Marshal(body)
+		body, err := jsoniter.Marshal(body)
+		r.BodyReader = bytes.NewBuffer(body)
 		if err != nil {
 			reqLog.Errorf("set request body err %s", err.Error())
 			panic(fmt.Sprintf("set request body err %s", err.Error()))
@@ -66,9 +76,9 @@ func RequestWithRequestParams(params map[string]string) Option {
 
 	}
 }
-func RequestWithRequestProxy(proxy string) Option {
+func RequestWithRequestProxy(proxy Proxy) Option {
 	return func(r *Request) {
-		r.Proxy = proxy
+		r.Proxy = &proxy
 	}
 }
 func RequestWithRequestHeader(header map[string]string) Option {
@@ -111,6 +121,11 @@ func RequestWithMaxRedirects(maxRedirects int) Option {
 		r.MaxRedirects = maxRedirects
 	}
 }
+func RequestWithResponseWriter(write io.Writer) Option{
+	return func(r *Request) {
+		r.ResponseWriter = write
+	}
+}
 func RequestWithMaxConnsPerHost(maxConnsPerHost int) Option {
 	return func(r *Request) {
 		r.maxConnsPerHost = maxConnsPerHost
@@ -141,23 +156,9 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.Method = method
 	request.parser = parser
 	request.Timeout = 10 * time.Second
+	request.ResponseWriter = nil
+	request.BodyReader = nil
 
-	// request := &Request{
-	// 	Url:            url,
-	// 	Header:         map[string]string{},
-	// 	Method:         method,
-	// 	Body:           []byte{},
-	// 	Params:         map[string]string{},
-	// 	Proxy:          "",
-	// 	Cookies:        map[string]string{},
-	// 	Timeout:        10 * time.Second,
-	// 	TLS:            false,
-	// 	Meta:           map[string]interface{}{},
-	// 	AllowRedirects: true,
-	// 	MaxRedirects:   -1,
-	// 	parser:         parser,
-	// 	maxConnsPerHost: 4096,
-	// }
 	for _, o := range opts {
 		o(request)
 	}
@@ -222,11 +223,13 @@ func (r *Request) freeRequest() {
 	r.Method = ""
 	r.Body = r.Body[:0]
 	r.Params = nil
-	r.Proxy = ""
+	r.Proxy = nil
 	r.Cookies = nil
 	r.Timeout = 10 * time.Second
 	r.TLS = false
 	r.maxConnsPerHost = 512
+	r.ResponseWriter = nil
+	r.BodyReader = nil
 	requestPool.Put(r)
 
 }
