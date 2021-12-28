@@ -36,7 +36,6 @@ func GetLogger(Name string) *logrus.Entry {
 	log := logger.WithFields(logrus.Fields{
 		"logName": Name,
 	})
-	// log.SetReportCaller(true)
 
 	return log
 }

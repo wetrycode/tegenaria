@@ -1,7 +1,6 @@
 package tegenaria
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -31,27 +30,31 @@ type Downloader interface {
 
 // SpiderDownloader tegenaria spider downloader
 type SpiderDownloader struct {
-	StreamThreshold uint64 // StreamThreshold 采用流式传输的响应体阈值 TODO
-
-	transport *http.Transport // transport 下载器使用的transport，每一个请求采用公共的网络传输配置，全局使用一个连接池
-
-	client *http.Client // client 网络请求客户端
-
-	ProxyFunc func(req *http.Request) (*url.URL, error) // ProxyFunc代理供应函数
+	// StreamThreshold read body threshold using streaming TODO
+	// if content length is bigger that,download will read response by streaming
+	// it is a feature in the future
+	StreamThreshold uint64
+	// transport The transport used by the downloader,
+	// each request adopts a public network transmission configuration,
+	// and a connection pool is used globally
+	transport *http.Transport
+	// client network request client
+	client *http.Client
+	// ProxyFunc update proxy for per request
+	ProxyFunc func(req *http.Request) (*url.URL, error)
 }
 
-// RequestResult 网络请求响应结果
+// RequestResult network request response result
 type RequestResult struct {
-
-	Error error // Error 各类请求过程中的异常
-
-	Response *Response // Response 网络请求响应对象
+	Error error // Error error exception during request
+	RequestId string // RequestId record request id
+	Response *Response // Response network request response object
 }
 
-// DownloaderOption 下载器的可选参数
+// DownloaderOption optional parameters of the downloader
 type DownloaderOption func(d *SpiderDownloader)
 
-// 请求方式常量定义
+// Request method constant definition
 const (
 	GET     string = "GET"
 	POST    string = "POST"
@@ -61,22 +64,22 @@ const (
 	HEAD    string = "HEAD"
 )
 
-// log 下载模块的日志记录
+// log logging of downloader modules
 var log *logrus.Entry = GetLogger("downloader")
 
-// globalClient 全局的网络请求客户端
+// globalClient global network request client
 var globalClient *http.Client = nil
 
-// onceClient 客户端单例
+// onceClient only one client init
 var onceClient sync.Once
 
-// envProxyOnce 本地系统代理加载
+// envProxyOnce System proxies load only one
 var envProxyOnce sync.Once
 
-// envProxyFuncValue 本地系统环境加载函数
+// envProxyFuncValue System proxies get funcation
 var envProxyFuncValue func(*url.URL) (*url.URL, error)
 
-// newClient 获取新的客户端，全局只实例化一个client
+// newClient get http client
 func newClient(client http.Client) {
 	onceClient.Do(func() {
 		if globalClient == nil {
@@ -85,7 +88,7 @@ func newClient(client http.Client) {
 	})
 }
 
-// proxyFunc http.Transport.Proxy 代理构建函数
+// proxyFunc http.Transport.Proxy return proxy
 func proxyFunc(req *http.Request) (*url.URL, error) {
 	// 从上下文管理器中获取代理配置，实现代理和请求的一对一配置关系
 	value := req.Context().Value(ctxKey("key")).(map[string]interface{})
@@ -137,8 +140,8 @@ func proxyFunc(req *http.Request) (*url.URL, error) {
 	return envProxyFuncValue(req.URL)
 }
 
-// redirectFunc 重定向处理函数
-// 限制最大的重定向次数
+// redirectFunc redirect handle funcation
+// limit max redirect times
 func redirectFunc(req *http.Request, via []*http.Request) error {
 	redirectNum := req.Context().Value("redirectNum").(int)
 	if len(via) > redirectNum {
@@ -148,7 +151,7 @@ func redirectFunc(req *http.Request, via []*http.Request) error {
 	return nil
 }
 
-// StreamThreshold 采用流式传输的响应体阈值 TODO
+// StreamThreshold the must max size of response body  to use stream donload
 func DownloaderWithStreamThreshold(streamThreshold uint64) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.StreamThreshold = streamThreshold
@@ -156,7 +159,7 @@ func DownloaderWithStreamThreshold(streamThreshold uint64) DownloaderOption {
 
 }
 
-// DownloaderWithtransport 为下载器提供自定义配置的 http.Transport
+// DownloaderWithtransport download transport configure http.Transport
 func DownloaderWithtransport(transport http.Transport) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport = &transport
@@ -164,21 +167,21 @@ func DownloaderWithtransport(transport http.Transport) DownloaderOption {
 
 }
 
-// DownloadWithClient 为下载器提供自定义的网络请求客户端
+// DownloadWithClient set http client for downloader
 func DownloadWithClient(client http.Client) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.client = &client
 	}
 }
 
-// DownloadWithTimeout 设置下载的超时时间
+// DownloadWithTimeout set request download timeout 
 func DownloadWithTimeout(timeout time.Duration) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.client.Timeout = timeout
 	}
 }
 
-// DownloadWithTlsConfig 设置tls请求的配置参数
+// DownloadWithTlsConfig set tls configure for downloader
 func DownloadWithTlsConfig(tls tls.Config) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport.TLSClientConfig = &tls
@@ -186,7 +189,7 @@ func DownloadWithTlsConfig(tls tls.Config) DownloaderOption {
 	}
 }
 
-// SpiderDownloader 构造函数
+// SpiderDownloader get a new spider downloader
 func NewDownloader(opts ...DownloaderOption) Downloader {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -221,47 +224,48 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 	return downloader
 }
 
-// checkUrlVaildate URL合法性校验器
+// checkUrlVaildate URL check validator
 func checkUrlVaildate(requestUrl string) error {
 	_, err := url.ParseRequestURI(requestUrl)
 	return err
 
 }
 
-// CheckStatus 响应状态码合法性校验
+// CheckStatus check response status
 func (d *SpiderDownloader) CheckStatus(statusCode int, allowStatus []int64) bool {
-	if statusCode > 400 && -1 == arrays.ContainsInt(allowStatus, int64(statusCode)) {
+	if statusCode >= 400 && -1 == arrays.ContainsInt(allowStatus, int64(statusCode)) {
 		return false
 	}
 	return true
 }
 
-// Download 下载的主逻辑，构建请求并处理响应
-// 传入一个上下文管理，将下载结果发送到*RequestResult channel
+// Download network downloader 
 func (d *SpiderDownloader) Download(ctx context.Context, request *Request, result chan<- *RequestResult) {
 	r := &RequestResult{}
-
-	// 整个请求的延迟开始计算
+	r.RequestId = request.RequestId
+	downloadLog := log.WithField("request_id", request.RequestId)
+	// record request handle start time
 	now := time.Now()
 
 	if err := checkUrlVaildate(request.Url); err != nil {
-		// 校验URL的合法性
+		// request url is not vaildate
 		r.Response = nil
 		r.Error = err
 		result <- r
 		return
 	}
 
-	// ValueContext上下文携带的值，主要是代理和最大的重定向次数
+	// ValueContext 
+	// The value carried by the context, mainly the proxy and the maximum number of redirects
 	ctxValue := map[string]interface{}{}
 	if request.Proxy != nil {
 
 		ctxValue["proxy"] = request.Proxy
 
 	}
-	ctxValue["redirectNum"] = request.MaxRedirectNum
+	ctxValue["redirectNum"] = request.MaxRedirects
 
-	// 配置请求参数
+	// do set request params
 	u, err := url.ParseRequestURI(request.Url)
 	if err != nil {
 		r.Error = fmt.Errorf(fmt.Sprintf("Parse url error %s", err.Error()))
@@ -278,7 +282,7 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		u.RawQuery = data.Encode()
 
 	}
-	// 此处构建请求并传入上下文信息
+	// Build the request here and pass in the context information
 	var asCtxKey ctxKey = "key"
 	ctx = context.WithValue(ctx, asCtxKey, ctxValue)
 	req, err := http.NewRequestWithContext(ctx, request.Method, u.String(), request.BodyReader)
@@ -289,12 +293,12 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		return
 	}
 
-	// 设置请求头
+	// Set request header
 	for k, v := range request.Header {
 		req.Header.Set(k, v)
 	}
 
-	// 设置请求cookie
+	// Set request cookie
 	for k, v := range request.Cookies {
 		req.AddCookie(&http.Cookie{
 			Name:  k,
@@ -302,6 +306,7 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		})
 	}
 	// Start request
+	downloadLog.Debugf("Request %s is downloading", request.Url)
 	resp, err := d.client.Do(req)
 	if err != nil {
 		r.Error = fmt.Errorf(fmt.Sprintf("Request url %s error %s", request.Url, err.Error()))
@@ -310,22 +315,28 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		return
 
 	}
-	// 构造响应体结构
+	// Construct response body structure
 	response := NewResponse()
 	response.Header = resp.Header
 	response.Status = resp.StatusCode
 	response.Req = request
+	response.URL = req.URL.String()
 	response.Delay = time.Since(now).Seconds()
-	// 从缓冲池中获取缓冲对象，用于读取响应体
-	buffer := bufferPool.Get().(*bytes.Buffer)
-	buffer.Reset()
 	if request.ResponseWriter != nil {
-		// 响应数据写入自定义的io.Writer接口，例如文件下载过程的文件
+		// The response data is written into a custom io.Writer interface, 
+		// such as a file in the file download process
 		_, err = io.Copy(request.ResponseWriter, resp.Body)
 	} else {
-		// 默认缓冲到内存
-		_, err = io.Copy(buffer, resp.Body)
-		response.Body = buffer.Bytes()
+		// Response data is buffered to memory by default
+		_, err = io.Copy(response.buffer, resp.Body)
+		if err != nil {
+			msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
+			downloadLog.Errorf("%s\n", msg)
+			r.Error = fmt.Errorf(msg)
+			r.Response = nil
+			result <- r
+			return
+		}
 
 	}
 	if err != nil {
@@ -335,16 +346,15 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 		return
 	}
 	r.Error = nil
+	response.write()
 	r.Response = response
 	result <- r
-	// 缓冲对象放回缓冲池
-	bufferPool.Put(buffer)
-	buffer = nil
 	defer func() {
-		if buffer != nil {
+		if p := recover(); p != nil {
+			downloadLog.Fatalf("Download handle error %v", p)
+		}
+		if resp.Body != nil {
 			resp.Body.Close()
-			bufferPool.Put(buffer)
-			buffer = nil
 		}
 
 	}()

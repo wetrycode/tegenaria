@@ -11,6 +11,7 @@ import (
 	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
+	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
 	"github.com/spaolacci/murmur3"
@@ -22,41 +23,49 @@ type Proxy struct {
 	SOCKS string
 }
 
-// Request a url
+// Request a spider request config
 type Request struct {
-	Url             string            // Request URL
-	Header          map[string]string // Request header
-	Method          string            // Request Method
-	Body            []byte            // Request body
-	Params          map[string]string // Request query params
-	Proxy           *Proxy            // Request proxy addr
-	Cookies         map[string]string
-	Timeout         time.Duration
-	TLS             bool
-	Meta            map[string]interface{}
-	AllowRedirects  bool
-	MaxRedirects    int
-	parser          Parser
-	maxConnsPerHost int
-	MaxRedirectNum  int
-	BodyReader      io.Reader
-	ResponseWriter  io.Writer
+	Url             string                 // Set request URL
+	Header          map[string]string      // Set request header
+	Method          string                 // Set request Method
+	Body            []byte                 // Set request body
+	Params          map[string]string      // Set request query params
+	Proxy           *Proxy                 // Set request proxy addr
+	Cookies         map[string]string      // Set request cookie
+	Timeout         time.Duration          // Set request timeout
+	TLS             bool                   // Set https request if skip tls check
+	Meta            map[string]interface{} // Set other data
+	AllowRedirects  bool                   // Set if allow redirects. default is true
+	MaxRedirects    int                    // Set max allow redirects number
+	parser          Parser                 // Set response parser funcation
+	maxConnsPerHost int                    // Set max connect number for per host
+	BodyReader      io.Reader              // Set request body reader
+	ResponseWriter  io.Writer              // Set request response body writer,like file
+	RequestId       string                 // Set request uuid
 }
 
+// requestPool the Request obj pool
 var requestPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
 		return new(Request)
 	},
 }
 
+// Option NewRequest options
 type Option func(r *Request)
+
+// Parser response parse handler
 type Parser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
 
+// bufferPool buffer object pool
 var bufferPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
 		return bytes.NewBuffer(make([]byte, 4096))
+		// return new(bytes.Buffer)
 	},
 }
+
+// reqLog request logger
 var reqLog *logrus.Entry = GetLogger("request")
 
 func RequestWithRequestBody(body map[string]interface{}) Option {
@@ -121,7 +130,7 @@ func RequestWithMaxRedirects(maxRedirects int) Option {
 		r.MaxRedirects = maxRedirects
 	}
 }
-func RequestWithResponseWriter(write io.Writer) Option{
+func RequestWithResponseWriter(write io.Writer) Option {
 	return func(r *Request) {
 		r.ResponseWriter = write
 	}
@@ -131,6 +140,8 @@ func RequestWithMaxConnsPerHost(maxConnsPerHost int) Option {
 		r.maxConnsPerHost = maxConnsPerHost
 	}
 }
+
+// updateQueryParams update url query  params
 func (r *Request) updateQueryParams() {
 	defer func() {
 		if p := recover(); p != nil {
@@ -150,6 +161,9 @@ func (r *Request) updateQueryParams() {
 		r.Url = u.String()
 	}
 }
+
+// NewRequest create a new Request.
+// It will get a nil request form requestPool and then init params
 func NewRequest(url string, method string, parser Parser, opts ...Option) *Request {
 	request := requestPool.Get().(*Request)
 	request.Url = url
@@ -158,7 +172,8 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.Timeout = 10 * time.Second
 	request.ResponseWriter = nil
 	request.BodyReader = nil
-
+	u4 := uuid.New()
+	request.RequestId = u4.String()
 	for _, o := range opts {
 		o(request)
 	}
@@ -166,6 +181,8 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	return request
 
 }
+
+// canonicalizeUrl canonical request url before calculate request fingerprint
 func (r *Request) canonicalizeUrl(keepFragment bool) url.URL {
 	u, _ := url.ParseRequestURI(r.Url)
 	u.RawQuery = u.Query().Encode()
@@ -175,6 +192,8 @@ func (r *Request) canonicalizeUrl(keepFragment bool) url.URL {
 	}
 	return *u
 }
+
+// encodeHeader encode request header before calculate request fingerprint
 func (r *Request) encodeHeader() string {
 	h := r.Header
 	if h == nil {
@@ -185,23 +204,30 @@ func (r *Request) encodeHeader() string {
 	for k := range h {
 		keys = append(keys, k)
 	}
-	// 对Header的键进行排序
+	// Sort by Header key
 	sort.Strings(keys)
 	for _, k := range keys {
-		// 对值进行排序
+		// Sort by value
 		buf.WriteString(fmt.Sprintf("%s:%s;\n", strings.ToUpper(k), strings.ToUpper(h[k])))
 	}
 	return buf.String()
 }
+
+// fingerprint generate a request fingerprint by using 	murmur3.New128() sha128
+// the fingerprint []byte will be cached into cache module or de-duplication
 func (r *Request) fingerprint() []byte {
+	// get sha128
 	sha := murmur3.New128()
 	io.WriteString(sha, r.Method)
+	// canonical request url
 	u := r.canonicalizeUrl(false)
 	io.WriteString(sha, u.String())
+	// get request body
 	if r.Body != nil {
 		body := r.Body
 		sha.Write(body)
 	}
+	// to handle request header
 	if len(r.Header) != 0 {
 		io.WriteString(sha, r.encodeHeader())
 	}
@@ -210,14 +236,16 @@ func (r *Request) fingerprint() []byte {
 }
 
 func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) bool {
-	// 不存在
+	// Use bloom filter to do fingerprint deduplication
 	return bloomFilter.TestOrAdd(r.fingerprint())
 }
-func (r *Request) freeRequest() {
+
+// freeRequest reset Request and the put it into requestPool
+func freeRequest(r *Request) {
 	r.parser = func(resp *Response, item chan<- ItemInterface, req chan<- *Request) {}
 	r.AllowRedirects = true
 	r.Meta = nil
-	r.MaxRedirects = -1
+	r.MaxRedirects = 3
 	r.Url = ""
 	r.Header = nil
 	r.Method = ""
@@ -230,6 +258,8 @@ func (r *Request) freeRequest() {
 	r.maxConnsPerHost = 512
 	r.ResponseWriter = nil
 	r.BodyReader = nil
+	r.RequestId = ""
 	requestPool.Put(r)
+	r = nil
 
 }

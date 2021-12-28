@@ -65,7 +65,7 @@ type SpiderEngine struct {
 	// It will incr when an task goroutine start  and dec after goroutine is done.
 	goroutineRunning *int64
 
-	// pipelines items process chan pipeline.
+	// pipelines items process chan.
 	// Items should be handled by these pipenlines
 	pipelines ItemPipelines
 
@@ -81,7 +81,7 @@ type SpiderEngine struct {
 	// allowStatusCode set allow  handle status codes which are not 200,like 404,302
 	allowStatusCode []int64
 
-	// filterDuplicateReq flag to set if filter duplicate request fingerprint.
+	// filterDuplicateReq flag if filter duplicate request fingerprint.
 	// to filter duplicate request fingerprint set true or not set false.
 	filterDuplicateReq bool
 
@@ -133,7 +133,7 @@ var (
 	Engine           *SpiderEngine // SpiderEngine global and once spider engine
 	once             sync.Once
 	engineLog        *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
-	goroutineRunning int64         = 0 // goroutineRunning all running tasks goroutine counter
+	goroutineRunning int64         = 0                   // goroutineRunning all running tasks goroutine counter
 )
 
 // EngineOption the options params of NewDownloader
@@ -168,7 +168,7 @@ Loop:
 				atomic.AddInt64(e.goroutineRunning, 1)
 				go e.doPipelinesHandlers(spider, item)
 			case err := <-e.errorChan:
-				// handle error 
+				// handle error
 				e.waitGroup.Add(1)
 				atomic.AddInt64(e.goroutineRunning, 1)
 				go e.doError(err)
@@ -186,7 +186,7 @@ Loop:
 }
 
 // Start spider engine start.
-// It will schedule all spider system 
+// It will schedule all spider system
 func (e *SpiderEngine) Start(spiderName string) {
 	defer func() {
 		e.Close()
@@ -232,6 +232,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 func (e *SpiderEngine) checkTaskStatus() bool {
 	return atomic.LoadInt64(e.goroutineRunning) == 0 && e.cache.getSize() == 0
 }
+
 // checkChanStatus check all channel if empty
 func (e *SpiderEngine) checkChanStatus() bool {
 	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan) + len(e.errorChan) + len(e.cacheChan)) == 0
@@ -253,6 +254,7 @@ func (e *SpiderEngine) readyDone(ctx context.Context, cancel context.CancelFunc)
 	}
 
 }
+
 // recvRequest receive request from cacheChan and do download.
 func (e *SpiderEngine) recvRequest(ctx context.Context) {
 	defer e.mainWaitGroup.Done()
@@ -281,7 +283,7 @@ func (e *SpiderEngine) recvRequest(ctx context.Context) {
 
 }
 
-// StartSpiders start a spider specify by spider name 
+// StartSpiders start a spider specify by spider name
 func (e *SpiderEngine) StartSpiders(spiderName string) {
 	spider, ok := e.spiders.SpidersModules[spiderName]
 	defer func() {
@@ -368,7 +370,9 @@ func (e *SpiderEngine) doRequestResult(result *RequestResult) {
 	err := result.Error
 	if err != nil {
 		e.errorChan <- err
-		engineLog.Errorf("Request is fail with error %s", err.Error())
+		engineLog.WithField("request_id", result.RequestId).Errorf("Request is fail with error %s", err.Error())
+		freeResponse(result.Response)
+
 	} else {
 		if e.requestDownloader.CheckStatus(result.Response.Status, e.allowStatusCode) {
 			// response status code is ok
@@ -376,13 +380,15 @@ func (e *SpiderEngine) doRequestResult(result *RequestResult) {
 			e.respChan <- result.Response
 		} else {
 			// send error
-			engineLog.Warningf("Not allow handle status code %d", result.Response.Status)
+			engineLog.WithField("request_id", result.RequestId).Warningf("Not allow handle status code %d %s", result.Response.Status, result.Response.Req.Url)
 			e.errorChan <- fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.Response.Status)
+			freeResponse(result.Response)
 		}
 
 	}
 
 }
+
 // doParse parse request response
 func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Response) {
 	defer func() {
@@ -392,7 +398,7 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Response) {
 	}()
 	e.Stats.NetworkTraffic += int64(resp.ContentLength)
 	resp.Req.parser(resp, e.itemsChan, e.requestsChan)
-	resp.freeResponse()
+	freeResponse(resp)
 }
 
 // doPipelinesHandlers handle items by pipelines chan
@@ -403,6 +409,7 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item ItemInte
 
 	}()
 	for _, pipeline := range e.pipelines {
+		engineLog.Infof("Response parse items into pipelines chans")
 		err := pipeline.ProcessItem(spider, item)
 		if err != nil {
 			e.errorChan <- err
@@ -412,6 +419,7 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item ItemInte
 	atomic.AddUint64(&e.Stats.ItemScraped, 1)
 
 }
+
 // Close engine and close all channels
 func (e *SpiderEngine) Close() {
 	defer func() {
@@ -431,6 +439,7 @@ func (e *SpiderEngine) Close() {
 	}
 
 }
+
 // RegisterPipelines add items handle pipelines
 func (e *SpiderEngine) RegisterPipelines(pipeline PipelinesInterface) {
 	e.pipelines = append(e.pipelines, pipeline)
@@ -519,7 +528,7 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			Stats:              &SpiderStats{0, 0, 0.0, 0},
 			cache:              NewRequestCache(),
 			cacheReadNum:       2,
-			concurrencyNum:     32,
+			concurrencyNum:     256,
 			currentRequest:     0,
 		}
 		for _, o := range opts {
