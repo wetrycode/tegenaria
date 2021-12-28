@@ -354,7 +354,7 @@ func (e *SpiderEngine) doFilter(r *Request) bool {
 	if e.filterDuplicateReq {
 		result := r.doUnique(e.bloomFilter)
 		if result {
-			engineLog.Debugf("Request is not unique")
+			engineLog.WithField("request_id", r.RequestId).Debugf("Request is not unique")
 		}
 		return !result
 	}
