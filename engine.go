@@ -26,6 +26,9 @@ type SpiderStats struct {
 	ErrorCount uint64 // ErrorCount count all error recvice
 
 }
+// ErrorHandler a Customizable error handler funcation
+// receive error from errchans
+type ErrorHandler func(err error)
 
 type SpiderEngine struct {
 	// spiders all register spiders modules
@@ -67,7 +70,11 @@ type SpiderEngine struct {
 
 	// pipelines items process chan.
 	// Items should be handled by these pipenlines
+	// Such as save item into databases
 	pipelines ItemPipelines
+
+	// middlewares are handle request object such as add proxy or header
+	downloaderMiddlewares Middlewares
 
 	// Ctx context.Context
 	Ctx context.Context
@@ -99,8 +106,9 @@ type SpiderEngine struct {
 	// It will ctrl readyDone、StartSpiders、recvRequest group
 	mainWaitGroup *sync.WaitGroup
 
-	// isDone all scrap task is done flag
-	// It will set for true until all channel is empty and goroutineRunning is 0 and startRequestFinish is true
+	// isDone is all scrap task is done flag
+	// It will set for true until all channel is empty and
+	// goroutineRunning is 0 and startRequestFinish is true
 	isDone bool
 
 	// isRunning the flag for engineScheduler start run
@@ -127,6 +135,8 @@ type SpiderEngine struct {
 
 	// currentRequest the number of running request handler at the same time
 	currentRequest int64
+
+	ErrorHandler ErrorHandler
 }
 
 var (
@@ -329,6 +339,7 @@ func (e *SpiderEngine) readCache(ctx context.Context) {
 func (e *SpiderEngine) doError(err error) {
 	atomic.AddInt64(e.goroutineRunning, -1)
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
+	e.ErrorHandler(err)
 	e.waitGroup.Done()
 }
 
@@ -340,8 +351,17 @@ func (e *SpiderEngine) doDownload(request *Request) {
 
 	}()
 	if e.doFilter(request) {
-		atomic.AddInt64(&e.currentRequest, 1)
+		// use download middleware to handle request object
+		for _, middleware := range e.downloaderMiddlewares {
+			err := middleware.ProcessRequest(request)
+			if err!=nil{
+				engineLog.WithField("request_id", request.RequestId).Errorf("Middleware %s handle request error %s", middleware.GetName(),err.Error())
+				e.errorChan <-err
+				return
+			}
+		}
 		// incr request download number
+		atomic.AddInt64(&e.currentRequest, 1)
 		atomic.AddUint64(&e.Stats.RequestDownloaded, 1)
 		e.requestDownloader.Download(e.Ctx, request, e.requestResultChan)
 		atomic.AddInt64(&e.currentRequest, -1)
@@ -447,11 +467,20 @@ func (e *SpiderEngine) RegisterPipelines(pipeline PipelinesInterface) {
 
 }
 
+// RegisterDownloadMiddlewares add a download middlewares
+func (e *SpiderEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterface) {
+	e.downloaderMiddlewares = append(e.downloaderMiddlewares, middlewares)
+	sort.Sort(e.downloaderMiddlewares)
+}
+
 // RegisterSpider add spiders
 func (e *SpiderEngine) RegisterSpider(spider SpiderInterface) {
 	e.spiders.Register(spider)
 }
 
+func DefaultErrorHandler(err error){
+
+}
 func EngineWithSpidersContext(ctx context.Context) EngineOption {
 	return func(r *SpiderEngine) {
 		r.Ctx = ctx
@@ -503,16 +532,18 @@ func EngineWithConcurrencyNum(concurrencyNum int64) EngineOption {
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 	once.Do(func() {
 		Engine = &SpiderEngine{
-			spiders:            NewSpiders(),
-			requestsChan:       make(chan *Request, 1024),
-			itemsChan:          make(chan ItemInterface, 1024),
-			respChan:           make(chan *Response, 1024),
-			requestResultChan:  make(chan *RequestResult, 1024),
-			errorChan:          make(chan error, 1024),
-			cacheChan:          make(chan *Request, 1024),
-			startRequestFinish: false,
-			goroutineRunning:   &goroutineRunning,
-			pipelines:          make(ItemPipelines, 0),
+			spiders:               NewSpiders(),
+			requestsChan:          make(chan *Request, 1024),
+			itemsChan:             make(chan ItemInterface, 1024),
+			respChan:              make(chan *Response, 1024),
+			requestResultChan:     make(chan *RequestResult, 1024),
+			errorChan:             make(chan error, 1024),
+			cacheChan:             make(chan *Request, 1024),
+			startRequestFinish:    false,
+			goroutineRunning:      &goroutineRunning,
+			pipelines:             make(ItemPipelines, 0),
+			downloaderMiddlewares: make(Middlewares, 0),
+
 			Ctx:                context.TODO(),
 			DownloadTimeout:    time.Second * 10,
 			requestDownloader:  NewDownloader(),
@@ -530,6 +561,7 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 			cacheReadNum:       2,
 			concurrencyNum:     256,
 			currentRequest:     0,
+			ErrorHandler: DefaultErrorHandler,
 		}
 		for _, o := range opts {
 			o(Engine)

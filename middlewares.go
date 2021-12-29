@@ -1,10 +1,9 @@
-package middlewares
-
-import "github.com/geebytes/tegenaria"
+package tegenaria
 
 type MiddlewaresInterface interface {
 	GetPriority() int
-	ProcessItem(spider tegenaria.SpiderInterface, item tegenaria.ItemInterface) error
+	ProcessRequest(request *Request) error
+	GetName()string
 }
 type MiddlewaresBase struct {
 	Priority int
