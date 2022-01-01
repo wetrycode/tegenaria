@@ -25,7 +25,7 @@ type Response struct {
 // it is used by downloader
 var ResponseBufferPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, 4096))
+		return bytes.NewBuffer(make([]byte, 1024))
 	},
 }
 
@@ -78,6 +78,8 @@ func NewResponse() *Response {
 func (r *Response) write() {
 	if r.buffer != nil {
 		r.Body = r.buffer.Bytes()
+		bufferPool.Put(r.buffer)
+
 	}
 }
 
@@ -87,7 +89,6 @@ func freeResponse(r *Response) {
 	r.Body = r.Body[:0]
 	r.Header = nil
 	r.Delay = 0
-	bufferPool.Put(r.buffer)
 	freeRequest(r.Req)
 	responsePool.Put(r)
 	r = nil
