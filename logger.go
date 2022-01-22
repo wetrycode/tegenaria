@@ -38,20 +38,6 @@ func initLog() {
 	// 设置路径
 	logger.SetReportCaller(true)
 
-	// pathMap := lfshook.PathMap{
-	// 	logrus.InfoLevel:  filepath.Join(Config.Log.Path, "info.log"),
-	// 	logrus.PanicLevel: filepath.Join(Config.Log.Path, "error.log"),
-	// 	logrus.ErrorLevel: filepath.Join(Config.Log.Path, "error.log"),
-	// 	logrus.FatalLevel: filepath.Join(Config.Log.Path, "error.log"),
-	// 	logrus.DebugLevel: filepath.Join(Config.Log.Path, "debug.log"),
-	// }
-	// 设置日志格式为json格式
-	// logger.Formatter = &logrus{TimestampFormat: "2006-01-02 15:04:05", CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {
-	// 	fileName := path.Base(frame.File) + ":" + strconv.Itoa(frame.Line)
-	// 	//return frame.Function, fileName
-	// 	return "", fileName
-	// }}
-
 	logger.SetOutput(os.Stdout)
 	_, ex := os.LookupEnv("UNITTEST")
 	logLevel := Config.Log.Level

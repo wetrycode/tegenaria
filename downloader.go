@@ -98,20 +98,18 @@ func proxyFunc(req *http.Request) (*url.URL, error) {
 		return nil, nil
 	}
 	p := proxy.(*Proxy)
-	// uri, err := url.Parse(p.HTTP)
-
 	// If there is no proxy set, use default proxy from environment.
 	// This mitigates expensive lookups on some platforms (e.g. Windows).
 	envProxyOnce.Do(func() {
-		// 从环境变量里面获取系统代理
+		// get proxies from system env
 		envProxyFuncValue = httpproxy.FromEnvironment().ProxyFunc()
 	})
 	if p != nil && p.ProxyUrl != "" {
 		proxyURL, err := url.Parse(p.ProxyUrl)
 		if err != nil {
-			ERR := fmt.Sprint(ErrGetHttpProxy.Error(), err.Error())
-			log.Error(ERR)
-			return nil, errors.New(ERR)
+			err := fmt.Sprint(ErrGetHttpProxy.Error(), err.Error())
+			log.Error(err)
+			return nil, errors.New(err)
 		}
 		return proxyURL, nil
 	}
@@ -121,7 +119,8 @@ func proxyFunc(req *http.Request) (*url.URL, error) {
 // redirectFunc redirect handle funcation
 // limit max redirect times
 func redirectFunc(req *http.Request, via []*http.Request) error {
-	redirectNum := req.Context().Value("redirectNum").(int)
+	value := req.Context().Value(ctxKey("key")).(map[string]interface{})
+	redirectNum := value["redirectNum"].(int)
 	if len(via) > redirectNum {
 		err := &RedirectError{redirectNum}
 		return err
@@ -236,7 +235,6 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		// request url is not vaildate
 		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
 		downloadLog.Errorf(err.Error())
-
 		return
 	}
 
@@ -251,12 +249,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	ctxValue["redirectNum"] = ctx.Request.MaxRedirects
 
 	// do set request params
-	u, err := url.ParseRequestURI(ctx.Request.Url)
-	if err != nil {
-		downloadLog.Errorf(fmt.Sprintf("Parse url error %s", err.Error()))
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
-		return
-	}
+	u, _ := url.ParseRequestURI(ctx.Request.Url)
 
 	if ctx.Request.Params != nil {
 		data := url.Values{}
