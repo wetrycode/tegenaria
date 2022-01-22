@@ -82,15 +82,17 @@ func newTestServer() *httptest.Server {
 		})
 		router.GET("/testGetCookie", func(c *gin.Context) {
 			cookies := c.Request.Cookies()
-			http.SetCookie(c.Writer, &http.Cookie{
-				Name:    "key",
-				Value:   "value",
-				Path:    "/",
-				Expires: time.Now().Add(30 * time.Second),
-			})
+
 			for _, cookie := range cookies {
-				c.String(200, cookie.Name+"="+cookie.Value)
+				http.SetCookie(c.Writer, &http.Cookie{
+					Name:    cookie.Name,
+					Value:   cookie.Value,
+					Path:    "/",
+					Expires: time.Now().Add(30 * time.Second),
+				})
 			}
+			c.String(200, "cookie")
+
 		})
 		router.GET("/testHeader", func(c *gin.Context) {
 			header := c.GetHeader("key")
@@ -106,6 +108,23 @@ func newTestServer() *httptest.Server {
 		router.GET("/testParams", func(c *gin.Context) {
 			value := c.Query("key")
 			c.String(200, value)
+		})
+		router.GET("/testRedirect1", func(c *gin.Context) {
+			c.Redirect(http.StatusMovedPermanently, "/testRedirect2")
+		})
+		router.GET("/testRedirect2", func(c *gin.Context) {
+			c.Redirect(http.StatusMovedPermanently, "/testRedirect3")
+		})
+		router.GET("/testRedirect3", func(c *gin.Context) {
+			c.String(200, "/testRedirect3")
+		})
+		router.GET("/testJson", func(c *gin.Context) {
+			data := gin.H{
+				"name": "json",
+				"msg":  "hello world",
+				"age":  18,
+			}
+			c.JSON(200, data)
 		})
 		router.GET("/proxy", func(c *gin.Context) {
 			c.String(200, "This is target website.")
@@ -141,7 +160,7 @@ func TestRequestGet(t *testing.T) {
 
 	downloader := NewDownloader(DownloadWithTlsConfig(&tls.Config{InsecureSkipVerify: true}))
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -179,7 +198,7 @@ func TestRequestPost(t *testing.T) {
 	resultChan := make(chan *Context, 1)
 	downloader := NewDownloader()
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -220,7 +239,7 @@ func TestRequestCookie(t *testing.T) {
 	resultChan := make(chan *Context, 1)
 	downloader := NewDownloader()
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -233,9 +252,8 @@ func TestRequestCookie(t *testing.T) {
 		t.Errorf("response with cookies status = %d; expected %d", resp.Status, 200)
 
 	}
-	if resp.String() != "test1=test1test2=test2" {
-		t.Errorf("request with cookies get = %s; expected %s", resp.String(), "test1=test1test2=test2")
-
+	if len(resp.Header["Set-Cookie"]) != 2 {
+		t.Errorf("request with cookies get = %d; expected %d", len(resp.Header["Set-Cookie"]), 2)
 	}
 }
 
@@ -259,7 +277,7 @@ func TestRequestQueryParams(t *testing.T) {
 	}()
 	resultChan := make(chan *Context, 1)
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -301,7 +319,7 @@ func TestRequestProxy(t *testing.T) {
 	}()
 	resultChan := make(chan *Context, 1)
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -401,7 +419,7 @@ func TestTimeout(t *testing.T) {
 	}()
 	resultChan := make(chan *Context, 1)
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -434,7 +452,7 @@ func TestLargeFile(t *testing.T) {
 	}()
 	resultChan := make(chan *Context, 1)
 
-	go downloader.Download(ctx, resultChan)
+	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
@@ -453,6 +471,91 @@ func TestLargeFile(t *testing.T) {
 	}
 	if fi.Size() == 0 {
 		t.Errorf("get test.file size 0")
+
+	}
+}
+
+func TestJsonResponse(t *testing.T) {
+	server := newTestServer()
+	downloader := NewDownloader()
+	request := NewRequest(server.URL+"/testJson", GET, parser)
+	var MainCtx context.Context = context.Background()
+
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
+	if err != nil {
+		t.Errorf("request json error %s", err.Error())
+
+	}
+	if resp.Status != 200 {
+		t.Errorf("response status = %d; expected %d", resp.Status, 200)
+
+	}
+	if resp.Json()["name"] != "json" {
+		t.Errorf("request with headers get = %s; expected %s", resp.String(), "json")
+
+	}
+}
+func TestRedirectLimit(t *testing.T) {
+	server := newTestServer()
+	downloader := NewDownloader()
+	request := NewRequest(server.URL+"/testRedirect1", GET, parser, RequestWithMaxRedirects(1))
+	var MainCtx context.Context = context.Background()
+
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
+	if err == nil {
+		t.Errorf("request redirect should be limit error\n")
+
+	}
+	if resp != nil {
+		t.Errorf("response is not empty ")
+
+	}
+}
+
+func TestInvalidURL(t *testing.T) {
+	downloader := NewDownloader()
+	request := NewRequest("error"+"/testRedirect1", GET, parser)
+	var MainCtx context.Context = context.Background()
+
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	if err == nil {
+		t.Errorf("request invlid url should get an error\n")
 
 	}
 }
