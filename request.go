@@ -120,11 +120,17 @@ func RequestWithRequestMeta(meta map[string]interface{}) Option {
 func RequestWithAllowRedirects(allowRedirects bool) Option {
 	return func(r *Request) {
 		r.AllowRedirects = allowRedirects
+		if !allowRedirects{
+			r.MaxRedirects = 0
+		}
 	}
 }
 func RequestWithMaxRedirects(maxRedirects int) Option {
 	return func(r *Request) {
 		r.MaxRedirects = maxRedirects
+		if maxRedirects <=0{
+			r.AllowRedirects = false
+		}
 	}
 }
 func RequestWithResponseWriter(write io.Writer) Option {
@@ -170,6 +176,8 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.ResponseWriter = nil
 	request.BodyReader = nil
 	request.Header = make(map[string]string)
+	request.MaxRedirects = 3
+	request.AllowRedirects = true
 	// u4 := uuid.New()
 	// request.RequestId = u4.String()
 	for _, o := range opts {
