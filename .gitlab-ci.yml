@@ -59,6 +59,7 @@ stages:
       - sed -i "s@HOST@${SONAR_SERVER_HOST}@" sonar-project.properties
       - sed -i 's@USER@${SONAR_USER}@' sonar-project.properties
       - sed -i 's/PASSWORD/${SONAR_PASSWORD}/' sonar-project.properties
+      - date
   variables:
     SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
     GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
