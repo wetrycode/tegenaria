@@ -56,7 +56,6 @@ stages:
     entrypoint: [""]
   stage: sonarqube-check
   before_script:
-      - cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
       - sed -i "s@HOST@${SONAR_SERVER_HOST}@" sonar-project.properties
       - sed -i 's@USER@${SONAR_USER}@' sonar-project.properties
       - sed -i 's/PASSWORD/${SONAR_PASSWORD}/' sonar-project.properties
