@@ -20,13 +20,6 @@ type Response struct {
 	Buffer        *bytes.Buffer // buffer read response buffer
 }
 
-// ResponseBufferPool a buffer poll of request response object
-// it is used by downloader
-var ResponseBufferPool *sync.Pool = &sync.Pool{
-	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, 1024))
-	},
-}
 
 // responsePool a buffer poll of Response object
 var responsePool *sync.Pool = &sync.Pool{
