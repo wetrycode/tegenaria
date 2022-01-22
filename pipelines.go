@@ -2,7 +2,7 @@ package tegenaria
 
 type PipelinesInterface interface {
 	GetPriority() int
-	ProcessItem(spider SpiderInterface, item ItemInterface) error
+	ProcessItem(spider SpiderInterface, item *ItemMeta) error
 }
 type PipelinesBase struct {
 	Priority int

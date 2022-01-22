@@ -2,9 +2,11 @@ package tegenaria
 
 type MiddlewaresInterface interface {
 	GetPriority() int
-	ProcessRequest(request *Request) error
+	ProcessRequest(ctx *Context) error
+	ProcessResponse(ctx *Context) error
 	GetName()string
 }
+type ProcessResponse func(ctx *Context) error
 type MiddlewaresBase struct {
 	Priority int
 }

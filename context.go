@@ -6,21 +6,34 @@ import (
 )
 
 type Context struct {
-	Request  *Request
-	Response *Response
-	Items    []ItemInterface
-	Ctx      context.Context
-	CtxId    string
+	// Request
+	Request *Request
+
+	// Response *Response
+	DownloadResult *RequestResult
+
+	// Item
+	Item           ItemInterface
+
+	//Ctx
+	Ctx            context.Context
+
+	// CtxId
+	CtxId          string
+
+	// Error
+	Error          error
 }
 type ContextOption func(c *Context)
 
 func NewContext(request *Request, opts ...ContextOption) *Context {
 	ctx := &Context{
-		Request:  request,
-		Response: NewResponse(),
-		Items:    make([]ItemInterface, 0),
-		Ctx:      context.TODO(),
-		CtxId:    GetUUID(),
+		Request: request,
+		// Response: NewResponse(),
+		Item:           nil,
+		Ctx:            context.TODO(),
+		CtxId:          GetUUID(),
+		DownloadResult: NewDownloadResult(),
 	}
 	for _, o := range opts {
 		o(ctx)
@@ -28,11 +41,18 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 	return ctx
 
 }
-func WithContext(ctx context.Context) ContextOption{
+func WithContext(ctx context.Context) ContextOption {
 	return func(c *Context) {
 		c.Ctx = ctx
 	}
 }
+
+func ContextWithItem(item ItemInterface) ContextOption {
+	return func(c *Context) {
+		c.Item = item
+	}
+}
+
 // Deadline returns that there is no deadline (ok==false) when c has no Context.
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	if c.Request == nil || c.Ctx == nil {
@@ -56,6 +76,23 @@ func (c *Context) Err() error {
 	}
 	return c.Ctx.Err()
 }
-func (c *Context)GetCtxId() string{
+
+// Value returns the value associated with this context for key, or nil
+// if no value is associated with key. Successive calls to Value with
+// the same key returns the same result.
+func (c *Context) Value(key interface{}) interface{} {
+	if key == 0 {
+		return c.Request
+	}
+	if c.Request == nil || c.Ctx == nil {
+		return nil
+	}
+	return c.Ctx.Value(key)
+}
+func (c Context) GetCtxId() string {
 	return c.CtxId
+}
+
+func (c Context) AddItem(item ItemInterface) {
+	// c.Items = append(c.Items, item)
 }

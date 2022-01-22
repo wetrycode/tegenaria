@@ -22,9 +22,11 @@ type ctxKey string
 
 // Downloader interface
 type Downloader interface {
-	Download(ctx context.Context, request *Request, result chan<- *RequestResult) // Download core funcation
+	Download(ctx *Context, result chan<- *Context) // Download core funcation
 
-	CheckStatus(statusCode int, allowStatus []int64) bool // CheckStatus check response status code if allow handle
+	CheckStatus(statusCode uint64, allowStatus []uint64) bool // CheckStatus check response status code if allow handle
+
+	setTimeout(timeout time.Duration) // setTimeout set downloader timeout
 
 }
 
@@ -46,9 +48,8 @@ type SpiderDownloader struct {
 
 // RequestResult network request response result
 type RequestResult struct {
-	Error error // Error error exception during request
-	RequestId string // RequestId record request id
-	Response *Response // Response network request response object
+	Error    *HandleError // Error error exception during request
+	Response *Response    // Response network request response object
 }
 
 // DownloaderOption optional parameters of the downloader
@@ -105,38 +106,15 @@ func proxyFunc(req *http.Request) (*url.URL, error) {
 		// 从环境变量里面获取系统代理
 		envProxyFuncValue = httpproxy.FromEnvironment().ProxyFunc()
 	})
-
-	// 根据目标站点的请求协议选择代理
-	if req.URL.Scheme == "http" { // set proxy for http site
-		if p.HTTP != "" {
-			httpURL, err := url.Parse(p.HTTP)
-			if err != nil {
-				ERR := fmt.Sprint(ErrGetHttpProxy.Error(), err.Error())
-				log.Error(ERR)
-				return nil, errors.New(ERR)
-			}
-			return httpURL, nil
-		}
-	} else if req.URL.Scheme == "https" { // set proxy for https site
-		if p.HTTPS != "" {
-			httpsURL, err := url.Parse(p.HTTPS)
-			if err != nil {
-				ERR := fmt.Sprint(ErrGetHttpsProxy.Error(), err.Error())
-				log.Error(ERR)
-				return nil, errors.New(ERR)
-			}
-			return httpsURL, nil
-		}
-
-	}
-	if p.SOCKS != "" {
-		socksURL, err := url.Parse(p.SOCKS)
+	if p != nil && p.ProxyUrl != "" {
+		proxyURL, err := url.Parse(p.ProxyUrl)
 		if err != nil {
-			return nil, errors.New(fmt.Sprint(ErrGetHttpsProxy.Error(), err.Error()))
+			ERR := fmt.Sprint(ErrGetHttpProxy.Error(), err.Error())
+			log.Error(ERR)
+			return nil, errors.New(ERR)
 		}
-		return socksURL, nil
+		return proxyURL, nil
 	}
-
 	return envProxyFuncValue(req.URL)
 }
 
@@ -160,9 +138,9 @@ func DownloaderWithStreamThreshold(streamThreshold uint64) DownloaderOption {
 }
 
 // DownloaderWithtransport download transport configure http.Transport
-func DownloaderWithtransport(transport http.Transport) DownloaderOption {
+func DownloaderWithtransport(transport *http.Transport) DownloaderOption {
 	return func(d *SpiderDownloader) {
-		d.transport = &transport
+		d.transport = transport
 	}
 
 }
@@ -174,7 +152,7 @@ func DownloadWithClient(client http.Client) DownloaderOption {
 	}
 }
 
-// DownloadWithTimeout set request download timeout 
+// DownloadWithTimeout set request download timeout
 func DownloadWithTimeout(timeout time.Duration) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.client.Timeout = timeout
@@ -182,10 +160,16 @@ func DownloadWithTimeout(timeout time.Duration) DownloaderOption {
 }
 
 // DownloadWithTlsConfig set tls configure for downloader
-func DownloadWithTlsConfig(tls tls.Config) DownloaderOption {
+func DownloadWithTlsConfig(tls *tls.Config) DownloaderOption {
 	return func(d *SpiderDownloader) {
-		d.transport.TLSClientConfig = &tls
+		d.transport.TLSClientConfig = tls
 
+	}
+}
+func NewDownloadResult() *RequestResult {
+	return &RequestResult{
+		Response: nil,
+		Error:    nil,
 	}
 }
 
@@ -232,51 +216,51 @@ func checkUrlVaildate(requestUrl string) error {
 }
 
 // CheckStatus check response status
-func (d *SpiderDownloader) CheckStatus(statusCode int, allowStatus []int64) bool {
-	if statusCode >= 400 && -1 == arrays.ContainsInt(allowStatus, int64(statusCode)) {
+func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) bool {
+	if statusCode >= 400 && -1 == arrays.ContainsUint(allowStatus, statusCode) {
 		return false
 	}
 	return true
 }
 
-// Download network downloader 
-func (d *SpiderDownloader) Download(ctx context.Context, request *Request, result chan<- *RequestResult) {
-	r := &RequestResult{}
-	r.RequestId = request.RequestId
-	downloadLog := log.WithField("request_id", request.RequestId)
+// Download network downloader
+func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
+	downloadLog := log.WithField("request_id", ctx.CtxId)
+	defer func() {
+		result <- ctx
+	}()
 	// record request handle start time
 	now := time.Now()
 
-	if err := checkUrlVaildate(request.Url); err != nil {
+	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
 		// request url is not vaildate
-		r.Response = nil
-		r.Error = err
-		result <- r
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
+		downloadLog.Errorf(err.Error())
+
 		return
 	}
 
-	// ValueContext 
+	// ValueContext
 	// The value carried by the context, mainly the proxy and the maximum number of redirects
 	ctxValue := map[string]interface{}{}
-	if request.Proxy != nil {
+	if ctx.Request.Proxy != nil {
 
-		ctxValue["proxy"] = request.Proxy
+		ctxValue["proxy"] = ctx.Request.Proxy
 
 	}
-	ctxValue["redirectNum"] = request.MaxRedirects
+	ctxValue["redirectNum"] = ctx.Request.MaxRedirects
 
 	// do set request params
-	u, err := url.ParseRequestURI(request.Url)
+	u, err := url.ParseRequestURI(ctx.Request.Url)
 	if err != nil {
-		r.Error = fmt.Errorf(fmt.Sprintf("Parse url error %s", err.Error()))
-		r.Response = nil
-		result <- r
+		downloadLog.Errorf(fmt.Sprintf("Parse url error %s", err.Error()))
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
 		return
 	}
 
-	if request.Params != nil {
+	if ctx.Request.Params != nil {
 		data := url.Values{}
-		for k, v := range request.Params {
+		for k, v := range ctx.Request.Params {
 			data.Set(k, v)
 		}
 		u.RawQuery = data.Encode()
@@ -284,34 +268,39 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 	}
 	// Build the request here and pass in the context information
 	var asCtxKey ctxKey = "key"
-	ctx = context.WithValue(ctx, asCtxKey, ctxValue)
-	req, err := http.NewRequestWithContext(ctx, request.Method, u.String(), request.BodyReader)
+	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
+	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
 	if err != nil {
-		r.Error = err
-		r.Response = nil
-		result <- r
+		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
+
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
 		return
 	}
 
 	// Set request header
-	for k, v := range request.Header {
+	for k, v := range ctx.Request.Header {
 		req.Header.Set(k, v)
 	}
 
 	// Set request cookie
-	for k, v := range request.Cookies {
+	for k, v := range ctx.Request.Cookies {
 		req.AddCookie(&http.Cookie{
 			Name:  k,
 			Value: v,
 		})
 	}
 	// Start request
-	downloadLog.Debugf("Request %s is downloading", request.Url)
+	downloadLog.Debugf("Downloader %s is downloading", ctx.Request.Url)
 	resp, err := d.client.Do(req)
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+	}()
 	if err != nil {
-		r.Error = fmt.Errorf(fmt.Sprintf("Request url %s error %s", request.Url, err.Error()))
-		r.Response = nil
-		result <- r
+		// r.Error = fmt.Errorf()
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("Request url %s error %s", ctx.Request.Url, err.Error()))
+
 		return
 
 	}
@@ -319,44 +308,39 @@ func (d *SpiderDownloader) Download(ctx context.Context, request *Request, resul
 	response := NewResponse()
 	response.Header = resp.Header
 	response.Status = resp.StatusCode
-	response.Req = request
+	// response.Req = request
 	response.URL = req.URL.String()
 	response.Delay = time.Since(now).Seconds()
-	if request.ResponseWriter != nil {
-		// The response data is written into a custom io.Writer interface, 
+	if ctx.Request.ResponseWriter != nil {
+		// The response data is written into a custom io.Writer interface,
 		// such as a file in the file download process
-		_, err = io.Copy(request.ResponseWriter, resp.Body)
+		_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
 	} else {
 		// Response data is buffered to memory by default
-		_, err = io.Copy(response.buffer, resp.Body)
+		_, err = io.Copy(response.Buffer, resp.Body)
 		if err != nil {
 			msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
 			downloadLog.Errorf("%s\n", msg)
-			r.Error = fmt.Errorf(msg)
-			r.Response = nil
-			result <- r
+			ctx.DownloadResult.Response = nil
+			ctx.DownloadResult.Error = NewError(ctx.CtxId, ErrResponseRead)
 			return
 		}
 
 	}
 	if err != nil {
-		r.Error = fmt.Errorf("downloader io.copy failure error:%v", err)
-		r.Response = nil
-		result <- r
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("downloader io.copy failure error:%v", err))
 		return
 	}
-	r.Error = nil
-	response.write()
-	r.Response = response
-	result <- r
-	defer func() {
-		if p := recover(); p != nil {
-			downloadLog.Fatalf("Download handle error %v", p)
-		}
-		if resp.Body != nil {
-			resp.Body.Close()
-		}
+	// response.write()
+	ctx.DownloadResult.Response = response
 
-	}()
+}
 
+func (d *SpiderDownloader) setTimeout(timeout time.Duration) {
+	d.transport.DialContext = (&net.Dialer{
+		Timeout:   timeout,
+		KeepAlive: timeout,
+		DualStack: true,
+	}).DialContext
+	d.client.Timeout = timeout
 }

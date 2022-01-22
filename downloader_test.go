@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,8 +16,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func parser(resp *Response, item chan<- ItemInterface, req chan<- *Request) {}
+var onceServer sync.Once
+var ts *httptest.Server
+
+func parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
+	newItem := &testItem{
+		test:      "test",
+		pipelines: make([]int, 0),
+	}
+	item <- NewItem(resp, newItem)
+}
+
+// func doTest(request *Request)(Response, Error, context.CancelFunc){
+// 	return nil, nil, nil
+
+// }
 func newTestProxyServer() *httptest.Server {
+
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.GET("/:a", func(c *gin.Context) {
@@ -36,7 +52,7 @@ func newTestProxyServer() *httptest.Server {
 		}
 		defer resp.Body.Close()
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, _ := ioutil.ReadAll(resp.Body)
 		c.Data(200, "text/plain", body)        // write response body to response.
 		c.String(200, "This is proxy Server.") // add proxy info.
 	})
@@ -44,81 +60,91 @@ func newTestProxyServer() *httptest.Server {
 	return ts
 }
 func newTestServer() *httptest.Server {
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	router.GET("/testGET", func(c *gin.Context) {
-		c.String(200, "GET")
-	})
-	router.POST("/testPOST", func(c *gin.Context) {
-		dataType, _ := json.Marshal(map[string]string{"key": "value"})
-		data, err := c.GetRawData()
-		if err != nil {
-			c.AbortWithStatus(404)
-			return
-		}
-		if string(data) == string(dataType) {
-
-			c.String(200, "POST")
-		} else {
-			c.String(200, string(data))
-		}
-	})
-	router.GET("/testGetCookie", func(c *gin.Context) {
-		cookies := c.Request.Cookies()
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:    "key",
-			Value:   "value",
-			Path:    "/",
-			Expires: time.Now().Add(30 * time.Second),
+	onceServer.Do(func() {
+		gin.SetMode(gin.ReleaseMode)
+		router := gin.New()
+		router.GET("/testGET", func(c *gin.Context) {
+			c.String(200, "GET")
 		})
-		for _, cookie := range cookies {
-			c.String(200, cookie.Name+"="+cookie.Value)
-		}
-	})
-	router.GET("/testHeader", func(c *gin.Context) {
-		header := c.GetHeader("key")
-		c.String(200, header)
-	})
-	router.GET("/testTimeout", func(c *gin.Context) {
-		time.Sleep(5 * time.Second)
-		c.String(200, "timeout")
-	})
-	router.GET("/testParams", func(c *gin.Context) {
-		value := c.Query("key")
-		c.String(200, value)
-	})
-	router.GET("/proxy", func(c *gin.Context) {
-		c.String(200, "This is target website.")
-	})
-	router.GET("/testFile", func(c *gin.Context) {
-		testString := make([]string, 200000)
-		for i := 0; i < 200000; i++ {
-			testString = append(testString, "This test files")
+		router.POST("/testPOST", func(c *gin.Context) {
+			dataType, _ := json.Marshal(map[string]string{"key": "value"})
+			data, err := c.GetRawData()
+			if err != nil {
+				c.AbortWithStatus(404)
+				return
+			}
+			if string(data) == string(dataType) {
 
-		}
-		c.String(200, "", testString)
-	})
+				c.String(200, "POST")
+			} else {
+				c.String(200, string(data))
+			}
+		})
+		router.GET("/testGetCookie", func(c *gin.Context) {
+			cookies := c.Request.Cookies()
+			http.SetCookie(c.Writer, &http.Cookie{
+				Name:    "key",
+				Value:   "value",
+				Path:    "/",
+				Expires: time.Now().Add(30 * time.Second),
+			})
+			for _, cookie := range cookies {
+				c.String(200, cookie.Name+"="+cookie.Value)
+			}
+		})
+		router.GET("/testHeader", func(c *gin.Context) {
+			header := c.GetHeader("key")
+			c.String(200, header)
+		})
+		router.GET("/testTimeout", func(c *gin.Context) {
+			time.Sleep(5 * time.Second)
+			c.String(200, "timeout")
+		})
+		router.GET("/test403", func(c *gin.Context) {
+			c.String(403, "forbidden")
+		})
+		router.GET("/testParams", func(c *gin.Context) {
+			value := c.Query("key")
+			c.String(200, value)
+		})
+		router.GET("/proxy", func(c *gin.Context) {
+			c.String(200, "This is target website.")
+		})
+		router.GET("/testFile", func(c *gin.Context) {
+			testString := make([]string, 200000)
+			for i := 0; i < 200000; i++ {
+				testString = append(testString, "This test files")
 
-	ts := httptest.NewServer(router)
+			}
+			c.String(200, "", testString)
+		})
+
+		ts = httptest.NewServer(router)
+	})
 	return ts
+
 }
 func TestRequestGet(t *testing.T) {
 	server := newTestServer()
-	defer server.Close()
+
 	request := NewRequest(server.URL+"/testGET", GET, parser)
 	var MainCtx context.Context = context.Background()
+	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	downloader := NewDownloader(DownloadWithTlsConfig(tls.Config{InsecureSkipVerify: true}))
+	resultChan := make(chan *Context, 1)
 
-	go downloader.Download(ctx, request, resultChan)
+	downloader := NewDownloader(DownloadWithTlsConfig(&tls.Config{InsecureSkipVerify: true}))
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err != nil {
 		t.Errorf("request error")
 
@@ -139,23 +165,26 @@ func TestRequestPost(t *testing.T) {
 		"key": "value",
 	}
 	server := newTestServer()
-	defer server.Close()
+
 	request := NewRequest(server.URL+"/testPOST", POST, parser, RequestWithRequestBody(body))
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
+	resultChan := make(chan *Context, 1)
 	downloader := NewDownloader()
 
-	go downloader.Download(ctx, request, resultChan)
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err != nil {
-		t.Errorf("request error")
+		t.Errorf("request error %s", err.Error())
 
 	}
 	if resp.Status != 200 {
@@ -175,21 +204,26 @@ func TestRequestCookie(t *testing.T) {
 		"test2": "test2",
 	}
 	server := newTestServer()
-	downloader := NewDownloader()
+	// downloader := NewDownloader()
 
-	defer server.Close()
 	request := NewRequest(server.URL+"/testGetCookie", GET, parser, RequestWithRequestCookies(cookies))
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	go downloader.Download(ctx, request, resultChan)
+	resultChan := make(chan *Context, 1)
+	downloader := NewDownloader()
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 
 	if err != nil {
 		t.Errorf("request error with cookies")
@@ -212,19 +246,23 @@ func TestRequestQueryParams(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
 
-	defer server.Close()
 	request := NewRequest(server.URL+"/testParams", GET, parser, RequestWithRequestParams(params))
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	go downloader.Download(ctx, request, resultChan)
+	resultChan := make(chan *Context, 1)
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err != nil {
 		t.Errorf("request error")
 
@@ -246,24 +284,27 @@ func TestRequestProxy(t *testing.T) {
 
 	downloader := NewDownloader()
 	proxy := Proxy{
-		HTTP:  proxyServer.URL,
-		HTTPS: proxyServer.URL,
-		SOCKS: "",
+		ProxyUrl: proxyServer.URL,
 	}
-	defer server.Close()
+
 	defer proxyServer.Close()
 	request := NewRequest(server.URL+"/proxy", GET, parser, RequestWithRequestProxy(proxy))
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	go downloader.Download(ctx, request, resultChan)
+	resultChan := make(chan *Context, 1)
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err != nil {
 		t.Errorf("request error")
 
@@ -291,15 +332,20 @@ func TestRequestHeaders(t *testing.T) {
 	request := NewRequest(server.URL+"/testHeader", GET, parser, RequestWithRequestHeader(headers))
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	go downloader.Download(ctx, request, resultChan)
+	resultChan := make(chan *Context, 1)
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err != nil {
 		t.Errorf("request error")
 
@@ -326,14 +372,14 @@ func TestFingerprint(t *testing.T) {
 	request3 := NewRequest(server.URL+"/testHeader2", GET, parser, RequestWithRequestHeader(headers))
 
 	bloomFilter := bloom.New(1024*1024, 5)
-	if request1.doUnique(bloomFilter) {
+	if r1, _ := request1.doUnique(bloomFilter); r1 {
 		t.Errorf("Request1 igerprint sum error expected=%v, get=%v", false, true)
 	}
-	if !request2.doUnique(bloomFilter) {
+	if r2, _ := request2.doUnique(bloomFilter); !r2 {
 		t.Errorf("Request2 igerprint sum error expected=%v, get=%v", true, false)
 
 	}
-	if request3.doUnique(bloomFilter) {
+	if r3, _ := request3.doUnique(bloomFilter); r3 {
 		t.Errorf("Request3 igerprint sum error expected=%v, get=%v", false, true)
 
 	}
@@ -345,15 +391,20 @@ func TestTimeout(t *testing.T) {
 	request := NewRequest(server.URL+"/testTimeout", GET, parser)
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	go downloader.Download(ctx, request, resultChan)
+	resultChan := make(chan *Context, 1)
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err == nil {
 		t.Errorf("request timeout expected error but no any errors")
 
@@ -370,18 +421,23 @@ func TestLargeFile(t *testing.T) {
 	defer os.Remove("test.file")
 	defer file.Close()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
-	req := NewRequest(server.URL+"/testFile", GET, parser, RequestWithResponseWriter(file))
+	request := NewRequest(server.URL+"/testFile", GET, parser, RequestWithResponseWriter(file))
 	var MainCtx context.Context = context.Background()
 
-	ctx, cancel := context.WithCancel(MainCtx)
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *RequestResult, 1)
-	go downloader.Download(ctx, req, resultChan)
+	resultChan := make(chan *Context, 1)
+
+	go downloader.Download(ctx, resultChan)
 	result := <-resultChan
-	err := result.Error
-	resp := result.Response
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
 	if err != nil || resp == nil {
 		t.Errorf("request error %s", err.Error())
 
@@ -390,12 +446,12 @@ func TestLargeFile(t *testing.T) {
 		t.Errorf("response status = %d; expected %d", resp.Status, 200)
 
 	}
-	fi,err:=os.Stat("test.file")
-	if err !=nil{
+	fi, statErr := os.Stat("test.file")
+	if statErr != nil {
 		t.Errorf("get test.file info fail %s", err)
 
 	}
-	if fi.Size()==0{
+	if fi.Size() == 0 {
 		t.Errorf("get test.file size 0")
 
 	}

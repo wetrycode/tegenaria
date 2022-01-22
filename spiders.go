@@ -3,8 +3,8 @@ package tegenaria
 import "sync"
 
 type SpiderInterface interface {
-	StartRequest(req chan<- *Request)
-	Parser(resp *Response, item chan<- ItemInterface, req chan<- *Request)
+	StartRequest(req chan<- *Context)
+	Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context)
 	ErrorHandler()
 	GetName() string
 }
@@ -26,9 +26,9 @@ func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 		FeedUrls: feedUrls,
 	}
 }
-func (s *BaseSpider) StartRequest(req chan<- *Request) {
+func (s *BaseSpider) StartRequest(req chan<- *Context) {
 }
-func (s *BaseSpider) Parser(resp *Response, item chan<- *ItemInterface, req chan<- *Request) {
+func (s *BaseSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
 }
 func (s *BaseSpider) ErrorHandler() {
 

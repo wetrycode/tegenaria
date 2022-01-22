@@ -6,7 +6,7 @@ import (
 // CacheInterface request cache interface
 // you can use redis to do cache
 type CacheInterface interface {
-	enqueue(req *Request) error // enqueue put request to cache
+	enqueue(ctx *Context) error // enqueue put request to cache
 	dequeue() (interface{}, error) // dequeue get request from cache
 	getSize() int64 // getSize get cache size
 }
@@ -17,10 +17,10 @@ type requestCache struct {
 }
 
 // enqueue put request to cache queue
-func (c *requestCache) enqueue(req *Request) error {
+func (c *requestCache) enqueue(ctx *Context) error {
 	for {
 		// It will wait to put request until queue is not full
-		ok, _ := c.queue.Put(req)
+		ok, _ := c.queue.Put(ctx)
 		if ok {
 			return nil
 		}

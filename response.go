@@ -4,21 +4,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"sync"
-	"unsafe"
 
 	"github.com/sirupsen/logrus"
 )
 
 // Response the Request download response data
 type Response struct {
-	Status        int                 // Status request response status code
-	Body          []byte              // Body response body
-	Header        map[string][]string // Header response header
-	Req           *Request            // req the Request object
-	Delay         float64             // Delay the time of handle download request
-	ContentLength int                 // ContentLength response content length
-	URL           string              // URL of request url
-	buffer        *bytes.Buffer       // buffer read response buffer
+	Status int // Status request response status code
+	// Body   []byte              // Body response body
+	Header map[string][]string // Header response header
+	// Req           *Request            // req the Request object
+	Delay         float64       // Delay the time of handle download request
+	ContentLength int           // ContentLength response content length
+	URL           string        // URL of request url
+	Buffer        *bytes.Buffer // buffer read response buffer
 }
 
 // ResponseBufferPool a buffer poll of request response object
@@ -46,7 +45,7 @@ func (r *Response) Json() map[string]interface{} {
 
 	}()
 	jsonResp := map[string]interface{}{}
-	err := json.Unmarshal(r.Body, &jsonResp)
+	err := json.Unmarshal(r.Buffer.Bytes(), &jsonResp)
 	if err != nil {
 		respLog.Errorf("Get json response error %s", err.Error())
 	}
@@ -61,35 +60,23 @@ func (r *Response) String() string {
 		}
 
 	}()
-	return *(*string)(unsafe.Pointer(&r.Body))
+	return r.Buffer.String()
 }
 
 // NewResponse create a new Response from responsePool
 func NewResponse() *Response {
 	response := responsePool.Get().(*Response)
-	response.buffer = bufferPool.Get().(*bytes.Buffer)
-	response.buffer.Reset()
-	if len(response.Body) != 0 || response.Req != nil {
-		respLog.Infof("Get response object not empty")
-	}
+	response.Buffer = bufferPool.Get().(*bytes.Buffer)
+	response.Buffer.Reset()
 	return response
 
-}
-func (r *Response) write() {
-	if r.buffer != nil {
-		r.Body = r.buffer.Bytes()
-		bufferPool.Put(r.buffer)
-
-	}
 }
 
 // freeResponse reset Response and the put it into responsePool
 func freeResponse(r *Response) {
 	r.Status = -1
-	r.Body = r.Body[:0]
 	r.Header = nil
 	r.Delay = 0
-	freeRequest(r.Req)
 	responsePool.Put(r)
 	r = nil
 }
