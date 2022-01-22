@@ -52,7 +52,7 @@ stages:
     retry: 2
 代码质量扫描:
   image: 
-    name:  registry.cn-beijing.aliyuncs.com/geebytes/sonarscaner-cli
+    name:  registry.cn-beijing.aliyuncs.com/geebytes/sonarscaner-cli:latest
     entrypoint: [""]
   stage: sonarqube-check
   before_script:
