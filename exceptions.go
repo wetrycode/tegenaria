@@ -2,6 +2,7 @@ package tegenaria
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 )
 
@@ -23,6 +24,19 @@ type RedirectError struct {
 	RedirectNum int
 }
 
+type HandleError struct{
+	CtxId string
+	Err error
+}
+func NewError(ctxId string, err error) *HandleError{
+	return &HandleError{
+		CtxId: ctxId,
+		Err: err,
+	}
+}
+func (e *HandleError)Error() string{
+	return fmt.Sprintf("%s with context id %s",e.Err.Error(), e.CtxId)
+}
 func (e *RedirectError) Error() string {
 	return "exceeded the maximum number of redirects: " + strconv.Itoa(e.RedirectNum)
 }

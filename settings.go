@@ -27,7 +27,7 @@ func (l *Logger) GetValue(key string) (string, error) {
 var Config *Configuration = &Configuration{
 	Log: &Logger{
 		Path:  "/var/log",
-		Level: "info",
+		Level: "warn",
 	},
 }
 
@@ -55,7 +55,7 @@ func initSettings() {
 		Config = &Configuration{
 			Log: &Logger{
 				Path:  "/var/log",
-				Level: "info",
+				Level: "warn",
 			},
 		}
 	}

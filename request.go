@@ -11,16 +11,13 @@ import (
 	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
-	"github.com/google/uuid"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
 	"github.com/spaolacci/murmur3"
 )
 
 type Proxy struct {
-	HTTP  string
-	HTTPS string
-	SOCKS string
+	ProxyUrl string
 }
 
 // Request a spider request config
@@ -41,7 +38,7 @@ type Request struct {
 	maxConnsPerHost int                    // Set max connect number for per host
 	BodyReader      io.Reader              // Set request body reader
 	ResponseWriter  io.Writer              // Set request response body writer,like file
-	RequestId       string                 // Set request uuid
+	// RequestId       string                 // Set request uuid
 }
 
 // requestPool the Request obj pool
@@ -55,12 +52,12 @@ var requestPool *sync.Pool = &sync.Pool{
 type Option func(r *Request)
 
 // Parser response parse handler
-type Parser func(resp *Response, item chan<- ItemInterface, req chan<- *Request)
+type Parser func(resp *Context, item chan<- *ItemMeta, req chan<- *Context)
 
 // bufferPool buffer object pool
 var bufferPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
-		return bytes.NewBuffer(make([]byte, 4096))
+		return bytes.NewBuffer(make([]byte, 8192))
 		// return new(bytes.Buffer)
 	},
 }
@@ -172,8 +169,9 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.Timeout = 10 * time.Second
 	request.ResponseWriter = nil
 	request.BodyReader = nil
-	u4 := uuid.New()
-	request.RequestId = u4.String()
+	request.Header = make(map[string]string)
+	// u4 := uuid.New()
+	// request.RequestId = u4.String()
 	for _, o := range opts {
 		o(request)
 	}
@@ -215,13 +213,19 @@ func (r *Request) encodeHeader() string {
 
 // fingerprint generate a request fingerprint by using 	murmur3.New128() sha128
 // the fingerprint []byte will be cached into cache module or de-duplication
-func (r *Request) fingerprint() []byte {
+func (r *Request) fingerprint() ([]byte, error) {
 	// get sha128
 	sha := murmur3.New128()
-	io.WriteString(sha, r.Method)
+	_, err := io.WriteString(sha, r.Method)
+	if err != nil {
+		return nil, err
+	}
 	// canonical request url
 	u := r.canonicalizeUrl(false)
-	io.WriteString(sha, u.String())
+	_, err = io.WriteString(sha, u.String())
+	if err != nil {
+		return nil, err
+	}
 	// get request body
 	if r.Body != nil {
 		body := r.Body
@@ -229,20 +233,27 @@ func (r *Request) fingerprint() []byte {
 	}
 	// to handle request header
 	if len(r.Header) != 0 {
-		io.WriteString(sha, r.encodeHeader())
+		_,err:=io.WriteString(sha, r.encodeHeader())
+		if err !=nil{
+			return nil, err
+		}
 	}
 	res := sha.Sum(nil)
-	return res
+	return res, nil
 }
 
-func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) bool {
+func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) (bool,error) {
 	// Use bloom filter to do fingerprint deduplication
-	return bloomFilter.TestOrAdd(r.fingerprint())
+	data, err:= r.fingerprint()
+	if err !=nil{
+		return false, err
+	}
+	return bloomFilter.TestOrAdd(data), nil
 }
 
 // freeRequest reset Request and the put it into requestPool
 func freeRequest(r *Request) {
-	r.parser = func(resp *Response, item chan<- ItemInterface, req chan<- *Request) {}
+	r.parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {}
 	r.AllowRedirects = true
 	r.Meta = nil
 	r.MaxRedirects = 3
@@ -258,7 +269,7 @@ func freeRequest(r *Request) {
 	r.maxConnsPerHost = 512
 	r.ResponseWriter = nil
 	r.BodyReader = nil
-	r.RequestId = ""
+	// r.RequestId = ""
 	requestPool.Put(r)
 	r = nil
 

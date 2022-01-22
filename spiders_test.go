@@ -8,9 +8,15 @@ type TestSpider struct {
 	*BaseSpider
 }
 
-func (s *TestSpider) StartRequest(req chan<- *Request) {
+func (s *TestSpider) StartRequest(req chan<- *Context) {
+	for _, url := range s.FeedUrls {
+		request := NewRequest(url, GET, s.Parser)
+		ctx := NewContext(request)
+		req <- ctx
+	}
 }
-func (s *TestSpider) Parser(resp *Response, item chan<- ItemInterface, req chan<- *Request) {
+func (s *TestSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
+	parser(resp, item, req)
 }
 func (s *TestSpider) ErrorHandler() {
 
@@ -33,8 +39,12 @@ func TestSpiders(t *testing.T) {
 	spider4 := &TestSpider{
 		NewBaseSpider("testspider2", []string{"https://www.baidu.com"}),
 	}
-	spiders.Register(spider1)
-	err := spiders.Register(spider2)
+	err:=spiders.Register(spider1)
+	if err !=nil{
+		t.Errorf("Unexpected error register %s", err.Error())
+
+	}
+	err = spiders.Register(spider2)
 	if err == nil {
 		t.Error("Register duplicate spider name")
 	} else {
@@ -42,8 +52,16 @@ func TestSpiders(t *testing.T) {
 			t.Errorf("Unexpected error register %s", err.Error())
 		}
 	}
-	spiders.Register(spider3)
-	spiders.Register(spider4)
+	err = spiders.Register(spider3)
+	if err !=nil{
+		t.Errorf("Unexpected error register %s", err.Error())
+
+	}
+	err =spiders.Register(spider4)
+	if err !=nil{
+		t.Errorf("Unexpected error register %s", err.Error())
+
+	}
 	spiderNames := []string{"testspider", "testspider1", "testspider2"}
 	for _, spider := range spiderNames {
 		_, err := spiders.GetSpider(spider)
