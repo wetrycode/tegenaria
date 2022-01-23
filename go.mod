@@ -1,4 +1,4 @@
-module github.com/geebytes/tegenaria
+module github.com/wetrycode/tegenaria
 
 go 1.16
 
