@@ -378,6 +378,7 @@ func (e *SpiderEngine) readCache() {
 func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
 	e.ErrorHandler(spider, err)
+	spider.ErrorHandler(err)
 	e.waitGroup.Done()
 }
 
@@ -605,4 +606,3 @@ func (e *SpiderEngine) SetAllowedStatus(allowedStatusCode []uint64) {
 	e.allowStatusCode = allowedStatusCode
 }
 
-//
