@@ -551,7 +551,7 @@ func (e *SpiderEngine) RegisterSpider(spider SpiderInterface) {
 
 // // DefaultErrorHandler error default handler
 func DefaultErrorHandler(spider SpiderInterface, err *HandleError) {
-
+	// This is a default error handler but do nothing
 }
 
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
