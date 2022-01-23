@@ -233,7 +233,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 
 	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
 		// request url is not vaildate
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
 		downloadLog.Errorf(err.Error())
 		return
 	}
@@ -266,7 +266,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
 
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
 		return
 	}
 
@@ -292,7 +292,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	}()
 	if err != nil {
 		// r.Error = fmt.Errorf()
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("Request url %s error %s", ctx.Request.Url, err.Error()))
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("Request url %s error %s", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
 
 		return
 
@@ -315,13 +315,13 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 			msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
 			downloadLog.Errorf("%s\n", msg)
 			ctx.DownloadResult.Response = nil
-			ctx.DownloadResult.Error = NewError(ctx.CtxId, ErrResponseRead)
+			ctx.DownloadResult.Error = NewError(ctx.CtxId, ErrResponseRead, ErrorWithRequest(ctx.Request), nil)
 			return
 		}
 
 	}
 	if err != nil {
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("downloader io.copy failure error:%v", err))
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("downloader io.copy failure error:%v", err), ErrorWithRequest(ctx.Request))
 		return
 	}
 	// response.write()

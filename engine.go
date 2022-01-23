@@ -393,7 +393,7 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err)
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
 			return
 		}
 	}
@@ -408,7 +408,7 @@ func (e *SpiderEngine) doFilter(ctx *Context, r *Request) bool {
 		result, err := r.doUnique(e.bloomFilter)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Warningf("Request do unique error %s", err.Error())
-			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()))
+			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
 		}
 		if result {
 			engineLog.WithField("request_id", ctx.CtxId).Debugf("Request is not unique")
@@ -429,7 +429,7 @@ func (e *SpiderEngine) processResponse(ctx *Context) {
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err)
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request), ErrorWithResponse(ctx.DownloadResult.Response))
 			return
 		}
 	}
@@ -448,7 +448,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 	err := result.DownloadResult.Error
 	if err != nil {
 		result.Error = err
-		e.errorChan <- NewError(result.CtxId, err)
+		e.errorChan <- NewError(result.CtxId, err, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 		engineLog.WithField("request_id", result.CtxId).Errorf("Request is fail with error %s", err.Error())
 		freeRequest(result.Request)
 		if result.DownloadResult.Response != nil {
@@ -468,7 +468,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 			// send error
 			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
 			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
-			e.errorChan <- NewError(result.CtxId, result.Error)
+			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 			freeRequest(result.Request)
 			if result.DownloadResult.Response != nil {
 
@@ -504,7 +504,7 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 		err := pipeline.ProcessItem(spider, item)
 		if err != nil {
 			// TODO check response if is relase
-			handleError := NewError(item.CtxId, err)
+			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
 			e.errorChan <- handleError
 			return
 		}
