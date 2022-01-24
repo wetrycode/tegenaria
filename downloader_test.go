@@ -575,7 +575,6 @@ func TestResponseReadError(t *testing.T) {
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
 	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
@@ -591,7 +590,8 @@ func TestResponseReadError(t *testing.T) {
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	// resp := result.DownloadResult.Response
-	if !strings.Contains(err.Error(), "read response to buffer error") {
+	msg := err.Error()
+	if !strings.Contains(msg, "read response to buffer error") {
 		t.Errorf("request should have error read response to buffer error,but get %s\n", err.Error())
 
 	}
