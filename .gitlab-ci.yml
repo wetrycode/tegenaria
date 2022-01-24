@@ -37,7 +37,7 @@ stages:
       - echo '192.168.31.105 local.proxy' >> /etc/hosts
 
     script:
-        - go test -v ./... -coverprofile=cover.out
+        - go test -v -gcflags=-l ./... -coverprofile=cover.out
         - gocov convert cover.out | gocov-xml > coverage.xml
         - gotestsum --junitfile testreport.xml --format testname
     artifacts:

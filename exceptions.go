@@ -17,7 +17,7 @@ var (
 	ErrGetHttpProxy        error = errors.New("getting http proxy ")
 	ErrGetHttpsProxy       error = errors.New("getting https proxy ")
 	ErrParseSocksProxy     error = errors.New("parse socks proxy ")
-	ErrResponseRead        error = errors.New("read response ro buffer error")
+	ErrResponseRead        error = errors.New("read response to buffer error")
 )
 
 type RedirectError struct {

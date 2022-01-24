@@ -4,20 +4,27 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
 	"github.com/gin-gonic/gin"
+	"github.com/go-kiss/monkey"
 )
 
 var onceServer sync.Once
+var onceProxyServer sync.Once
 var ts *httptest.Server
+var proxyServer *httptest.Server
 
 func parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
 	newItem := &testItem{
@@ -32,32 +39,33 @@ func parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
 
 // }
 func newTestProxyServer() *httptest.Server {
+	onceProxyServer.Do(func() {
+		gin.SetMode(gin.ReleaseMode)
+		router := gin.New()
+		router.GET("/:a", func(c *gin.Context) {
+			reqUrl := c.Request.URL.String() // Get request url
+			req, err := http.NewRequest(c.Request.Method, reqUrl, nil)
+			if err != nil {
+				c.AbortWithStatus(404)
+				return
+			}
 
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	router.GET("/:a", func(c *gin.Context) {
-		reqUrl := c.Request.URL.String() // Get request url
-		req, err := http.NewRequest(c.Request.Method, reqUrl, nil)
-		if err != nil {
-			c.AbortWithStatus(404)
-			return
-		}
+			// Forwarding requests from client.
+			cli := &http.Client{}
+			resp, err := cli.Do(req)
+			if err != nil {
+				c.AbortWithStatus(404)
+				return
+			}
+			defer resp.Body.Close()
 
-		// Forwarding requests from client.
-		cli := &http.Client{}
-		resp, err := cli.Do(req)
-		if err != nil {
-			c.AbortWithStatus(404)
-			return
-		}
-		defer resp.Body.Close()
-
-		body, _ := ioutil.ReadAll(resp.Body)
-		c.Data(200, "text/plain", body)        // write response body to response.
-		c.String(200, "This is proxy Server.") // add proxy info.
+			body, _ := ioutil.ReadAll(resp.Body)
+			c.Data(200, "text/plain", body)        // write response body to response.
+			c.String(200, "This is proxy Server.") // add proxy info.
+		})
+		proxyServer = httptest.NewServer(router)
 	})
-	ts := httptest.NewServer(router)
-	return ts
+	return proxyServer
 }
 func newTestServer() *httptest.Server {
 	onceServer.Do(func() {
@@ -151,7 +159,6 @@ func TestRequestGet(t *testing.T) {
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
 	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
@@ -556,6 +563,99 @@ func TestInvalidURL(t *testing.T) {
 	err := result.DownloadResult.Error
 	if err == nil {
 		t.Errorf("request invlid url should get an error\n")
+
+	}
+}
+
+func TestResponseReadError(t *testing.T) {
+	server := newTestServer()
+
+	request := NewRequest(server.URL+"/testGET", GET, parser)
+	var MainCtx context.Context = context.Background()
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+	monkey.Patch(io.Copy, func(dst io.Writer, src io.Reader) (written int64, err error) {
+		return 0, errors.New("empty buffer in CopyBuffer")
+	})
+
+	downloader := NewDownloader()
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	// resp := result.DownloadResult.Response
+	if !strings.Contains(err.Error(), "read response to buffer error") {
+		t.Errorf("request should have error read response to buffer error,but get %s\n", err.Error())
+
+	}
+}
+
+func TestProxyUrlError(t *testing.T) {
+	server := newTestServer()
+	proxyServer := newTestProxyServer()
+
+	proxy := Proxy{
+		ProxyUrl: "error",
+	}
+
+	monkey.Patch(urlParse, func(string) (url *url.URL, err error) {
+		return nil, errors.New("proxy invail url")
+	})
+	defer proxyServer.Close()
+	request := NewRequest(server.URL+"/proxy", GET, parser, RequestWithRequestProxy(proxy))
+	var MainCtx context.Context = context.Background()
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+
+	downloader := NewDownloader()
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	if err.Error() == "proxy invail url" {
+		t.Errorf("request should have error proxy invail url, but get %s\n", err.Error())
+
+	}
+}
+
+func TestDownloaderRequestConextError(t *testing.T) {
+	server := newTestServer()
+
+	request := NewRequest(server.URL+"/testGET", GET, parser)
+	var MainCtx context.Context = context.Background()
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+	// var MainCtx context.Context = context.Background()
+
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+	monkey.Patch(http.NewRequestWithContext, func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
+		return nil, errors.New("creat request with context fail")
+	})
+
+	downloader := NewDownloader()
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	// resp := result.DownloadResult.Response
+	if err.Error() == "creat request with context fail" {
+		t.Errorf("request should have error creat request with context fail, but get %s\n", err.Error())
 
 	}
 }

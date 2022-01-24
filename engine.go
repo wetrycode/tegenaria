@@ -265,7 +265,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 	runtime.GOMAXPROCS(int(e.schedulerNum))
 	e.waitGroup.Add(1)
 	// run Spiders StartRequest function and get feeds request
-	go e.StartSpiders(spiderName)
+	go e.startSpiders(spiderName)
 	// e.mainWaitGroup.Add(1)
 	go e.listenNotify()
 	for n := 0; n < int(e.cacheReadNum); n++ {
@@ -322,17 +322,14 @@ func (e *SpiderEngine) recvRequestHandler(req *Context) {
 }
 
 // StartSpiders start a spider specify by spider name
-func (e *SpiderEngine) StartSpiders(spiderName string) {
-	spider, ok := e.spiders.SpidersModules[spiderName]
+func (e *SpiderEngine) startSpiders(spiderName string) {
+	spider := e.spiders.SpidersModules[spiderName]
 	defer func() {
 		e.startRequestFinish = true
 		e.waitGroup.Done()
 	}()
 	e.isRunning = true
 
-	if !ok {
-		panic(fmt.Sprintf("Spider %s not found", spider))
-	}
 	spider.StartRequest(e.requestsChan)
 }
 
@@ -489,8 +486,13 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 
 		freeResponse(resp.DownloadResult.Response)
 	}()
-	e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
-	resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+	if resp.DownloadResult.Error != nil {
+		engineLog.WithField("request_id", resp.CtxId).Warningf("Download result is error %s and response can not parse", resp.DownloadResult.Error.Error())
+		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
+	} else {
+		e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
+		resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+	}
 }
 
 // doPipelinesHandlers handle items by pipelines chan
@@ -503,7 +505,6 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into pipelines chans")
 		err := pipeline.ProcessItem(spider, item)
 		if err != nil {
-			// TODO check response if is relase
 			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
 			e.errorChan <- handleError
 			return
@@ -556,9 +557,6 @@ func DefaultErrorHandler(spider SpiderInterface, err *HandleError) {
 }
 
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
-	// once.Do(func() {
-
-	// })
 	Engine = &SpiderEngine{
 		spiders:               NewSpiders(),
 		requestsChan:          make(chan *Context, 1024),
@@ -605,4 +603,3 @@ func (e *SpiderEngine) SetDownloadTimeout(timeout time.Duration) {
 func (e *SpiderEngine) SetAllowedStatus(allowedStatusCode []uint64) {
 	e.allowStatusCode = allowedStatusCode
 }
-
