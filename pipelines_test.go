@@ -1,6 +1,7 @@
 package tegenaria
 
 import (
+	"errors"
 	"sort"
 	"testing"
 )
@@ -16,6 +17,10 @@ type TestItemPipeline2 struct {
 	Priority int
 }
 type TestItemPipeline3 struct {
+	Priority int
+}
+
+type TestItemPipeline4 struct {
 	Priority int
 }
 
@@ -46,7 +51,13 @@ func (p *TestItemPipeline3) ProcessItem(spider SpiderInterface, item *ItemMeta) 
 func (p *TestItemPipeline3) GetPriority() int {
 	return p.Priority
 }
+func (p *TestItemPipeline4) ProcessItem(spider SpiderInterface, item *ItemMeta) error {
+	return errors.New("process item fail")
 
+}
+func (p *TestItemPipeline4) GetPriority() int {
+	return p.Priority
+}
 func TestPipelines(t *testing.T) {
 	pipelines := make(ItemPipelines, 0)
 	pipe := &TestItemPipeline{Priority: 0}

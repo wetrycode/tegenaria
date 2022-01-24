@@ -265,7 +265,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 	runtime.GOMAXPROCS(int(e.schedulerNum))
 	e.waitGroup.Add(1)
 	// run Spiders StartRequest function and get feeds request
-	go e.StartSpiders(spiderName)
+	go e.startSpiders(spiderName)
 	// e.mainWaitGroup.Add(1)
 	go e.listenNotify()
 	for n := 0; n < int(e.cacheReadNum); n++ {
@@ -322,17 +322,14 @@ func (e *SpiderEngine) recvRequestHandler(req *Context) {
 }
 
 // StartSpiders start a spider specify by spider name
-func (e *SpiderEngine) StartSpiders(spiderName string) {
-	spider, ok := e.spiders.SpidersModules[spiderName]
+func (e *SpiderEngine) startSpiders(spiderName string) {
+	spider := e.spiders.SpidersModules[spiderName]
 	defer func() {
 		e.startRequestFinish = true
 		e.waitGroup.Done()
 	}()
 	e.isRunning = true
 
-	if !ok {
-		panic(fmt.Sprintf("Spider %s not found", spider))
-	}
 	spider.StartRequest(e.requestsChan)
 }
 
@@ -393,7 +390,7 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err)
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
 			return
 		}
 	}
@@ -408,7 +405,7 @@ func (e *SpiderEngine) doFilter(ctx *Context, r *Request) bool {
 		result, err := r.doUnique(e.bloomFilter)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Warningf("Request do unique error %s", err.Error())
-			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()))
+			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
 		}
 		if result {
 			engineLog.WithField("request_id", ctx.CtxId).Debugf("Request is not unique")
@@ -429,7 +426,7 @@ func (e *SpiderEngine) processResponse(ctx *Context) {
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err)
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request), ErrorWithResponse(ctx.DownloadResult.Response))
 			return
 		}
 	}
@@ -448,7 +445,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 	err := result.DownloadResult.Error
 	if err != nil {
 		result.Error = err
-		e.errorChan <- NewError(result.CtxId, err)
+		e.errorChan <- NewError(result.CtxId, err, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 		engineLog.WithField("request_id", result.CtxId).Errorf("Request is fail with error %s", err.Error())
 		freeRequest(result.Request)
 		if result.DownloadResult.Response != nil {
@@ -468,7 +465,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 			// send error
 			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
 			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
-			e.errorChan <- NewError(result.CtxId, result.Error)
+			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 			freeRequest(result.Request)
 			if result.DownloadResult.Response != nil {
 
@@ -489,8 +486,13 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 
 		freeResponse(resp.DownloadResult.Response)
 	}()
-	e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
-	resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+	if resp.DownloadResult.Error != nil {
+		engineLog.WithField("request_id", resp.CtxId).Warningf("Download result is error %s and response can not parse", resp.DownloadResult.Error.Error())
+		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
+	} else {
+		e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
+		resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+	}
 }
 
 // doPipelinesHandlers handle items by pipelines chan
@@ -503,8 +505,7 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into pipelines chans")
 		err := pipeline.ProcessItem(spider, item)
 		if err != nil {
-			// TODO check response if is relase
-			handleError := NewError(item.CtxId, err)
+			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
 			e.errorChan <- handleError
 			return
 		}
@@ -556,9 +557,6 @@ func DefaultErrorHandler(spider SpiderInterface, err *HandleError) {
 }
 
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
-	// once.Do(func() {
-
-	// })
 	Engine = &SpiderEngine{
 		spiders:               NewSpiders(),
 		requestsChan:          make(chan *Context, 1024),
@@ -605,4 +603,3 @@ func (e *SpiderEngine) SetDownloadTimeout(timeout time.Duration) {
 func (e *SpiderEngine) SetAllowedStatus(allowedStatusCode []uint64) {
 	e.allowStatusCode = allowedStatusCode
 }
-
