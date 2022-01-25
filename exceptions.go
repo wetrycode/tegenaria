@@ -17,25 +17,55 @@ var (
 	ErrGetHttpProxy        error = errors.New("getting http proxy ")
 	ErrGetHttpsProxy       error = errors.New("getting https proxy ")
 	ErrParseSocksProxy     error = errors.New("parse socks proxy ")
-	ErrResponseRead        error = errors.New("read response ro buffer error")
+	ErrResponseRead        error = errors.New("read response to buffer error")
 )
 
 type RedirectError struct {
 	RedirectNum int
 }
 
-type HandleError struct{
-	CtxId string
-	Err error
+type HandleError struct {
+	CtxId    string
+	Err      error
+	Request  *Request
+	Response *Response
+	Item     *ItemMeta
 }
-func NewError(ctxId string, err error) *HandleError{
-	return &HandleError{
+type ErrorOption func(e *HandleError)
+
+func NewError(ctxId string, err error, opts ...ErrorOption) *HandleError {
+	h:= &HandleError{
 		CtxId: ctxId,
-		Err: err,
+		Err:   err,
+		Request: nil,
+		Response: nil,
+		Item: nil,
+	}
+	for _, o := range opts {
+		o(h)
+	}
+	return h
+}
+
+func ErrorWithRequest(request *Request) ErrorOption {
+	return func(e *HandleError) {
+		e.Request = request
 	}
 }
-func (e *HandleError)Error() string{
-	return fmt.Sprintf("%s with context id %s",e.Err.Error(), e.CtxId)
+
+func ErrorWithResponse(response *Response) ErrorOption {
+	return func(e *HandleError) {
+		e.Response = response
+	}
+}
+
+func ErrorWithItem(item *ItemMeta) ErrorOption {
+	return func(e *HandleError) {
+		e.Item = item
+	}
+}
+func (e *HandleError) Error() string {
+	return fmt.Sprintf("%s with context id %s", e.Err.Error(), e.CtxId)
 }
 func (e *RedirectError) Error() string {
 	return "exceeded the maximum number of redirects: " + strconv.Itoa(e.RedirectNum)

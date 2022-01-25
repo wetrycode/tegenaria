@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -130,6 +131,8 @@ func TestDoFilter(t *testing.T) {
 
 func TestDoDownload(t *testing.T) {
 	engine := newTestEngine("testSpider2")
+	server := newTestServer()
+
 	ctx := newTestRequest()
 
 	engine.waitGroup.Add(1)
@@ -153,7 +156,7 @@ func TestDoDownload(t *testing.T) {
 
 	}
 	// test parser
-	spider := &TestSpider{NewBaseSpider("testspider3", []string{"https://www.baidu.com"})}
+	spider := &TestSpider{NewBaseSpider("testSpider2", []string{server.URL + "/testGET"})}
 	engine.waitGroup.Add(1)
 	go engine.doParse(spider, result)
 	engine.waitGroup.Wait()
@@ -169,7 +172,9 @@ func TestDoDownload(t *testing.T) {
 	engine.waitGroup.Wait()
 
 }
+func TestDoParse(t *testing.T) {
 
+}
 func TestDoRequestResult(t *testing.T) {
 	engine := newTestEngine("testSpider4")
 	ctx := newTestRequest()
@@ -211,7 +216,6 @@ func TestAllowedStatusCode(t *testing.T) {
 	if resp.DownloadResult.Response.Status != 404 {
 		t.Errorf("Download response status should be 404 but get %d \n", resp.DownloadResult.Response.Status)
 	}
-	//
 
 }
 
@@ -278,12 +282,57 @@ func TestEngineStart(t *testing.T) {
 
 	}
 }
-
 func TestEngineErrorHandler(t *testing.T) {
 	engine := newTestEngine("testSpider10")
 	engine.spiders.SpidersModules["testSpider10"].(*TestSpider).FeedUrls = []string{"http://127.0.0.1:12345"}
 	engine.Start("testSpider10")
 	if engine.Stats.ErrorCount != 1 {
 		t.Errorf("Spider crawl except 1 error,but get %d \n", engine.Stats.ErrorCount)
+	}
+}
+
+func TestProcessRequestError(t *testing.T) {
+	engine := newTestEngine("testSpider19")
+	m := TestDownloadMiddler2{9, "test"}
+	engine.RegisterDownloadMiddlewares(m)
+
+	ctx := newTestRequest()
+
+	engine.waitGroup.Add(1)
+	go engine.doDownload(ctx)
+	engine.waitGroup.Wait()
+	err := <-engine.errorChan
+	if !strings.Contains(err.Error(), "process request fail") {
+		t.Errorf("request should have error process request fail, but get %s\n", err.Error())
+	}
+
+}
+func TestProcessResponseError(t *testing.T) {
+	engine := newTestEngine("testSpider79")
+	m := TestDownloadMiddler2{9, "test"}
+	engine.RegisterDownloadMiddlewares(m)
+
+	ctx := newTestRequest()
+	engine.processResponse(ctx)
+	err := <-engine.errorChan
+	if !strings.Contains(err.Error(), "process response fail") {
+		t.Errorf("request should have error process response fail, but get %s\n", err.Error())
+	}
+}
+
+func TestProcessItemError(t *testing.T) {
+	engine := newTestEngine("testSpider99")
+	engine.RegisterPipelines(&TestItemPipeline4{4})
+	engine.waitGroup.Add(1)
+	m := make(map[string]string)
+	m["a"] = "b"
+	ctx := newTestRequest()
+
+	item := NewItem(ctx, &testItem{"TEST", make([]int, 0)})
+	go engine.doPipelinesHandlers(&TestSpider{NewBaseSpider("testSpider7", []string{})},item)
+	engine.waitGroup.Wait()
+	err := <-engine.errorChan
+	if !strings.Contains(err.Error(), "process item fail") {
+		t.Errorf("request should have error process item fail, but get %s\n", err.Error())
 	}
 }

@@ -1,6 +1,7 @@
 package tegenaria
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 )
@@ -24,5 +25,25 @@ func (m TestDownloadMiddler) ProcessResponse(ctx *Context) error {
 
 }
 func (m TestDownloadMiddler) GetName() string {
+	return m.Name
+}
+
+type TestDownloadMiddler2 struct {
+	Priority int
+	Name     string
+}
+
+func (m TestDownloadMiddler2) GetPriority() int {
+	return m.Priority
+}
+func (m TestDownloadMiddler2) ProcessRequest(ctx *Context) error {
+	return errors.New("process request fail")
+}
+
+func (m TestDownloadMiddler2) ProcessResponse(ctx *Context) error {
+	return errors.New("process response fail")
+
+}
+func (m TestDownloadMiddler2) GetName() string {
 	return m.Name
 }

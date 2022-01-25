@@ -105,7 +105,7 @@ func proxyFunc(req *http.Request) (*url.URL, error) {
 		envProxyFuncValue = httpproxy.FromEnvironment().ProxyFunc()
 	})
 	if p != nil && p.ProxyUrl != "" {
-		proxyURL, err := url.Parse(p.ProxyUrl)
+		proxyURL, err := urlParse(p.ProxyUrl)
 		if err != nil {
 			err := fmt.Sprint(ErrGetHttpProxy.Error(), err.Error())
 			log.Error(err)
@@ -126,6 +126,9 @@ func redirectFunc(req *http.Request, via []*http.Request) error {
 		return err
 	}
 	return nil
+}
+func urlParse(URL string) (*url.URL, error) {
+	return url.Parse(URL)
 }
 
 // StreamThreshold the must max size of response body  to use stream donload
@@ -233,7 +236,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 
 	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
 		// request url is not vaildate
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
 		downloadLog.Errorf(err.Error())
 		return
 	}
@@ -265,8 +268,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
-
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err)
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
 		return
 	}
 
@@ -291,9 +293,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		}
 	}()
 	if err != nil {
-		// r.Error = fmt.Errorf()
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("Request url %s error %s", ctx.Request.Url, err.Error()))
-
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("Request url %s error %s", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
 		return
 
 	}
@@ -301,7 +301,6 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	response := NewResponse()
 	response.Header = resp.Header
 	response.Status = resp.StatusCode
-	// response.Req = request
 	response.URL = req.URL.String()
 	response.Delay = time.Since(now).Seconds()
 	if ctx.Request.ResponseWriter != nil {
@@ -311,17 +310,13 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	} else {
 		// Response data is buffered to memory by default
 		_, err = io.Copy(response.Buffer, resp.Body)
-		if err != nil {
-			msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
-			downloadLog.Errorf("%s\n", msg)
-			ctx.DownloadResult.Response = nil
-			ctx.DownloadResult.Error = NewError(ctx.CtxId, ErrResponseRead)
-			return
-		}
 
 	}
 	if err != nil {
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("downloader io.copy failure error:%v", err))
+		msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
+		downloadLog.Errorf("%s\n", msg)
+		ctx.DownloadResult.Response = nil
+		ctx.DownloadResult.Error = NewError(ctx.CtxId, ErrResponseRead, ErrorWithRequest(ctx.Request))
 		return
 	}
 	// response.write()
