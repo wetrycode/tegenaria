@@ -5,7 +5,7 @@ import "sync"
 type SpiderInterface interface {
 	StartRequest(req chan<- *Context)
 	Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context)
-	ErrorHandler()
+	ErrorHandler(err *HandleError)
 	GetName() string
 }
 type BaseSpider struct {

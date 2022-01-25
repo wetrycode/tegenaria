@@ -18,7 +18,7 @@ func (s *TestSpider) StartRequest(req chan<- *Context) {
 func (s *TestSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
 	parser(resp, item, req)
 }
-func (s *TestSpider) ErrorHandler() {
+func (s *TestSpider) ErrorHandler(err *HandleError){
 
 }
 func (s *TestSpider) GetName() string {

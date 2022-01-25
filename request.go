@@ -178,6 +178,7 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.Header = make(map[string]string)
 	request.MaxRedirects = 3
 	request.AllowRedirects = true
+	request.Proxy = nil
 	for _, o := range opts {
 		o(request)
 	}
