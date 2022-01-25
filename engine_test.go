@@ -2,6 +2,7 @@ package tegenaria
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -32,7 +33,7 @@ func newTestEngine(spiderName string) *SpiderEngine {
 }
 func newTestRequest() *Context {
 	server := newTestServer()
-	request := NewRequest(server.URL+"/testGET", GET, parser)
+	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	ctx := NewContext(request, WithContext(MainCtx))
 	return ctx
@@ -329,10 +330,36 @@ func TestProcessItemError(t *testing.T) {
 	ctx := newTestRequest()
 
 	item := NewItem(ctx, &testItem{"TEST", make([]int, 0)})
-	go engine.doPipelinesHandlers(&TestSpider{NewBaseSpider("testSpider7", []string{})},item)
+	go engine.doPipelinesHandlers(&TestSpider{NewBaseSpider("testSpider7", []string{})}, item)
 	engine.waitGroup.Wait()
 	err := <-engine.errorChan
 	if !strings.Contains(err.Error(), "process item fail") {
 		t.Errorf("request should have error process item fail, but get %s\n", err.Error())
+	}
+}
+func TestParseError(t *testing.T) {
+	engine := newTestEngine("testSpiderParseError")
+	server := newTestServer()
+	request := NewRequest(server.URL+"/testGET", GET, func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+		return errors.New("parse response error")
+	})
+	var MainCtx context.Context = context.Background()
+	ctx := NewContext(request, WithContext(MainCtx))
+	// test 403 status codes
+	engine.waitGroup.Add(1)
+	go engine.doDownload(ctx)
+	engine.waitGroup.Wait()
+	result := <-engine.requestResultChan
+	engine.waitGroup.Add(1)
+	spider, err := engine.spiders.GetSpider("testSpiderParseError")
+	if err != nil {
+		t.Errorf("Get spider testSpiderParseError")
+	}
+	go engine.doParse(spider, result)
+	engine.waitGroup.Wait()
+	err = <-engine.errorChan
+	if !strings.Contains(err.Error(), "parse response error") {
+		t.Errorf("Except parse response error but get %s\n", err.Error())
+
 	}
 }
