@@ -92,7 +92,3 @@ func (c *Context) Value(key interface{}) interface{} {
 func (c Context) GetCtxId() string {
 	return c.CtxId
 }
-
-func (c Context) AddItem(item ItemInterface) {
-	// c.Items = append(c.Items, item)
-}

@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	bloom "github.com/bits-and-blooms/bloom/v3"
 	jsoniter "github.com/json-iterator/go"
@@ -22,15 +21,15 @@ type Proxy struct {
 
 // Request a spider request config
 type Request struct {
-	Url             string                 // Set request URL
-	Header          map[string]string      // Set request header
-	Method          string                 // Set request Method
-	Body            []byte                 // Set request body
-	Params          map[string]string      // Set request query params
-	Proxy           *Proxy                 // Set request proxy addr
-	Cookies         map[string]string      // Set request cookie
-	Timeout         time.Duration          // Set request timeout
-	TLS             bool                   // Set https request if skip tls check
+	Url     string            // Set request URL
+	Header  map[string]string // Set request header
+	Method  string            // Set request Method
+	Body    []byte            // Set request body
+	Params  map[string]string // Set request query params
+	Proxy   *Proxy            // Set request proxy addr
+	Cookies map[string]string // Set request cookie
+	// Timeout         time.Duration          // Set request timeout
+	// TLS             bool                   // Set https request if skip tls check
 	Meta            map[string]interface{} // Set other data
 	AllowRedirects  bool                   // Set if allow redirects. default is true
 	MaxRedirects    int                    // Set max allow redirects number
@@ -52,7 +51,7 @@ var requestPool *sync.Pool = &sync.Pool{
 type Option func(r *Request)
 
 // Parser response parse handler
-type Parser func(resp *Context, item chan<- *ItemMeta, req chan<- *Context)
+type Parser func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
 
 // bufferPool buffer object pool
 var bufferPool *sync.Pool = &sync.Pool{
@@ -79,7 +78,6 @@ func RequestWithRequestBody(body map[string]interface{}) Option {
 func RequestWithRequestParams(params map[string]string) Option {
 	return func(r *Request) {
 		r.Params = params
-
 	}
 }
 func RequestWithRequestProxy(proxy Proxy) Option {
@@ -97,21 +95,7 @@ func RequestWithRequestCookies(cookies map[string]string) Option {
 		r.Cookies = cookies
 	}
 }
-func RequestWithRequestTimeout(timeout time.Duration) Option {
-	return func(r *Request) {
-		r.Timeout = timeout
-	}
-}
-func RequestWithRequestTLS(tls bool) Option {
-	return func(r *Request) {
-		r.TLS = tls
-	}
-}
-func RequestWithRequestMethod(method string) Option {
-	return func(r *Request) {
-		r.Method = method
-	}
-}
+
 func RequestWithRequestMeta(meta map[string]interface{}) Option {
 	return func(r *Request) {
 		r.Meta = meta
@@ -120,7 +104,7 @@ func RequestWithRequestMeta(meta map[string]interface{}) Option {
 func RequestWithAllowRedirects(allowRedirects bool) Option {
 	return func(r *Request) {
 		r.AllowRedirects = allowRedirects
-		if !allowRedirects{
+		if !allowRedirects {
 			r.MaxRedirects = 0
 		}
 	}
@@ -128,7 +112,7 @@ func RequestWithAllowRedirects(allowRedirects bool) Option {
 func RequestWithMaxRedirects(maxRedirects int) Option {
 	return func(r *Request) {
 		r.MaxRedirects = maxRedirects
-		if maxRedirects <=0{
+		if maxRedirects <= 0 {
 			r.AllowRedirects = false
 		}
 	}
@@ -172,7 +156,6 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.Url = url
 	request.Method = method
 	request.parser = parser
-	request.Timeout = 10 * time.Second
 	request.ResponseWriter = nil
 	request.BodyReader = nil
 	request.Header = make(map[string]string)
@@ -240,8 +223,8 @@ func (r *Request) fingerprint() ([]byte, error) {
 	}
 	// to handle request header
 	if len(r.Header) != 0 {
-		_,err:=io.WriteString(sha, r.encodeHeader())
-		if err !=nil{
+		_, err := io.WriteString(sha, r.encodeHeader())
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -249,10 +232,10 @@ func (r *Request) fingerprint() ([]byte, error) {
 	return res, nil
 }
 
-func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) (bool,error) {
+func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) (bool, error) {
 	// Use bloom filter to do fingerprint deduplication
-	data, err:= r.fingerprint()
-	if err !=nil{
+	data, err := r.fingerprint()
+	if err != nil {
 		return false, err
 	}
 	return bloomFilter.TestOrAdd(data), nil
@@ -260,7 +243,10 @@ func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) (bool,error) {
 
 // freeRequest reset Request and the put it into requestPool
 func freeRequest(r *Request) {
-	r.parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {}
+	r.parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+		// default response parser
+		return nil
+	}
 	r.AllowRedirects = true
 	r.Meta = nil
 	r.MaxRedirects = 3
@@ -271,12 +257,9 @@ func freeRequest(r *Request) {
 	r.Params = nil
 	r.Proxy = nil
 	r.Cookies = nil
-	r.Timeout = 10 * time.Second
-	r.TLS = false
 	r.maxConnsPerHost = 512
 	r.ResponseWriter = nil
 	r.BodyReader = nil
-	// r.RequestId = ""
 	requestPool.Put(r)
 	r = nil
 
