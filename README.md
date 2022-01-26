@@ -16,3 +16,6 @@ import "github.com/geebytes/tegenaria"
 ## Quick start
 See the [example](https://github.com/wetrycode/quotesbot) of tegenaria
 
+## Document
+
+See the [Document](docs/ArchitectureDesign.md) of tegenaria
