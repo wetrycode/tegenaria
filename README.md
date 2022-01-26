@@ -11,7 +11,7 @@ go get -u github.com/wetrycode/tegenaria
 2. Import it in your code:
 
 ```go
-import "github.com/geebytes/tegenaria"
+import "github.com/wetrycode/tegenaria"
 ```
 ## Quick start
 See the [example](https://github.com/wetrycode/quotesbot) of tegenaria
