@@ -57,7 +57,7 @@ type SpiderEngine struct {
 	requestResultChan chan *Context
 
 	// errorChan all errors will be send to this channel during hold spider process
-	// It will receive by doError funcation
+	// It will be received by doError funcation
 	errorChan chan *HandleError
 
 	// cacheChan a *Request channel its data is send by writeCache and the data source is from requests cache
@@ -376,6 +376,12 @@ func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
 	e.ErrorHandler(spider, err)
 	spider.ErrorHandler(err)
+	if err.Request != nil {
+		freeRequest(err.Request)
+	}
+	if err.Response != nil {
+		freeResponse(err.Response)
+	}
 	e.waitGroup.Done()
 }
 
@@ -438,20 +444,11 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 		e.waitGroup.Done()
 
 	}()
-
-	if result.DownloadResult.Response != nil {
-		e.processResponse(result)
-	}
 	err := result.DownloadResult.Error
 	if err != nil {
 		result.Error = err
 		e.errorChan <- NewError(result.CtxId, err, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 		engineLog.WithField("request_id", result.CtxId).Errorf("Request is fail with error %s", err.Error())
-		freeRequest(result.Request)
-		if result.DownloadResult.Response != nil {
-
-			freeResponse(result.DownloadResult.Response)
-		}
 
 	} else {
 		if e.requestDownloader.CheckStatus(uint64(result.DownloadResult.Response.Status), e.allowStatusCode) {
@@ -466,11 +463,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
 			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
 			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
-			freeRequest(result.Request)
-			if result.DownloadResult.Response != nil {
 
-				freeResponse(result.DownloadResult.Response)
-			}
 		}
 
 	}
@@ -481,17 +474,23 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 	defer func() {
 		e.waitGroup.Done()
-		// release Request and Response object memory to buffer
-		freeRequest(resp.Request)
-
-		freeResponse(resp.DownloadResult.Response)
 	}()
 	if resp.DownloadResult.Error != nil {
 		engineLog.WithField("request_id", resp.CtxId).Warningf("Download result is error %s and response can not parse", resp.DownloadResult.Error.Error())
 		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
 	} else {
 		e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
-		resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+		err := resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+		// release Request and Response object memory to buffer
+		if err != nil {
+			errMsg := fmt.Errorf("%s %s", ErrResponseParse.Error(), err.Error())
+			e.errorChan <- NewError(resp.CtxId, errMsg, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
+
+		} else {
+			freeRequest(resp.Request)
+
+			freeResponse(resp.DownloadResult.Response)
+		}
 	}
 }
 

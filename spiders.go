@@ -4,7 +4,7 @@ import "sync"
 
 type SpiderInterface interface {
 	StartRequest(req chan<- *Context)
-	Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context)
+	Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
 	ErrorHandler(err *HandleError)
 	GetName() string
 }
@@ -27,10 +27,15 @@ func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 	}
 }
 func (s *BaseSpider) StartRequest(req chan<- *Context) {
+	// StartRequest start feed urls request
 }
-func (s *BaseSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
+// Parser parse request respone
+// it will send item or new request to engine
+func (s *BaseSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+	return nil
 }
-func (s *BaseSpider) ErrorHandler() {
+func (s *BaseSpider) ErrorHandler(err *HandleError) {
+	// ErrorHandler error handler
 
 }
 func NewSpiders() *Spiders {

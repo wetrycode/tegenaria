@@ -18,6 +18,7 @@ var (
 	ErrGetHttpsProxy       error = errors.New("getting https proxy ")
 	ErrParseSocksProxy     error = errors.New("parse socks proxy ")
 	ErrResponseRead        error = errors.New("read response to buffer error")
+	ErrResponseParse       error = errors.New("parse response error")
 )
 
 type RedirectError struct {
@@ -34,12 +35,12 @@ type HandleError struct {
 type ErrorOption func(e *HandleError)
 
 func NewError(ctxId string, err error, opts ...ErrorOption) *HandleError {
-	h:= &HandleError{
-		CtxId: ctxId,
-		Err:   err,
-		Request: nil,
+	h := &HandleError{
+		CtxId:    ctxId,
+		Err:      err,
+		Request:  nil,
 		Response: nil,
-		Item: nil,
+		Item:     nil,
 	}
 	for _, o := range opts {
 		o(h)

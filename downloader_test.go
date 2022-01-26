@@ -26,12 +26,13 @@ var onceProxyServer sync.Once
 var ts *httptest.Server
 var proxyServer *httptest.Server
 
-func parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) {
+func testParser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
 	newItem := &testItem{
 		test:      "test",
 		pipelines: make([]int, 0),
 	}
 	item <- NewItem(resp, newItem)
+	return nil
 }
 
 // func doTest(request *Request)(Response, Error, context.CancelFunc){
@@ -154,7 +155,7 @@ func newTestServer() *httptest.Server {
 func TestRequestGet(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, parser)
+	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
@@ -192,7 +193,7 @@ func TestRequestPost(t *testing.T) {
 	}
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testPOST", POST, parser, RequestWithRequestBody(body))
+	request := NewRequest(server.URL+"/testPOST", POST, testParser, RequestWithRequestBody(body))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -232,7 +233,7 @@ func TestRequestCookie(t *testing.T) {
 	server := newTestServer()
 	// downloader := NewDownloader()
 
-	request := NewRequest(server.URL+"/testGetCookie", GET, parser, RequestWithRequestCookies(cookies))
+	request := NewRequest(server.URL+"/testGetCookie", GET, testParser, RequestWithRequestCookies(cookies))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -271,7 +272,7 @@ func TestRequestQueryParams(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
 
-	request := NewRequest(server.URL+"/testParams", GET, parser, RequestWithRequestParams(params))
+	request := NewRequest(server.URL+"/testParams", GET, testParser, RequestWithRequestParams(params))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -313,7 +314,7 @@ func TestRequestProxy(t *testing.T) {
 	}
 
 	defer proxyServer.Close()
-	request := NewRequest(server.URL+"/proxy", GET, parser, RequestWithRequestProxy(proxy))
+	request := NewRequest(server.URL+"/proxy", GET, testParser, RequestWithRequestProxy(proxy))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -354,7 +355,7 @@ func TestRequestHeaders(t *testing.T) {
 		"Intparams":  "1",
 		"Boolparams": "false",
 	}
-	request := NewRequest(server.URL+"/testHeader", GET, parser, RequestWithRequestHeader(headers))
+	request := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -392,9 +393,9 @@ func TestFingerprint(t *testing.T) {
 		"Intparams":  "1",
 		"Boolparams": "false",
 	}
-	request1 := NewRequest(server.URL+"/testHeader", GET, parser, RequestWithRequestHeader(headers))
-	request2 := NewRequest(server.URL+"/testHeader", GET, parser, RequestWithRequestHeader(headers))
-	request3 := NewRequest(server.URL+"/testHeader2", GET, parser, RequestWithRequestHeader(headers))
+	request1 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
+	request2 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
+	request3 := NewRequest(server.URL+"/testHeader2", GET, testParser, RequestWithRequestHeader(headers))
 
 	bloomFilter := bloom.New(1024*1024, 5)
 	if r1, _ := request1.doUnique(bloomFilter); r1 {
@@ -413,7 +414,7 @@ func TestTimeout(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
 
-	request := NewRequest(server.URL+"/testTimeout", GET, parser)
+	request := NewRequest(server.URL+"/testTimeout", GET, testParser)
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -446,7 +447,7 @@ func TestLargeFile(t *testing.T) {
 	defer os.Remove("test.file")
 	defer file.Close()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
-	request := NewRequest(server.URL+"/testFile", GET, parser, RequestWithResponseWriter(file))
+	request := NewRequest(server.URL+"/testFile", GET, testParser, RequestWithResponseWriter(file))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -485,7 +486,7 @@ func TestLargeFile(t *testing.T) {
 func TestJsonResponse(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testJson", GET, parser)
+	request := NewRequest(server.URL+"/testJson", GET, testParser)
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -518,7 +519,7 @@ func TestJsonResponse(t *testing.T) {
 func TestRedirectLimit(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testRedirect1", GET, parser, RequestWithMaxRedirects(1))
+	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithMaxRedirects(1))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -544,9 +545,39 @@ func TestRedirectLimit(t *testing.T) {
 	}
 }
 
+
+func TestNotAllowRedirect(t *testing.T){
+	server := newTestServer()
+	downloader := NewDownloader()
+	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithAllowRedirects(false))
+	var MainCtx context.Context = context.Background()
+
+	cancelCtx, cancel := context.WithCancel(MainCtx)
+
+	ctx := NewContext(request, WithContext(cancelCtx))
+
+	defer func() {
+		cancel()
+	}()
+	resultChan := make(chan *Context, 1)
+
+	downloader.Download(ctx, resultChan)
+	result := <-resultChan
+	err := result.DownloadResult.Error
+	resp := result.DownloadResult.Response
+	if !strings.Contains(err.Error(), "maximum number of redirects"){
+		t.Errorf("Except error exceeded the maximum number of redirects,but get %s\n", err.Error())
+	}
+
+	if resp != nil {
+		t.Errorf("response is not empty ")
+
+	}
+}
+
 func TestInvalidURL(t *testing.T) {
 	downloader := NewDownloader()
-	request := NewRequest("error"+"/testRedirect1", GET, parser)
+	request := NewRequest("error"+"/testRedirect1", GET, testParser)
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -570,7 +601,7 @@ func TestInvalidURL(t *testing.T) {
 func TestResponseReadError(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, parser)
+	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
@@ -609,7 +640,7 @@ func TestProxyUrlError(t *testing.T) {
 		return nil, errors.New("proxy invail url")
 	})
 	defer proxyServer.Close()
-	request := NewRequest(server.URL+"/proxy", GET, parser, RequestWithRequestProxy(proxy))
+	request := NewRequest(server.URL+"/proxy", GET, testParser, RequestWithRequestProxy(proxy))
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
@@ -633,7 +664,7 @@ func TestProxyUrlError(t *testing.T) {
 func TestDownloaderRequestConextError(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, parser)
+	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
@@ -653,7 +684,6 @@ func TestDownloaderRequestConextError(t *testing.T) {
 	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
-	// resp := result.DownloadResult.Response
 	if err.Error() == "creat request with context fail" {
 		t.Errorf("request should have error creat request with context fail, but get %s\n", err.Error())
 
