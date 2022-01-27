@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"sort"
-	"strings"
 	"sync"
 
-	bloom "github.com/bits-and-blooms/bloom/v3"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
-	"github.com/spaolacci/murmur3"
 )
 
 type Proxy struct {
@@ -168,77 +164,6 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.updateQueryParams()
 	return request
 
-}
-
-// canonicalizeUrl canonical request url before calculate request fingerprint
-func (r *Request) canonicalizeUrl(keepFragment bool) url.URL {
-	u, _ := url.ParseRequestURI(r.Url)
-	u.RawQuery = u.Query().Encode()
-	u.ForceQuery = true
-	if !keepFragment {
-		u.Fragment = ""
-	}
-	return *u
-}
-
-// encodeHeader encode request header before calculate request fingerprint
-func (r *Request) encodeHeader() string {
-	h := r.Header
-	if h == nil {
-		return ""
-	}
-	var buf bytes.Buffer
-	keys := make([]string, 0, len(h))
-	for k := range h {
-		keys = append(keys, k)
-	}
-	// Sort by Header key
-	sort.Strings(keys)
-	for _, k := range keys {
-		// Sort by value
-		buf.WriteString(fmt.Sprintf("%s:%s;\n", strings.ToUpper(k), strings.ToUpper(h[k])))
-	}
-	return buf.String()
-}
-
-// fingerprint generate a request fingerprint by using 	murmur3.New128() sha128
-// the fingerprint []byte will be cached into cache module or de-duplication
-func (r *Request) fingerprint() ([]byte, error) {
-	// get sha128
-	sha := murmur3.New128()
-	_, err := io.WriteString(sha, r.Method)
-	if err != nil {
-		return nil, err
-	}
-	// canonical request url
-	u := r.canonicalizeUrl(false)
-	_, err = io.WriteString(sha, u.String())
-	if err != nil {
-		return nil, err
-	}
-	// get request body
-	if r.Body != nil {
-		body := r.Body
-		sha.Write(body)
-	}
-	// to handle request header
-	if len(r.Header) != 0 {
-		_, err := io.WriteString(sha, r.encodeHeader())
-		if err != nil {
-			return nil, err
-		}
-	}
-	res := sha.Sum(nil)
-	return res, nil
-}
-
-func (r *Request) doUnique(bloomFilter *bloom.BloomFilter) (bool, error) {
-	// Use bloom filter to do fingerprint deduplication
-	data, err := r.fingerprint()
-	if err != nil {
-		return false, err
-	}
-	return bloomFilter.TestOrAdd(data), nil
 }
 
 // freeRequest reset Request and the put it into requestPool

@@ -22,12 +22,14 @@ type ctxKey string
 
 // Downloader interface
 type Downloader interface {
-	Download(ctx *Context, result chan<- *Context) // Download core funcation
+	// Download core funcation
+	Download(ctx *Context, result chan<- *Context)
 
-	CheckStatus(statusCode uint64, allowStatus []uint64) bool // CheckStatus check response status code if allow handle
-
-	setTimeout(timeout time.Duration) // setTimeout set downloader timeout
-
+	// CheckStatus check response status code if allow handle
+	CheckStatus(statusCode uint64, allowStatus []uint64) bool
+	
+	// setTimeout set downloader timeout
+	setTimeout(timeout time.Duration)
 }
 
 // SpiderDownloader tegenaria spider downloader

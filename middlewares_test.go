@@ -20,7 +20,7 @@ func (m TestDownloadMiddler) ProcessRequest(ctx *Context) error {
 	return nil
 }
 
-func (m TestDownloadMiddler) ProcessResponse(ctx *Context) error {
+func (m TestDownloadMiddler) ProcessResponse(ctx *Context, req chan<- *Context) error {
 	return nil
 
 }
@@ -40,7 +40,7 @@ func (m TestDownloadMiddler2) ProcessRequest(ctx *Context) error {
 	return errors.New("process request fail")
 }
 
-func (m TestDownloadMiddler2) ProcessResponse(ctx *Context) error {
+func (m TestDownloadMiddler2) ProcessResponse(ctx *Context, req chan<- *Context) error {
 	return errors.New("process response fail")
 
 }
