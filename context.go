@@ -9,20 +9,20 @@ type Context struct {
 	// Request
 	Request *Request
 
-	// Response *Response
+	// DownloadResult downloader handler result
 	DownloadResult *RequestResult
 
 	// Item
-	Item           ItemInterface
+	Item ItemInterface
 
-	//Ctx
-	Ctx            context.Context
+	//Ctx parent context
+	Ctx context.Context
 
 	// CtxId
-	CtxId          string
+	CtxId string
 
 	// Error
-	Error          error
+	Error error
 }
 type ContextOption func(c *Context)
 

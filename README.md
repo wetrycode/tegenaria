@@ -1,5 +1,6 @@
 # README
-# Tegenaria crawl framework
+# Tegenaria crawl framework  
+Tegenaria is a crawler framework based on golang  
 ## Installation
 To install Tegenaria package, you should install Go and set your Go workspace first.
 
@@ -18,4 +19,5 @@ See the [example](https://github.com/wetrycode/quotesbot) of tegenaria
 
 ## Document
 
-See the [Document](docs/ArchitectureDesign.md) of tegenaria
+- See the [English Document](docs/Tegenaria_EN.md) of tegenaria
+- See the [Chinese (Simplified)](docs/Tegenaria_ZH.md) of tegenaria
