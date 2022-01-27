@@ -11,9 +11,7 @@ import (
 // Response the Request download response data
 type Response struct {
 	Status int // Status request response status code
-	// Body   []byte              // Body response body
 	Header map[string][]string // Header response header
-	// Req           *Request            // req the Request object
 	Delay         float64       // Delay the time of handle download request
 	ContentLength int           // ContentLength response content length
 	URL           string        // URL of request url

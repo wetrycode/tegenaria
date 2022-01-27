@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	bloom "github.com/bits-and-blooms/bloom/v3"
 	"github.com/gin-gonic/gin"
 	"github.com/go-kiss/monkey"
 )
@@ -385,31 +384,7 @@ func TestRequestHeaders(t *testing.T) {
 
 	}
 }
-func TestFingerprint(t *testing.T) {
-	server := newTestServer()
-	// downloader := NewDownloader()
-	headers := map[string]string{
-		"Params1":    "params1",
-		"Intparams":  "1",
-		"Boolparams": "false",
-	}
-	request1 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
-	request2 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
-	request3 := NewRequest(server.URL+"/testHeader2", GET, testParser, RequestWithRequestHeader(headers))
 
-	bloomFilter := bloom.New(1024*1024, 5)
-	if r1, _ := request1.doUnique(bloomFilter); r1 {
-		t.Errorf("Request1 igerprint sum error expected=%v, get=%v", false, true)
-	}
-	if r2, _ := request2.doUnique(bloomFilter); !r2 {
-		t.Errorf("Request2 igerprint sum error expected=%v, get=%v", true, false)
-
-	}
-	if r3, _ := request3.doUnique(bloomFilter); r3 {
-		t.Errorf("Request3 igerprint sum error expected=%v, get=%v", false, true)
-
-	}
-}
 func TestTimeout(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
@@ -545,8 +520,7 @@ func TestRedirectLimit(t *testing.T) {
 	}
 }
 
-
-func TestNotAllowRedirect(t *testing.T){
+func TestNotAllowRedirect(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
 	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithAllowRedirects(false))
@@ -565,7 +539,7 @@ func TestNotAllowRedirect(t *testing.T){
 	result := <-resultChan
 	err := result.DownloadResult.Error
 	resp := result.DownloadResult.Response
-	if !strings.Contains(err.Error(), "maximum number of redirects"){
+	if !strings.Contains(err.Error(), "maximum number of redirects") {
 		t.Errorf("Except error exceeded the maximum number of redirects,but get %s\n", err.Error())
 	}
 

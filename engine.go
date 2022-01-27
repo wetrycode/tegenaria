@@ -14,7 +14,6 @@ import (
 	"syscall"
 	"time"
 
-	bloom "github.com/bits-and-blooms/bloom/v3"
 	"github.com/sirupsen/logrus"
 )
 
@@ -94,9 +93,9 @@ type SpiderEngine struct {
 	// to filter duplicate request fingerprint set true or not set false.
 	filterDuplicateReq bool
 
-	// bloomFilter request fingerprint BloomFilter.
+	// RFPDupeFilter request fingerprint BloomFilter
 	// it will work if filterDuplicateReq is true
-	bloomFilter *bloom.BloomFilter
+	RFPDupeFilter RFPDupeFilterInterface
 
 	// engineStatus the engine status but not using.
 	engineStatus int
@@ -375,7 +374,7 @@ func (e *SpiderEngine) readCache() {
 func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
 	e.ErrorHandler(spider, err)
-	spider.ErrorHandler(err)
+	spider.ErrorHandler(err, e.requestsChan)
 	if err.Request != nil {
 		freeRequest(err.Request)
 	}
@@ -407,8 +406,10 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 
 // doFilter filer duplicate request if filterDuplicateReq is true
 func (e *SpiderEngine) doFilter(ctx *Context, r *Request) bool {
+	// filter switch
 	if e.filterDuplicateReq {
-		result, err := r.doUnique(e.bloomFilter)
+		// do filter
+		result, err := e.RFPDupeFilter.DoDupeFilter(r)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Warningf("Request do unique error %s", err.Error())
 			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
@@ -428,7 +429,7 @@ func (e *SpiderEngine) processResponse(ctx *Context) {
 	}
 	for index := range e.downloaderMiddlewares {
 		middleware := e.downloaderMiddlewares[len(e.downloaderMiddlewares)-index-1]
-		err := middleware.ProcessResponse(ctx)
+		err := middleware.ProcessResponse(ctx, e.requestsChan)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
@@ -574,7 +575,7 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 		requestDownloader:  NewDownloader(),
 		allowStatusCode:    []uint64{},
 		filterDuplicateReq: true,
-		bloomFilter:        bloom.New(1024*4, 5),
+		RFPDupeFilter:      NewRFPDupeFilter(1024*4, 8),
 		engineStatus:       0,
 		waitGroup:          &sync.WaitGroup{},
 		mainWaitGroup:      &sync.WaitGroup{},
