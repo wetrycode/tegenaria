@@ -19,4 +19,5 @@ See the [example](https://github.com/wetrycode/quotesbot) of tegenaria
 
 ## Document
 
-See the [Document](docs/Tegenaria.md) of tegenaria
+- See the [English Document](docs/Tegenaria_EN.md) of tegenaria
+- See the [Chinese (Simplified)](docs/Tegenaria_ZH.md) of tegenaria
