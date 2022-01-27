@@ -1,5 +1,42 @@
 # Tegenaria文档
-[TOC]
+* [Tegenaria文档](#tegenaria文档)
+* [1.设计思想](#1设计思想)
+* [2.数据请求处理流程图](#2数据请求处理流程图)
+   * [2.1.流程说明](#21流程说明)
+      * [2.1.1.主要流程](#211主要流程)
+      * [2.1.2其他流程](#212其他流程)
+   * [2.2.调度模式](#22调度模式)
+* [3.组件](#3组件)
+   * [3.1.引擎](#31引擎)
+   * [3.2.调度器](#32调度器)
+   * [3.3.下载器](#33下载器)
+   * [3.4.去重处理器](#34去重处理器)
+   * [3.5.下载中间件](#35下载中间件)
+   * [3.6.管道](#36管道)
+   * [3.7.错误处理器](#37错误处理器)
+* [4.API](#4api)
+   * [4.1.SpiderInterface](#41spiderinterface)
+      * [4.1.1.Spider Interface说明](#411spider-interface说明)
+      * [4.1.2.实例化Spider](#412实例化spider)
+      * [4.1.3.引擎spider启动](#413引擎spider启动)
+      * [4.2.Context](#42context)
+   * [4.3.Request](#43request)
+   * [4.4.RFPDupeFilterInterface](#44rfpdupefilterinterface)
+   * [4.5.Response](#45response)
+   * [4.6.MiddlerwareInterface](#46middlerwareinterface)
+      * [4.6.1.中间件接口说明](#461中间件接口说明)
+      * [4.6.2.中间件实例化](#462中间件实例化)
+      * [4.6.3.中间件注册](#463中间件注册)
+      * [4.6.4.ProcessRequest调度](#464processrequest调度)
+      * [4.6.5.ProcessResponse](#465processresponse)
+   * [4.7.Downloader](#47downloader)
+      * [4.7.1.Tegenaria下载器接口](#471tegenaria下载器接口)
+      * [4.7.2.下载器调度](#472下载器调度)
+   * [4.8.ItemMeta](#48itemmeta)
+   * [4.9.PipelineInterface](#49pipelineinterface)
+      * [4.9.1.pipeline接口说明](#491pipeline接口说明)
+      * [4.9.2.pipeline注册](#492pipeline注册)
+      * [4.9.3.pipeline实例化示例](#493pipeline实例化示例)
 
 # 1.设计思想
 本项目在模块功能和数据处理流程方面借鉴了[scrapy](https://github.com/scrapy/scrapy)的设计思想，实现下载、调度、解析及数据处理各模块间解耦。
@@ -541,6 +578,250 @@ func (r *Response) String() string {
 ## 4.6.MiddlerwareInterface
 ### 4.6.1.中间件接口说明
 下载中间件接口，用于处理Request和Response，优先级数字越小优先级越高
+
+```go
+type MiddlewaresInterface interface {
+	GetPriority() int
+	ProcessRequest(ctx *Context) error
+	ProcessResponse(ctx *Context, req chan<- *Context) error
+	GetName()string
+}
+```
+* GetPriority获取中间件的优先级
+* ProcessRequest在对Request进行下载处理前对其进行修饰处理，添加代理或User-Agent
+* ProcessResponse在Response进入解析器前对response进行处理
+* GetName获取中间件名称
+* 优先级排序由[sort接口](https://pkg.go.dev/sort)实现
+
+```go
+func (p Middlewares) Len() int           { return len(p) }
+func (p Middlewares) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+func (p Middlewares) Less(i, j int) bool { return p[i].GetPriority() < p[j].GetPriority() }
+```
+* 下载中间件队列定义
+
+```go
+type Middlewares []MiddlewaresInterface
+```
+### 4.6.2.中间件实例化
+```go
+type TestDownloadMiddler struct {
+	Priority int
+	Name     string
+}
+
+func (m TestDownloadMiddler) GetPriority() int {
+	return m.Priority
+}
+func (m TestDownloadMiddler) ProcessRequest(ctx *Context) error {
+	header := fmt.Sprintf("priority-%d", m.Priority)
+	ctx.Request.Header[header] = strconv.Itoa(m.Priority)
+	return nil
+}
+
+func (m TestDownloadMiddler) ProcessResponse(ctx *Context, req chan<- *Context) error {
+	return nil
+
+}
+```
+### 4.6.3.中间件注册
+中间件注册由引擎实现
+
+```go
+// RegisterDownloadMiddlewares add a download middlewares
+func (e *SpiderEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterface) {
+	e.downloaderMiddlewares = append(e.downloaderMiddlewares, middlewares)
+	sort.Sort(e.downloaderMiddlewares)
+}
+```
+### 4.6.4.ProcessRequest调度
+按优先级由高到低调度
+
+```go
+	// use download middleware to handle request object
+	for _, middleware := range e.downloaderMiddlewares {
+		err := middleware.ProcessRequest(ctx)
+		if err != nil {
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
+			ctx.Error = err
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
+			return
+		}
+	}
+```
+### 4.6.5.ProcessResponse
+按优先级由低到高调度
+
+```go
+// processResponse do handle download response
+func (e *SpiderEngine) processResponse(ctx *Context) {
+	if len(e.downloaderMiddlewares) == 0 {
+		return
+	}
+	for index := range e.downloaderMiddlewares {
+		middleware := e.downloaderMiddlewares[len(e.downloaderMiddlewares)-index-1]
+		err := middleware.ProcessResponse(ctx, e.requestsChan)
+		if err != nil {
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
+			ctx.Error = err
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request), ErrorWithResponse(ctx.DownloadResult.Response))
+			return
+		}
+	}
+}
+```
+## 4.7.Downloader
+### 4.7.1.Tegenaria下载器接口
+```go
+// Downloader interface
+type Downloader interface {
+	// Download core funcation
+	Download(ctx *Context, result chan<- *Context)
+
+	// CheckStatus check response status code if allow handle
+	CheckStatus(statusCode uint64, allowStatus []uint64) bool
+	
+	// setTimeout set downloader timeout
+	setTimeout(timeout time.Duration)
+}
+```
+* Download载器核心的网络请求处理函数，接收请求Context，处理结束后向引擎调度器发送处理结果
+* CheckStatus检查响应状态码的是否合法
+* setTimeout设置超时时间
+* Tegenaria提供了一个默认的基于net/http的下载器
+
+### 4.7.2.下载器调度
+```go
+// recvRequest receive request from cacheChan and do download.
+func (e *SpiderEngine) recvRequestHandler(req *Context) {
+	defer e.waitGroup.Done()
+	if req == nil {
+		return
+	}
+	e.waitGroup.Add(1)
+	go e.doDownload(req)
+
+}
+
+// doDownload handle request download
+func (e *SpiderEngine) doDownload(ctx *Context) {
+	defer func() {
+		e.waitGroup.Done()
+	}()
+	// use download middleware to handle request object
+	for _, middleware := range e.downloaderMiddlewares {
+		err := middleware.ProcessRequest(ctx)
+		if err != nil {
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
+			ctx.Error = err
+			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
+			return
+		}
+	}
+	// incr request download number
+	atomic.AddUint64(&e.Stats.RequestDownloaded, 1)
+	e.requestDownloader.Download(ctx, e.requestResultChan)
+}
+```
+## 4.8.ItemMeta
+解析结果字段存储格式元数据接口
+
+```go
+// Item as meta data process interface
+type ItemInterface interface {
+}
+type ItemMeta struct{
+	CtxId string
+	Item ItemInterface
+}
+```
+* 创建新item对象
+
+```go
+func NewItem(ctx *Context, item ItemInterface) *ItemMeta {
+	return &ItemMeta{
+		CtxId: ctx.CtxId,
+		Item: item,
+	}
+}
+```
+* item调度处理
+
+```go
+// doPipelinesHandlers handle items by pipelines chan
+func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMeta) {
+	defer func() {
+		e.waitGroup.Done()
+
+	}()
+	for _, pipeline := range e.pipelines {
+		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into pipelines chans")
+		err := pipeline.ProcessItem(spider, item)
+		if err != nil {
+			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
+			e.errorChan <- handleError
+			return
+		}
+	}
+	atomic.AddUint64(&e.Stats.ItemScraped, 1)
+
+}
+```
+## 4.9.PipelineInterface
+### 4.9.1.pipeline接口说明
+* pipeline主要用于处理item，引擎根据pipelines的优先级由高到低调度ProcessItem
+
+```go
+type PipelinesInterface interface {
+	// GetPriority get pipeline Priority
+	GetPriority() int
+	// ProcessItem
+	ProcessItem(spider SpiderInterface, item *ItemMeta) error
+}
+```
+* 优先级排序由[sort接口](https://pkg.go.dev/sort)实现
+* GetPriority获取中间件的优先级
+
+* ProcessItem item处理函数
+* pipelines队列
+
+```go
+type ItemPipelines []PipelinesInterface
+```
+### 4.9.2.pipeline注册
+pipeline的注册由引擎完成
+
+```go
+// RegisterPipelines add items handle pipelines
+func (e *SpiderEngine) RegisterPipelines(pipeline PipelinesInterface) {
+	e.pipelines = append(e.pipelines, pipeline)
+	sort.Sort(e.pipelines)
+	engineLog.Infof("Register %v priority pipeline success\n", pipeline)
+}
+```
+### 4.9.3.pipeline实例化示例
+```go
+type TestItemPipeline struct {
+	Priority int
+}
+func (p *TestItemPipeline) ProcessItem(spider SpiderInterface, item *ItemMeta) error {
+	i := item.Item.(*testItem)
+	i.pipelines = append(i.pipelines, p.Priority)
+	return nil
+
+}
+func (p *TestItemPipeline) GetPriority() int {
+	return p.Priority
+}
+engine := tegenaria.NewSpiderEngine()
+engine.RegisterPipelines(TestItemPipeline{Priority: 1})
+
+```
+
+
+
+
+小优先级越高
 
 ```go
 type MiddlewaresInterface interface {
