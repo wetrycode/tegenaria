@@ -3,7 +3,7 @@ package tegenaria
 type MiddlewaresInterface interface {
 	GetPriority() int
 	ProcessRequest(ctx *Context) error
-	ProcessResponse(ctx *Context) error
+	ProcessResponse(ctx *Context, req chan<- *Context) error
 	GetName()string
 }
 type ProcessResponse func(ctx *Context) error
