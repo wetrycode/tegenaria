@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -12,8 +12,8 @@
 package tegenaria
 
 // PipelinesInterface pipeline interface
-// pipeline is mainly used for processing item, 
-// the engine schedules ProcessItem according to 
+// pipeline is mainly used for processing item,
+// the engine schedules ProcessItem according to
 // the priority of pipelines from highest to lowest
 type PipelinesInterface interface {
 	// GetPriority get pipeline Priority
