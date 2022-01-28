@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,6 +15,7 @@ import (
 	"context"
 	"time"
 )
+
 // Context spider crawl request schedule unit
 // it is used on all data flow
 type Context struct {

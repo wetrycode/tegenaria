@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,17 +14,18 @@ package tegenaria
 import (
 	queue "github.com/yireyun/go-queue"
 )
+
 // CacheInterface request cache interface
 // you can use redis to do cache
 type CacheInterface interface {
-	enqueue(ctx *Context) error // enqueue put request to cache
+	enqueue(ctx *Context) error    // enqueue put request to cache
 	dequeue() (interface{}, error) // dequeue get request from cache
-	getSize() int64 // getSize get cache size
+	getSize() int64                // getSize get cache size
 }
 
 // requestCache request cache
 type requestCache struct {
-	queue *queue.EsQueue // A lock-free queue to use cache request  
+	queue *queue.EsQueue // A lock-free queue to use cache request
 }
 
 // enqueue put request to cache queue

@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -14,15 +14,14 @@ package tegenaria
 // Item as meta data process interface
 type ItemInterface interface {
 }
-type ItemMeta struct{
+type ItemMeta struct {
 	CtxId string
-	Item ItemInterface
+	Item  ItemInterface
 }
-
 
 func NewItem(ctx *Context, item ItemInterface) *ItemMeta {
 	return &ItemMeta{
 		CtxId: ctx.CtxId,
-		Item: item,
+		Item:  item,
 	}
 }
