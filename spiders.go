@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -13,6 +13,9 @@ package tegenaria
 
 import "sync"
 // SpiderInterface Tegenaria spider interface, developer can custom spider must be based on 
+// this interface to achieve custom spider.
+
+// SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
 // this interface to achieve custom spider.
 
 type SpiderInterface interface {
@@ -33,7 +36,7 @@ type SpiderInterface interface {
 // BaseSpider base spider
 type BaseSpider struct {
 	// Name spider name
-	Name     string
+	Name string
 
 	// FeedUrls feed urls
 	FeedUrls []string

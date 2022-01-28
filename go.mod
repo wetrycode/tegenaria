@@ -3,11 +3,10 @@ module github.com/wetrycode/tegenaria
 go 1.16
 
 require (
-	bou.ke/monkey v1.0.2 // indirect
 	github.com/bits-and-blooms/bitset v1.2.1 // indirect
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
 	github.com/gin-gonic/gin v1.7.7
-	github.com/go-kiss/monkey v0.0.0-20210912230757-40cda447d0e3 // indirect
+	github.com/go-kiss/monkey v0.0.0-20210912230757-40cda447d0e3
 	github.com/google/uuid v1.3.0
 	github.com/json-iterator/go v1.1.12
 	github.com/sirupsen/logrus v1.8.1

@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -28,13 +28,13 @@ type Proxy struct {
 
 // Request a spider request config
 type Request struct {
-	Url     string            // Set request URL
-	Header  map[string]string // Set request header
-	Method  string            // Set request Method
-	Body    []byte            // Set request body
-	Params  map[string]string // Set request query params
-	Proxy   *Proxy            // Set request proxy addr
-	Cookies map[string]string // Set request cookie
+	Url             string                 // Set request URL
+	Header          map[string]string      // Set request header
+	Method          string                 // Set request Method
+	Body            []byte                 // Set request body
+	Params          map[string]string      // Set request query params
+	Proxy           *Proxy                 // Set request proxy addr
+	Cookies         map[string]string      // Set request cookie
 	Meta            map[string]interface{} // Set other data
 	AllowRedirects  bool                   // Set if allow redirects. default is true
 	MaxRedirects    int                    // Set max allow redirects number
