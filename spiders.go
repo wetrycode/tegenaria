@@ -12,6 +12,8 @@
 package tegenaria
 
 import "sync"
+// SpiderInterface Tegenaria spider interface, developer can custom spider must be based on 
+// this interface to achieve custom spider.
 
 // SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
 // this interface to achieve custom spider.

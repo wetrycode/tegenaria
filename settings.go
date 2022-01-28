@@ -70,19 +70,4 @@ func initSettings() {
 			},
 		}
 	}
-	// _, filename, _, _ := runtime.Caller(1)
-	// str, _ := os.Getwd()
-	// runtimeViper := viper.New()
-
-	// runtimeViper.AddConfigPath(str)
-	// runtimeViper.SetConfigName("settings")
-	// runtimeViper.SetConfigType("yaml")
-	// readErr := runtimeViper.ReadInConfig()
-	// if readErr != nil {
-	// 	panic(fmt.Errorf("fatal error config file: %s", readErr))
-	// }
-	// err := runtimeViper.Unmarshal(&Config)
-	// if err != nil {
-	// 	panic(fmt.Errorf("fatal error config file: %s", readErr))
-	// }
 }
