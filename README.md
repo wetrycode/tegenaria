@@ -1,6 +1,8 @@
-# README
 # Tegenaria crawl framework  
-Tegenaria is a crawler framework based on golang  
+[![codecov](https://codecov.io/gh/wetrycode/tegenaria/branch/master/graph/badge.svg?token=XMW3K1JYPB)](https://codecov.io/gh/wetrycode/tegenaria)
+[![go workflow](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)  
+Tegenaria is a crawler framework based on golang 
+
 ## Installation
 To install Tegenaria package, you should install Go and set your Go workspace first.
 
@@ -21,3 +23,10 @@ See the [example](https://github.com/wetrycode/quotesbot) of tegenaria
 
 - See the [English Document](docs/Tegenaria_EN.md) of tegenaria
 - See the [Chinese (Simplified)](docs/Tegenaria_ZH.md) of tegenaria
+
+## Contribution
+Feel free to PR and raise issues.  
+Send me an email directly, vforfreedom96@gmail.com  
+
+## License
+[Apache2.0](LICENSE) © geebytes  

@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -70,19 +70,4 @@ func initSettings() {
 			},
 		}
 	}
-	// _, filename, _, _ := runtime.Caller(1)
-	// str, _ := os.Getwd()
-	// runtimeViper := viper.New()
-
-	// runtimeViper.AddConfigPath(str)
-	// runtimeViper.SetConfigName("settings")
-	// runtimeViper.SetConfigType("yaml")
-	// readErr := runtimeViper.ReadInConfig()
-	// if readErr != nil {
-	// 	panic(fmt.Errorf("fatal error config file: %s", readErr))
-	// }
-	// err := runtimeViper.Unmarshal(&Config)
-	// if err != nil {
-	// 	panic(fmt.Errorf("fatal error config file: %s", readErr))
-	// }
 }

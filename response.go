@@ -1,4 +1,4 @@
-// Copyright 2022 vforfreedom96@gmail.com
+// Copyright 2022 geebytes
 // Licensed under the Apache License, Version 2.0 (the 'License');
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -21,14 +21,13 @@ import (
 
 // Response the Request download response data
 type Response struct {
-	Status int // Status request response status code
-	Header map[string][]string // Header response header
-	Delay         float64       // Delay the time of handle download request
-	ContentLength int           // ContentLength response content length
-	URL           string        // URL of request url
-	Buffer        *bytes.Buffer // buffer read response buffer
+	Status        int                 // Status request response status code
+	Header        map[string][]string // Header response header
+	Delay         float64             // Delay the time of handle download request
+	ContentLength int                 // ContentLength response content length
+	URL           string              // URL of request url
+	Buffer        *bytes.Buffer       // buffer read response buffer
 }
-
 
 // responsePool a buffer poll of Response object
 var responsePool *sync.Pool = &sync.Pool{
