@@ -1,0 +1,75 @@
+# You can override the included template(s) by including variable overrides
+# SAST customization: https://docs.gitlab.com/ee/user/application_security/sast/#customizing-the-sast-settings
+# Secret Detection customization: https://docs.gitlab.com/ee/user/application_security/secret_detection/#customizing-settings
+# Dependency Scanning customization: https://docs.gitlab.com/ee/user/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
+# Note that environment variables can be set in several places
+# See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
+stages:
+    - lint
+    - unittest
+    - sonarqube-check
+静态代码检查:
+    image: registry.cn-shanghai.aliyuncs.com/geetest/golangci-lint:latest
+    stage: lint
+    before_script:
+      - mkdir -p .go
+      - go version
+      - go env -w GO111MODULE=on
+      - go env -w GOPROXY="https://goproxy.cn,direct"
+    script:
+      - golangci-lint run --issues-exit-code 0 --out-format checkstyle ./... > report.xml
+    artifacts:
+        expire_in: 1 day
+        paths:
+          - report.xml
+单元测试:
+    stage: unittest
+    image: registry.cn-shanghai.aliyuncs.com/geetest/golang:1.17
+    before_script:
+      - mkdir -p .go
+      - go version
+      - go env -w GO111MODULE=on
+      - go env -w GOPROXY="https://goproxy.cn,direct"
+      - go install github.com/axw/gocov/gocov@v1.0.0 
+      - go install github.com/AlekSi/gocov-xml@latest
+      - go install gotest.tools/gotestsum@latest
+      - export UNITTEST=true
+
+    script:
+        - go test -v -gcflags=-l ./... -coverprofile=cover.out
+        - gocov convert cover.out | gocov-xml > coverage.xml
+        - gotestsum --junitfile testreport.xml --format testname -- -v -gcflags=-l
+    artifacts:
+        expire_in: 1 day
+        when: always
+        paths:
+            - cover.out
+            - coverage.xml
+            - testreport.xml
+        reports:
+          junit: report.xml
+    retry: 2
+代码质量扫描:
+  image: 
+    name:  registry.cn-beijing.aliyuncs.com/geebytes/sonarscaner-cli:latest
+    entrypoint: [""]
+  stage: sonarqube-check
+  before_script:
+      - sed -i "s@HOST@${SONAR_SERVER_HOST}@" sonar-project.properties
+      - sed -i 's@USER@${SONAR_USER}@' sonar-project.properties
+      - sed -i 's/PASSWORD/${SONAR_PASSWORD}/' sonar-project.properties
+      - date
+  variables:
+    SONAR_USER_HOME: "${CI_PROJECT_DIR}/.sonar"  # Defines the location of the analysis task cache
+    GIT_DEPTH: "0"  # Tells git to fetch all the branches of the project, required by the analysis task
+    TZ: "Asia/Shanghai"
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .sonar/cache
+  script: 
+    - sonar-scanner
+  dependencies:
+    - 静态代码检查
+    - 单元测试
+

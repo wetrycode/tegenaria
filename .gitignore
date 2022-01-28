@@ -1,0 +1,5 @@
+*.xml
+*.cov
+*.out
+.vscode/
+./.vscode
