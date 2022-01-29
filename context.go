@@ -38,7 +38,7 @@ type ContextOption func(c *Context)
 func NewContext(request *Request, opts ...ContextOption) *Context {
 	ctx := &Context{
 		Request: request,
-		parent:            context.TODO(),
+		parent:            nil,
 		CtxId:          GetUUID(),
 		DownloadResult: NewDownloadResult(),
 	}

@@ -85,7 +85,8 @@ func newTestServer() *httptest.Server {
 
 				c.String(200, "POST")
 			} else {
-				c.String(200, string(data))
+				s := string(data)
+				c.String(200, s)
 			}
 		})
 		router.GET("/testGetCookie", func(c *gin.Context) {
@@ -188,11 +189,12 @@ func TestRequestGet(t *testing.T) {
 
 func TestRequestPost(t *testing.T) {
 	body := map[string]interface{}{
-		"key": "value",
+		"key1": "value1",
 	}
 	server := newTestServer()
 
 	request := NewRequest(server.URL+"/testPOST", POST, testParser, RequestWithRequestBody(body))
+
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
@@ -217,8 +219,9 @@ func TestRequestPost(t *testing.T) {
 		t.Errorf("response status = %d; expected %d", resp.Status, 200)
 
 	}
-	if resp.String() != "POST" {
-		t.Errorf("response text = %s; expected %s", resp.String(), "POST")
+	data,_ := resp.Json()
+	if data["key1"].(string) != "value1" {
+		t.Errorf("response text = %v; expected %s", data, body)
 
 	}
 
