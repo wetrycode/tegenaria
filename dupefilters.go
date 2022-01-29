@@ -86,10 +86,10 @@ func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// get request body
+	// read request body
 	if request.Body != nil {
-		body := request.Body
-		sha.Write(body)
+
+		sha.Write(request.Body)
 	}
 	// to handle request header
 	if len(request.Header) != 0 {

@@ -12,7 +12,6 @@
 package tegenaria
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/viper"
@@ -31,10 +30,6 @@ type Configuration struct {
 	Log *Logger `ymal:"log"`
 }
 
-func (l *Logger) GetValue(key string) (string, error) {
-	return "", nil
-}
-
 var Config *Configuration = &Configuration{
 	Log: &Logger{
 		Path:  "/var/log",
@@ -43,11 +38,6 @@ var Config *Configuration = &Configuration{
 }
 
 func load() bool {
-	defer func() {
-		if p := recover(); p != nil {
-			fmt.Printf("fatal error config file: %s", p)
-		}
-	}()
 	str, _ := os.Getwd()
 	runtimeViper := viper.New()
 

@@ -12,6 +12,7 @@
 package tegenaria
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -278,7 +279,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	// Build the request here and pass in the context information
 	var asCtxKey ctxKey = "key"
 	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
-	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
+	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), bytes.NewReader(ctx.Request.Body))
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
 		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))

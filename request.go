@@ -72,8 +72,9 @@ var reqLog *logrus.Entry = GetLogger("request")
 func RequestWithRequestBody(body map[string]interface{}) Option {
 	return func(r *Request) {
 		var err error
-		body, err := jsoniter.Marshal(body)
-		r.BodyReader = bytes.NewBuffer(body)
+
+		r.Body, err = jsoniter.Marshal(body)
+		r.BodyReader = bytes.NewBuffer(r.Body)
 		if err != nil {
 			reqLog.Errorf("set request body err %s", err.Error())
 			panic(fmt.Sprintf("set request body err %s", err.Error()))
