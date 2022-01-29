@@ -24,11 +24,8 @@ type Context struct {
 	// DownloadResult downloader handler result
 	DownloadResult *RequestResult
 
-	// Item
-	Item ItemInterface
-
-	//Ctx parent context
-	Ctx context.Context
+	//parent parent context
+	parent context.Context
 
 	// CtxId
 	CtxId string
@@ -41,9 +38,7 @@ type ContextOption func(c *Context)
 func NewContext(request *Request, opts ...ContextOption) *Context {
 	ctx := &Context{
 		Request: request,
-		// Response: NewResponse(),
-		Item:           nil,
-		Ctx:            context.TODO(),
+		parent:            context.TODO(),
 		CtxId:          GetUUID(),
 		DownloadResult: NewDownloadResult(),
 	}
@@ -55,38 +50,32 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 }
 func WithContext(ctx context.Context) ContextOption {
 	return func(c *Context) {
-		c.Ctx = ctx
-	}
-}
-
-func ContextWithItem(item ItemInterface) ContextOption {
-	return func(c *Context) {
-		c.Item = item
+		c.parent = ctx
 	}
 }
 
 // Deadline returns that there is no deadline (ok==false) when c has no Context.
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
-	if c.Request == nil || c.Ctx == nil {
-		return
+	if c.Request == nil || c.parent == nil {
+		return time.Time{}, false
 	}
-	return c.Ctx.Deadline()
+	return c.parent.Deadline()
 }
 
 // Done returns nil (chan which will wait forever) when c.Request has no Context.
 func (c *Context) Done() <-chan struct{} {
-	if c.Request == nil || c.Ctx == nil {
+	if c.Request == nil || c.parent == nil {
 		return nil
 	}
-	return c.Ctx.Done()
+	return c.parent.Done()
 }
 
 // Err returns nil when ct has no Context.
 func (c *Context) Err() error {
-	if c.Request == nil || c.Ctx == nil {
+	if c.Request == nil || c.parent == nil {
 		return nil
 	}
-	return c.Ctx.Err()
+	return c.parent.Err()
 }
 
 // Value returns the value associated with this context for key, or nil
@@ -96,10 +85,10 @@ func (c *Context) Value(key interface{}) interface{} {
 	if key == 0 {
 		return c.Request
 	}
-	if c.Request == nil || c.Ctx == nil {
+	if c.Request == nil || c.parent == nil {
 		return nil
 	}
-	return c.Ctx.Value(key)
+	return c.parent.Value(key)
 }
 func (c Context) GetCtxId() string {
 	return c.CtxId

@@ -1,6 +1,7 @@
 # Tegenaria crawl framework  
 [![codecov](https://codecov.io/gh/wetrycode/tegenaria/branch/master/graph/badge.svg?token=XMW3K1JYPB)](https://codecov.io/gh/wetrycode/tegenaria)
-[![go workflow](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)  
+[![go workflow](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)
+[![CodeQL](https://github.com/wetrycode/tegenaria/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/codeql-analysis.yml)  
 Tegenaria is a crawler framework based on golang 
 
 ## Installation

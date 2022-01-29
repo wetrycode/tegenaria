@@ -467,7 +467,6 @@ func TestJsonResponse(t *testing.T) {
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
 	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
@@ -486,10 +485,24 @@ func TestJsonResponse(t *testing.T) {
 		t.Errorf("response status = %d; expected %d", resp.Status, 200)
 
 	}
-	if resp.Json()["name"] != "json" {
+	r,errJson := resp.Json()
+	if r["name"] != "json" {
 		t.Errorf("request with headers get = %s; expected %s", resp.String(), "json")
 
 	}
+	if errJson !=nil{
+		t.Errorf("read response json err %s", errJson.Error())
+
+	}
+	monkey.Patch(json.Unmarshal, func(data []byte, v interface{}) error {
+		return errors.New("Unmarshal json response")
+	})
+	_,errJson = resp.Json()
+	if !strings.Contains(errJson.Error(), "Unmarshal json response"){
+		t.Errorf("unmarshal json response except 'Unmarshal json response' error but not")
+
+	}
+
 }
 func TestRedirectLimit(t *testing.T) {
 	server := newTestServer()
@@ -594,7 +607,6 @@ func TestResponseReadError(t *testing.T) {
 	downloader.Download(ctx, resultChan)
 	result := <-resultChan
 	err := result.DownloadResult.Error
-	// resp := result.DownloadResult.Response
 	msg := err.Error()
 	if !strings.Contains(msg, "read response to buffer error") {
 		t.Errorf("request should have error read response to buffer error,but get %s\n", err.Error())
@@ -643,7 +655,6 @@ func TestDownloaderRequestConextError(t *testing.T) {
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
 	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()

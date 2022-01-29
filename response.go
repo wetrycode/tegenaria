@@ -38,29 +38,19 @@ var responsePool *sync.Pool = &sync.Pool{
 var respLog *logrus.Entry = GetLogger("response")
 
 // Json deserialize the response body to json
-func (r *Response) Json() map[string]interface{} {
-	defer func() {
-		if p := recover(); p != nil {
-			respLog.Errorf("panic recover! p: %v", p)
-		}
-
-	}()
+func (r *Response) Json() (map[string]interface{},error) {
 	jsonResp := map[string]interface{}{}
 	err := json.Unmarshal(r.Buffer.Bytes(), &jsonResp)
 	if err != nil {
 		respLog.Errorf("Get json response error %s", err.Error())
+		
+		return nil, err
 	}
-	return jsonResp
+	return jsonResp,nil
 }
 
 // String get response text from response body
 func (r *Response) String() string {
-	defer func() {
-		if p := recover(); p != nil {
-			respLog.Errorf("panic recover! p: %v", p)
-		}
-
-	}()
 	return r.Buffer.String()
 }
 
