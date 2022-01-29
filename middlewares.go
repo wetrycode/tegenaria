@@ -19,7 +19,7 @@ type MiddlewaresInterface interface {
 
 	// ProcessRequest process request before request to do download
 	ProcessRequest(ctx *Context) error
-
+  
 	// ProcessResponse process response before response to parse
 	ProcessResponse(ctx *Context, req chan<- *Context) error
 
