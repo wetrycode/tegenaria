@@ -14,11 +14,8 @@ package tegenaria
 import (
 	"runtime"
 
-	"github.com/sirupsen/logrus"
 	queue "github.com/yireyun/go-queue"
 )
-
-var cacheLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
 
 // CacheInterface request cache interface
 // you can use redis to do cache
