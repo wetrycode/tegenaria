@@ -68,9 +68,9 @@ type SpiderEngine struct {
 	// It will be received by doError funcation
 	errorChan chan *HandleError
 
-	// cacheChan a *Request channel its data is send by writeCache and the data source is from requests cache
-	// Its data will receive by readCache and then will be handle by download
-	cacheChan chan *Context
+	// // cacheChan a *Request channel its data is send by writeCache and the data source is from requests cache
+	// // Its data will receive by readCache and then will be handle by download
+	// cacheChan chan *Context
 
 	// quitSignal recv quit signal such as ctrl-c
 	quitSignal chan os.Signal
@@ -159,16 +159,6 @@ func (e *SpiderEngine) engineScheduler(spider SpiderInterface) {
 Loop:
 	for {
 		if e.isRunning {
-			// 避免cache队列关闭后无法退出
-			select {
-			case req, ok := <-e.cacheChan:
-				if ok {
-					e.waitGroup.Add(1)
-					go e.recvRequestHandler(req)
-				}
-
-			default:
-			}
 			select {
 			case req := <-e.requestsChan:
 				// write request to cache
@@ -230,7 +220,6 @@ func (e *SpiderEngine) listenNotify() {
 			if ok {
 				engineLog.Warningln("Engine recv signal ", s)
 				e.isDone = true
-				close(e.cacheChan)
 				close(e.quitSignal)
 				signal.Stop(e.quitSignal)
 				return
@@ -302,7 +291,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 
 // checkChanStatus check all channel if empty
 func (e *SpiderEngine) checkChanStatus() bool {
-	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan) + len(e.errorChan) + len(e.cacheChan)) == 0
+	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan) + len(e.errorChan)) == 0
 }
 
 // checkReadyDone monitor engine running status and control ctx status.
@@ -351,6 +340,7 @@ func (e *SpiderEngine) writeCache(ctx *Context) {
 		err := e.cache.enqueue(ctx)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Push request to cache queue error %s", err.Error())
+			e.errorChan <- NewError(ctx.CtxId, err)
 		}
 	}
 
@@ -368,9 +358,11 @@ func (e *SpiderEngine) readCache() {
 	}()
 	for {
 		req, err := e.cache.dequeue()
-		if req != nil && err == nil {
+		if req != nil && err == nil && !e.isDone {
 			request := req.(*Context)
-			e.cacheChan <- request
+			e.waitGroup.Add(1)
+			go e.recvRequestHandler(request)
+
 		}
 		if e.isDone {
 			return
@@ -566,6 +558,7 @@ func DefaultErrorHandler(spider SpiderInterface, err *HandleError) {
 }
 
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
+	numCPU:=runtime.NumCPU()
 	Engine = &SpiderEngine{
 		spiders:               NewSpiders(),
 		requestsChan:          make(chan *Context, 1024),
@@ -573,7 +566,6 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 		respChan:              make(chan *Context, 1024),
 		requestResultChan:     make(chan *Context, 1024),
 		errorChan:             make(chan *HandleError, 1024),
-		cacheChan:             make(chan *Context, 1024),
 		quitSignal:            make(chan os.Signal, 1),
 		startRequestFinish:    false,
 		pipelines:             make(ItemPipelines, 0),
@@ -590,10 +582,10 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 		mainWaitGroup:      &sync.WaitGroup{},
 		isDone:             false,
 		isRunning:          false,
-		schedulerNum:       4,
+		schedulerNum:       uint(numCPU),
 		Stats:              &SpiderStats{0, 0, 0.0, 0},
 		cache:              NewRequestCache(),
-		cacheReadNum:       2,
+		cacheReadNum:       uint(numCPU),
 		ErrorHandler:       DefaultErrorHandler,
 	}
 	for _, o := range opts {

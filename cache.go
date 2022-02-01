@@ -12,8 +12,13 @@
 package tegenaria
 
 import (
+	"runtime"
+
+	"github.com/sirupsen/logrus"
 	queue "github.com/yireyun/go-queue"
 )
+
+var cacheLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
 
 // CacheInterface request cache interface
 // you can use redis to do cache
@@ -30,13 +35,19 @@ type requestCache struct {
 
 // enqueue put request to cache queue
 func (c *requestCache) enqueue(ctx *Context) error {
+	// It will wait to put request until queue is not full
+	if ctx == nil || ctx.Request == nil {
+		return nil
+	}
 	for {
-		// It will wait to put request until queue is not full
 		ok, _ := c.queue.Put(ctx)
 		if ok {
 			return nil
+		} else {
+			runtime.Gosched()
 		}
 	}
+
 }
 
 // dequeue get request object from cache queue
@@ -58,6 +69,6 @@ func (c *requestCache) getSize() int64 {
 // NewRequestCache get a new requestCache
 func NewRequestCache() *requestCache {
 	return &requestCache{
-		queue: queue.NewQueue(1024 * 2),
+		queue: queue.NewQueue(1024 * 1024),
 	}
 }

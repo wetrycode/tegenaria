@@ -59,7 +59,7 @@ func TestEngineOptions(t *testing.T) {
 		EngineWithAllowStatusCode([]uint64{404}),
 		EngineWithUniqueReq(false),
 		EngineWithSchedulerNum(2),
-		EngineWithRequestNum(32),
+		// EngineWithRequestNum(32),
 		EngineWithReadCacheNum(4),
 		EngineWithDownloader(NewDownloader()),
 	)
@@ -76,10 +76,6 @@ func TestEngineOptions(t *testing.T) {
 		t.Errorf("spider engine set schedulers number value error\n")
 
 	}
-	if cap(engine.cacheChan) != 32 {
-		t.Errorf("spider engine set request number value error except %d, get %d\n", 32, cap(engine.cacheChan))
-
-	}
 	if engine.cacheReadNum != 4 {
 		t.Errorf("spider engine set cache reader number value error\n")
 
@@ -88,7 +84,7 @@ func TestEngineOptions(t *testing.T) {
 }
 
 func TestCache(t *testing.T) {
-	server := newTestServer()
+	// server := newTestServer()
 
 	engine := NewSpiderEngine()
 	engine.waitGroup.Add(1)
@@ -103,14 +99,14 @@ func TestCache(t *testing.T) {
 	go engine.readCache()
 	engine.isDone = true
 	engine.mainWaitGroup.Wait()
-	if len(engine.cacheChan) == 0 {
-		t.Errorf("Read request from cache error get empty cache channel buffer")
+	// if len(engine.cacheChan) == 0 {
+	// 	t.Errorf("Read request from cache error get empty cache channel buffer")
 
-	}
-	new_req := <-engine.cacheChan
-	if new_req != nil && new_req.Request.Url != server.URL+"/testGET" {
-		t.Errorf("Read request from cache error except url %s, but get url %s\n", server.URL+"/testGET", new_req.Request.Url)
-	}
+	// }
+	// new_req := <-engine.cacheChan
+	// if new_req != nil && new_req.Request.Url != server.URL+"/testGET" {
+	// 	t.Errorf("Read request from cache error except url %s, but get url %s\n", server.URL+"/testGET", new_req.Request.Url)
+	// }
 
 }
 
