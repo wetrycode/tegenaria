@@ -81,8 +81,8 @@ func TestWithEmptyContext(t *testing.T) {
 
 	ctx := NewContext(request)
 	c :=ctx.Done()
-	if c !=nil{
-		t.Errorf("Context done channel is not nil")
+	if c ==nil{
+		t.Errorf("Context done channel is nil")
 
 	}
 	_, ok:=ctx.Deadline()

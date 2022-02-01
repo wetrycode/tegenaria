@@ -53,7 +53,7 @@ This project borrows the design idea of [scrapy](https://github.com/scrapy/scrap
 * The request object is first written to the cache queue (which uses memory by default), before the engine enables or skips the request de-duplicator depending on the settings
 * If the request de-duplicator is enabled, it calculates the request fingerprint and puts it into a Bloom filter for de-duplication.
 * If it is a duplicate request and the engine is set not to allow duplicate requests to be sent, the request is ignored otherwise the reuquest is written to the cache
-* The scheduler reads the request from the cache and sends it to the download processor via the cache channel
+* Scheduler reads Request from the cache and start the download processor
 * The download processor calls the ProcessRequest method of the download middleware in order of priority before the official download.  
 * The downloader generates a RequestResult after processing the request, including HandleError and Response, and then sends the request result to the scheduler via the RequestResult channel  
 * The scheduler will enable a download result handler concurrently for each received RequestResult to process the HandleError to the error channel and the non-empty Response to the response channel.

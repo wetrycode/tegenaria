@@ -15,6 +15,7 @@ import (
 	"context"
 	"time"
 )
+
 // Context spider crawl request schedule unit
 // it is used on all data flow
 type Context struct {
@@ -32,15 +33,20 @@ type Context struct {
 
 	// Error
 	Error error
+
+	//
+	Cancel context.CancelFunc
 }
 type ContextOption func(c *Context)
 
 func NewContext(request *Request, opts ...ContextOption) *Context {
+	parent, cancel := context.WithCancel(context.TODO())
 	ctx := &Context{
-		Request: request,
-		parent:            nil,
+		Request:        request,
+		parent:         parent,
 		CtxId:          GetUUID(),
 		DownloadResult: NewDownloadResult(),
+		Cancel:         cancel,
 	}
 	for _, o := range opts {
 		o(ctx)
@@ -50,7 +56,9 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 }
 func WithContext(ctx context.Context) ContextOption {
 	return func(c *Context) {
-		c.parent = ctx
+		parent, cancel := context.WithCancel(ctx)
+		c.parent = parent
+		c.Cancel = cancel
 	}
 }
 
