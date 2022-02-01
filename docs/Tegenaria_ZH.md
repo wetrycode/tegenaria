@@ -54,8 +54,8 @@
 * Spider 通过StartRequest 方法构建种子请求(Context)，并通过Request channel发送到调度器  
 * 请求对象会先写到缓存队列(默认使用内存)中 ,在此之前引擎根据设置启用或跳过request去重器
 * 若启用request去重器，其会计算request指纹并放入布隆过滤器进行去重处理
-* 若是重复的请求且设置引擎不允许重复请求发送，则忽略该请求否则将reuquest写入缓存
-* 调度器从缓存中读取Request并通过cache channel发送到下载处理器
+* 若是重复的请求且设置引擎不允许重复请求发送，则忽略该请求否则将request写入缓存
+* 调度器从缓存中读取Request并启用下载处理器
 * 下载处理器在正式下载之前会按优先级调用下载中间件的ProcessRequest方法  
 * 下载器在处理请求结束后会生成RequestResult，包含HandleError和Response,随后请求结果会通过RequestResult channel发送到调度器  
 * 调度器接会为每一个接收到的RequestResult启用一个下载结果处理器协程进行处理将HandleError发送到error channel,将非空Response发送到response channel
