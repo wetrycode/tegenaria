@@ -82,12 +82,12 @@ func EngineWithReadCacheNum(cacheReadNum uint) EngineOption {
 	}
 }
 
-// // EngineWithRequestNum set request channel buffer size
-// // request channel buffer size default to 1024
-// func EngineWithRequestNum(requestNum uint) EngineOption {
-// 	return func(r *SpiderEngine) {
-// 		r.cacheChan = make(chan *Context, requestNum)
-// 		engineLog.Infoln("Set request channel buffer size ", requestNum)
+// EngineWithRequestNum set request channel buffer size
+// request channel buffer size default to 1024
+func EngineWithRequestNum(requestNum int64) EngineOption {
+	return func(r *SpiderEngine) {
+		r.downloadLimit = requestNum
+		engineLog.Infoln("Set request channel buffer size ", requestNum)
 
-// 	}
-// }
+	}
+}
