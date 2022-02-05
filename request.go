@@ -164,6 +164,7 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request.parser = parser
 	request.ResponseWriter = nil
 	request.BodyReader = nil
+	request.Meta = nil
 	request.Header = make(map[string]string)
 	request.MaxRedirects = 3
 	request.AllowRedirects = true
