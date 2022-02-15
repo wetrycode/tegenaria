@@ -17,7 +17,7 @@ require (
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 )
-
+// Undo the wrong version number
 retract (
 	v0.2.6
 	v0.2.5
