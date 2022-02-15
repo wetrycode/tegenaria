@@ -19,12 +19,20 @@ require (
 )
 // Undo the wrong version number
 retract (
+// Undo the wrong version number
 	v0.2.6
+// Undo the wrong version number
 	v0.2.5
+	// Undo the wrong version number
 	v0.2.4
+	// Undo the wrong version number
 	v0.2.3
+	// Undo the wrong version number
 	v0.2.2
+	// Undo the wrong version number
 	v0.2.1
+	// Undo the wrong version number
 	v0.2.0
+	// Undo the wrong version number
 	v0.1.3
 )

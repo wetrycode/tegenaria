@@ -10,7 +10,7 @@ To install Tegenaria package, you should install Go and set your Go workspace fi
 1. The first need [Go](https://golang.org/) installed (**version 1.13+ is required**), then you can use the below Go command to install Tegenaria.
 
 ```bash
-go get -u github.com/wetrycode/tegenaria
+go get -u github.com/wetrycode/tegenaria@latest
 ```
 2. Import it in your code:
 
