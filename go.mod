@@ -17,3 +17,14 @@ require (
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 )
+
+retract (
+	v0.2.6
+	v0.2.5
+	v0.2.4
+	v0.2.3
+	v0.2.2
+	v0.2.1
+	v0.2.0
+	v0.1.3
+)
