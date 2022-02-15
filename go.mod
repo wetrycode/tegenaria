@@ -18,22 +18,12 @@ require (
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 )
 
-// Version number planning error
 retract (
-	// Version number planning error
 	v0.2.6
-	// Version number planning error
 	v0.2.5
-	// Version number planning error
 	v0.2.4
-	// Version number planning error
 	v0.2.3
-	// Version number planning error
 	v0.2.2
-	// Version number planning error
 	v0.2.1
-	// Version number planning error
 	v0.2.0
-	// Version number planning error
-	v0.1.3
 )
