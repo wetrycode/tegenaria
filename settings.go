@@ -21,13 +21,41 @@ type Settings interface {
 	GetValue(key string) (error, string)
 }
 
+// Logger logger settings
 type Logger struct {
-	Path  string `yaml:"path"`
+	Path string `yaml:"path"`
+	// Level log level
 	Level string `yaml:"level"`
 }
 
+// RedisConfig redis config
+type RedisConfig struct {
+	// Host redis server host
+	Host string `yaml:"host"`
+
+	// Port redis server port
+	Port int `yaml:"port"`
+
+	// Password redis server password
+	Password string `yaml:"password"`
+
+	// Timeout redis operate timeout
+	Timeout int64 `yaml:"timeout"`
+
+	// MaxIdle
+	MaxIdle int `yaml:"MaxIdle"`
+
+	// MaxActive
+	MaxActive int `yaml:"MaxActive"`
+
+	// DB number
+	DB int `yaml:"db"`
+}
+
+// Configuration tegenaria config
 type Configuration struct {
-	Log *Logger `ymal:"log"`
+	Log         *Logger      `yaml:"log"`
+	RedisConfig *RedisConfig `yaml:"redis"`
 }
 
 var Config *Configuration = &Configuration{
@@ -37,6 +65,7 @@ var Config *Configuration = &Configuration{
 	},
 }
 
+// load config from settings file
 func load() bool {
 	str, _ := os.Getwd()
 	runtimeViper := viper.New()

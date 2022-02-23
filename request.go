@@ -38,7 +38,7 @@ type Request struct {
 	Meta            map[string]interface{} // Set other data
 	AllowRedirects  bool                   // Set if allow redirects. default is true
 	MaxRedirects    int                    // Set max allow redirects number
-	parser          Parser                 // Set response parser funcation
+	Parser          ParserInterface                 // Set response parser funcation
 	maxConnsPerHost int                    // Set max connect number for per host
 	BodyReader      io.Reader              // Set request body reader
 	ResponseWriter  io.Writer              // Set request response body writer,like file
@@ -57,7 +57,16 @@ type Option func(r *Request)
 
 // Parser response parse handler
 type Parser func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
+type ParserInterface interface {
+	Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
+}
 
+type DefaultParser struct{
+
+}
+func(p *DefaultParser)Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error{
+	return nil
+}
 // bufferPool buffer object pool
 var bufferPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
@@ -157,11 +166,11 @@ func (r *Request) updateQueryParams() {
 
 // NewRequest create a new Request.
 // It will get a nil request form requestPool and then init params
-func NewRequest(url string, method string, parser Parser, opts ...Option) *Request {
+func NewRequest(url string, method string, parser ParserInterface, opts ...Option) *Request {
 	request := requestPool.Get().(*Request)
 	request.Url = url
 	request.Method = method
-	request.parser = parser
+	request.Parser = parser
 	request.ResponseWriter = nil
 	request.BodyReader = nil
 	request.Meta = nil
@@ -179,10 +188,7 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 
 // freeRequest reset Request and the put it into requestPool
 func freeRequest(r *Request) {
-	r.parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
-		// default response parser
-		return nil
-	}
+	r.Parser = &DefaultParser{}
 	r.AllowRedirects = true
 	r.Meta = nil
 	r.MaxRedirects = 3

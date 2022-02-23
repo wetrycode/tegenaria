@@ -91,3 +91,12 @@ func EngineWithRequestNum(requestNum int64) EngineOption {
 
 	}
 }
+func EngineWithDistributed(distributed bool,p float64, n uint64) EngineOption{
+	return func(r *SpiderEngine) {
+		if distributed{
+			r.RFPDupeFilter = NewRedisBloomFilter(p,n)
+			r.cache = NewDistributedCache()
+
+		}
+	}
+}

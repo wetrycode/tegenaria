@@ -274,7 +274,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 	for n := 0; n < int(e.cacheReadNum); n++ {
 		e.mainWaitGroup.Add(1)
 		// read request from cache and send to cacheChan
-		go e.readCache()
+		go e.readCache(spider)
 	}
 	// start schedulers
 	for i := 0; i < int(e.schedulerNum); i++ {
@@ -353,7 +353,7 @@ func (e *SpiderEngine) writeCache(ctx *Context) {
 }
 
 // readCache read request from cache to cacheChan
-func (e *SpiderEngine) readCache() {
+func (e *SpiderEngine) readCache(spider SpiderInterface) {
 	defer func() {
 		e.mainWaitGroup.Done()
 		engineLog.Infof("Close read cache\n")
@@ -369,7 +369,7 @@ func (e *SpiderEngine) readCache() {
 		if atomic.LoadInt64(&e.currentDownload) > e.downloadLimit{
 			continue
 		}
-		req, err := e.cache.dequeue()
+		req, err := e.cache.dequeue(spider)
 		if req != nil && err == nil && !e.isDone {
 			request := req.(*Context)
 			e.recvRequestHandler(request)
@@ -423,7 +423,7 @@ func (e *SpiderEngine) doFilter(ctx *Context, r *Request) bool {
 	// filter switch
 	if e.filterDuplicateReq {
 		// do filter
-		result, err := e.RFPDupeFilter.DoDupeFilter(r)
+		result, err := e.RFPDupeFilter.DoDupeFilter(ctx)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Warningf("Request do unique error %s", err.Error())
 			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
@@ -495,7 +495,7 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
 	} else {
 		e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
-		err := resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+		err := resp.Request.Parser.Parse(resp, e.itemsChan, e.requestsChan)
 		// release Request and Response object memory to buffer
 		if err != nil {
 			errMsg := fmt.Errorf("%s %s", ErrResponseParse.Error(), err.Error())

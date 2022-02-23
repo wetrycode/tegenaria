@@ -11,7 +11,11 @@
 
 package tegenaria
 
-import "sync"
+import (
+	"bytes"
+	"encoding/gob"
+	"sync"
+)
 
 var onceInit sync.Once
 
@@ -19,6 +23,12 @@ func init() {
 	onceInit.Do(func() {
 		initSettings()
 		initLog()
+		gob.Register(Proxy{})
+		gob.Register(&Request{})
+		gob.Register(&RequestResult{})
+		gob.Register(&Response{})
+		gob.Register(bytes.Buffer{})
+		gob.Register(&HandleError{})
 	})
 
 }

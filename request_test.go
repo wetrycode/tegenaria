@@ -21,5 +21,5 @@ func TestRequestBodyReadError(t *testing.T) {
 	})
 	body := make(map[string]interface{})
 	body["test"] = "test"
-	NewRequest("http://www.example.com", GET, testParser, RequestWithRequestBody(body))
+	NewRequest("http://www.example.com", GET, &TestParser{}, RequestWithRequestBody(body))
 }

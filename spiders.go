@@ -22,9 +22,9 @@ type SpiderInterface interface {
 	// StartRequest make new request by feed urls
 	StartRequest(req chan<- *Context)
 
-	// Parser parse response ,it can generate ItemMeta and send to engine
+	// Parse parse response ,it can generate ItemMeta and send to engine
 	// it also can generate new Request
-	Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
+	Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
 
 	// ErrorHandler it is used to handler all error recive from engine
 	ErrorHandler(err *HandleError, req chan<- *Context)
@@ -61,7 +61,7 @@ func (s *BaseSpider) StartRequest(req chan<- *Context) {
 
 // Parser parse request respone
 // it will send item or new request to engine
-func (s *BaseSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+func (s *BaseSpider) Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
 	return nil
 }
 func (s *BaseSpider) ErrorHandler(err *HandleError) {

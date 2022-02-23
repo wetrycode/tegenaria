@@ -23,27 +23,30 @@ import (
 	"github.com/spaolacci/murmur3"
 )
 
+
 // RFPDupeFilterInterface Request Fingerprint duplicates filter interface
 type RFPDupeFilterInterface interface {
-	// Fingerprint compute request fingerprint
-	Fingerprint(request *Request) ([]byte, error)
 
 	// DoDupeFilter do request fingerprint duplicates filter
-	DoDupeFilter(request *Request) (bool, error)
+	DoDupeFilter(ctx *Context) (bool, error)
 }
+type FingerprintCalculator struct{
 
+}
 type RFPDupeFilter struct {
 	bloomFilter *bloom.BloomFilter
+	FRP *FingerprintCalculator
 }
 
 func NewRFPDupeFilter(bloomM uint, bloomK uint) *RFPDupeFilter {
 	return &RFPDupeFilter{
 		bloomFilter: bloom.New(bloomM, bloomK),
+		FRP: &FingerprintCalculator{},
 	}
 }
 
 // canonicalizeUrl canonical request url before calculate request fingerprint
-func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool) url.URL {
+func (f *FingerprintCalculator) canonicalizetionUrl(request *Request, keepFragment bool) url.URL {
 	u, _ := url.ParseRequestURI(request.Url)
 	u.RawQuery = u.Query().Encode()
 	u.ForceQuery = true
@@ -54,7 +57,7 @@ func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool)
 }
 
 // encodeHeader encode request header before calculate request fingerprint
-func (f *RFPDupeFilter) encodeHeader(request *Request) string {
+func (f *FingerprintCalculator) encodeHeader(request *Request) string {
 	h := request.Header
 	if h == nil {
 		return ""
@@ -73,7 +76,8 @@ func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 	return buf.String()
 }
 
-func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
+// Fingerprint get request fingerprint
+func (f *FingerprintCalculator) Fingerprint(request *Request) ([]byte, error) {
 	// get sha128
 	sha := murmur3.New128()
 	_, err := io.WriteString(sha, request.Method)
@@ -103,9 +107,9 @@ func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
 }
 
 // DoDupeFilter deduplicate request filter by bloom
-func (f *RFPDupeFilter) DoDupeFilter(request *Request) (bool, error) {
+func (f *RFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
 	// Use bloom filter to do fingerprint deduplication
-	data, err := f.Fingerprint(request)
+	data, err := f.FRP.Fingerprint(ctx.Request)
 	if err != nil {
 		return false, err
 	}

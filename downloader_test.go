@@ -25,7 +25,11 @@ var onceProxyServer sync.Once
 var ts *httptest.Server
 var proxyServer *httptest.Server
 
-func testParser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+type TestParser struct{
+
+}
+
+func(t *TestParser)Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
 	newItem := &testItem{
 		test:      "test",
 		pipelines: make([]int, 0),
@@ -34,10 +38,6 @@ func testParser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
 	return nil
 }
 
-// func doTest(request *Request)(Response, Error, context.CancelFunc){
-// 	return nil, nil, nil
-
-// }
 func newTestProxyServer() *httptest.Server {
 	onceProxyServer.Do(func() {
 		gin.SetMode(gin.ReleaseMode)
@@ -155,11 +155,14 @@ func newTestServer() *httptest.Server {
 func TestRequestGet(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()
@@ -193,14 +196,16 @@ func TestRequestPost(t *testing.T) {
 	}
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testPOST", POST, testParser, RequestWithRequestBody(body))
+	request := NewRequest(server.URL+"/testPOST", POST, &TestParser{}, RequestWithRequestBody(body))
 
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
-
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(cancelCtx)
 	defer func() {
 		cancel()
 	}()
@@ -235,12 +240,15 @@ func TestRequestCookie(t *testing.T) {
 	server := newTestServer()
 	// downloader := NewDownloader()
 
-	request := NewRequest(server.URL+"/testGetCookie", GET, testParser, RequestWithRequestCookies(cookies))
+	request := NewRequest(server.URL+"/testGetCookie", GET, &TestParser{}, RequestWithRequestCookies(cookies))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(cancelCtx)
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
@@ -274,13 +282,15 @@ func TestRequestQueryParams(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
 
-	request := NewRequest(server.URL+"/testParams", GET, testParser, RequestWithRequestParams(params))
+	request := NewRequest(server.URL+"/testParams", GET, &TestParser{}, RequestWithRequestParams(params))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()
@@ -316,14 +326,15 @@ func TestRequestProxy(t *testing.T) {
 	}
 
 	defer proxyServer.Close()
-	request := NewRequest(server.URL+"/proxy", GET, testParser, RequestWithRequestProxy(proxy))
+	request := NewRequest(server.URL+"/proxy", GET, &TestParser{}, RequestWithRequestProxy(proxy))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
-
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(cancelCtx)
 	defer func() {
 		cancel()
 	}()
@@ -357,12 +368,15 @@ func TestRequestHeaders(t *testing.T) {
 		"Intparams":  "1",
 		"Boolparams": "false",
 	}
-	request := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
+	request := NewRequest(server.URL+"/testHeader", GET, &TestParser{}, RequestWithRequestHeader(headers))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(cancelCtx)
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
@@ -392,12 +406,16 @@ func TestTimeout(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
 
-	request := NewRequest(server.URL+"/testTimeout", GET, testParser)
+	request := NewRequest(server.URL+"/testTimeout", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
@@ -425,12 +443,16 @@ func TestLargeFile(t *testing.T) {
 	defer os.Remove("test.file")
 	defer file.Close()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
-	request := NewRequest(server.URL+"/testFile", GET, testParser, RequestWithResponseWriter(file))
+	request := NewRequest(server.URL+"/testFile", GET, &TestParser{}, RequestWithResponseWriter(file))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
@@ -464,12 +486,15 @@ func TestLargeFile(t *testing.T) {
 func TestJsonResponse(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testJson", GET, testParser)
+	request := NewRequest(server.URL+"/testJson", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()
@@ -510,12 +535,16 @@ func TestJsonResponse(t *testing.T) {
 func TestRedirectLimit(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithMaxRedirects(1))
+	request := NewRequest(server.URL+"/testRedirect1", GET, &TestParser{}, RequestWithMaxRedirects(1))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
@@ -539,12 +568,15 @@ func TestRedirectLimit(t *testing.T) {
 func TestNotAllowRedirect(t *testing.T) {
 	server := newTestServer()
 	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithAllowRedirects(false))
+	request := NewRequest(server.URL+"/testRedirect1", GET, &TestParser{}, RequestWithAllowRedirects(false))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()
@@ -567,12 +599,15 @@ func TestNotAllowRedirect(t *testing.T) {
 
 func TestInvalidURL(t *testing.T) {
 	downloader := NewDownloader()
-	request := NewRequest("error"+"/testRedirect1", GET, testParser)
+	request := NewRequest("error"+"/testRedirect1", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()
@@ -591,11 +626,14 @@ func TestInvalidURL(t *testing.T) {
 func TestResponseReadError(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()
@@ -629,11 +667,15 @@ func TestProxyUrlError(t *testing.T) {
 		return nil, errors.New("proxy invail url")
 	})
 	defer proxyServer.Close()
-	request := NewRequest(server.URL+"/proxy", GET, testParser, RequestWithRequestProxy(proxy))
+	request := NewRequest(server.URL+"/proxy", GET, &TestParser{}, RequestWithRequestProxy(proxy))
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
 	defer func() {
 		cancel()
 	}()
@@ -653,11 +695,14 @@ func TestProxyUrlError(t *testing.T) {
 func TestDownloaderRequestConextError(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, WithContext(cancelCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider1)
+	ctx.SetContext(cancelCtx)
 
 	defer func() {
 		cancel()

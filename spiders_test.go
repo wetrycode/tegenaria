@@ -10,13 +10,13 @@ type TestSpider struct {
 
 func (s *TestSpider) StartRequest(req chan<- *Context) {
 	for _, url := range s.FeedUrls {
-		request := NewRequest(url, GET, s.Parser)
-		ctx := NewContext(request)
+		request := NewRequest(url, GET, s)
+		ctx := NewContext(request,s)
 		req <- ctx
 	}
 }
-func (s *TestSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
-	return testParser(resp, item, req)
+func (s *TestSpider) Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+	return nil
 }
 func (s *TestSpider) ErrorHandler(err *HandleError, req chan<- *Context){
 

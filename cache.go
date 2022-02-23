@@ -20,10 +20,16 @@ import (
 // CacheInterface request cache interface
 // you can use redis to do cache
 type CacheInterface interface {
-	enqueue(ctx *Context) error    // enqueue put request to cache
-	dequeue() (interface{}, error) // dequeue get request from cache
-	getSize() int64                // getSize get cache size
+	// enqueue put request to cache
+	enqueue(ctx *Context) error
+
+   // dequeue get request from cache
+	dequeue(spider SpiderInterface) (interface{}, error) 
+
+	// getSize get cache size
+	getSize(Spider SpiderInterface) (int64,error)                
 }
+
 
 // requestCache request cache
 type requestCache struct {
@@ -48,7 +54,7 @@ func (c *requestCache) enqueue(ctx *Context) error {
 }
 
 // dequeue get request object from cache queue
-func (c *requestCache) dequeue() (interface{}, error) {
+func (c *requestCache) dequeue(Spider SpiderInterface) (interface{}, error) {
 	val, ok, _ := c.queue.Get()
 	if !ok {
 		return nil, ErrGetCacheItem
@@ -59,8 +65,8 @@ func (c *requestCache) dequeue() (interface{}, error) {
 }
 
 // getSize get cache queue size
-func (c *requestCache) getSize() int64 {
-	return int64(c.queue.Quantity())
+func (c *requestCache) getSize(Spider SpiderInterface) (int64,error) {
+	return int64(c.queue.Quantity()), nil
 }
 
 // NewRequestCache get a new requestCache

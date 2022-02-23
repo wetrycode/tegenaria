@@ -12,6 +12,12 @@ import (
 	"github.com/wxnacy/wgo/arrays"
 )
 
+type errorParser struct {
+}
+
+func (e *errorParser) Parse(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+	return errors.New("parse response error")
+}
 func newTestEngine(spiderName string) *SpiderEngine {
 	engine := NewSpiderEngine()
 	server := newTestServer()
@@ -32,10 +38,15 @@ func newTestEngine(spiderName string) *SpiderEngine {
 	return engine
 }
 func newTestRequest() *Context {
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
 	server := newTestServer()
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	var MainCtx context.Context = context.Background()
-	ctx := NewContext(request, WithContext(MainCtx))
+	ctx := NewContext(request, spider)
+	ctx.SetContext(MainCtx)
+
 	return ctx
 }
 func TestEngineRegister(t *testing.T) {
@@ -93,10 +104,12 @@ func TestCache(t *testing.T) {
 	ctx := newTestRequest()
 	go engine.writeCache(ctx)
 	engine.waitGroup.Wait()
-
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
 	// read a request from cache
 	engine.mainWaitGroup.Add(1)
-	go engine.readCache()
+	go engine.readCache(spider)
 	engine.isDone = true
 	engine.mainWaitGroup.Wait()
 	// if len(engine.cacheChan) == 0 {
@@ -119,9 +132,12 @@ func TestDoFilter(t *testing.T) {
 		go engine.writeCache(ctx)
 	}
 	engine.waitGroup.Wait()
-
-	if engine.cache.getSize() != 1 {
-		t.Errorf("Cache filter duplicate request fail except %d requests, but get %d requests\n", 1, engine.cache.getSize())
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
+	size, _:= engine.cache.getSize(spider)
+	if size != 1 {
+		t.Errorf("Cache filter duplicate request fail except %d requests, but get %d requests\n", 1, size)
 	}
 
 }
@@ -334,13 +350,17 @@ func TestProcessItemError(t *testing.T) {
 	}
 }
 func TestParseError(t *testing.T) {
+
 	engine := newTestEngine("testSpiderParseError")
 	server := newTestServer()
-	request := NewRequest(server.URL+"/testGET", GET, func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
-		return errors.New("parse response error")
-	})
+	request := NewRequest(server.URL+"/testGET", GET, &errorParser{})
 	var MainCtx context.Context = context.Background()
-	ctx := NewContext(request, WithContext(MainCtx))
+	spider1 := &TestSpider{
+		NewBaseSpider("testSpiderParseError", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider1)
+	ctx.SetContext(MainCtx)
+
 	// test 403 status codes
 	engine.waitGroup.Add(1)
 	go engine.doDownload(ctx)

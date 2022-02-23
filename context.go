@@ -33,13 +33,14 @@ type Context struct {
 
 	// Error
 	Error error
-
 	//
 	Cancel context.CancelFunc
+
+	Spider SpiderInterface
 }
 type ContextOption func(c *Context)
 
-func NewContext(request *Request, opts ...ContextOption) *Context {
+func NewContext(request *Request, spider SpiderInterface, opts ...ContextOption) *Context {
 	parent, cancel := context.WithCancel(context.TODO())
 	ctx := &Context{
 		Request:        request,
@@ -47,6 +48,7 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 		CtxId:          GetUUID(),
 		DownloadResult: NewDownloadResult(),
 		Cancel:         cancel,
+		Spider:         spider,
 	}
 	for _, o := range opts {
 		o(ctx)
@@ -54,14 +56,29 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 	return ctx
 
 }
-func WithContext(ctx context.Context) ContextOption {
+// func WithContext(ctx context.Context) ContextOption {
+// 	return func(c *Context) {
+// 		parent, cancel := context.WithCancel(ctx)
+// 		c.parent = parent
+// 		c.Cancel = cancel
+// 	}
+// }
+func WithContextID(ctxID string) ContextOption {
 	return func(c *Context) {
-		parent, cancel := context.WithCancel(ctx)
-		c.parent = parent
-		c.Cancel = cancel
+		c.CtxId = ctxID
 	}
 }
-
+// func WithCancel(cancel context.CancelFunc) ContextOption {
+// 	return func(c *Context) {
+// 		c.Cancel = cancel
+// 	}
+// }
+func (c *Context) SetContext(context context.Context) {
+	c.parent = context
+}
+func (c *Context) SetCancelFunc(cancel context.CancelFunc) {
+	c.Cancel = cancel
+}
 // Deadline returns that there is no deadline (ok==false) when c has no Context.
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	if c.Request == nil || c.parent == nil {

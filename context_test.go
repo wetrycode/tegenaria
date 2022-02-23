@@ -24,12 +24,15 @@ import (
 func TestWithDeadline(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	deadLine, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*3))
 	defer cancel()
 	t1 := time.Now() // get current time
-
-	ctx := NewContext(request, WithContext(deadLine))
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider)
+	ctx.SetContext(deadLine)
 	<-ctx.Done()
 	elapsed := time.Since(t1)
 	if elapsed.Seconds() < 3.0 {
@@ -41,11 +44,14 @@ func TestWithDeadline(t *testing.T) {
 func TestWithTimeout(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	timeout, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
-
-	ctx := NewContext(request, WithContext(timeout))
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request, spider)
+	ctx.SetContext(timeout)
 	time.Sleep(time.Second * 5)
 	<-ctx.Done()
 	if !strings.Contains(ctx.Err().Error(), "context deadline exceeded") {
@@ -60,10 +66,13 @@ func TestWithValue(t *testing.T) {
 
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
 	valueCtx := context.WithValue(context.Background(), k, "tegenaria")
-
-	ctx := NewContext(request, WithContext(valueCtx))
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider)
+	ctx.SetContext(valueCtx)
 	if ctx.Value(k).(string) != "tegenaria" {
 		t.Errorf("Set context value fail it should tegenaria")
 
@@ -77,26 +86,28 @@ func TestWithValue(t *testing.T) {
 func TestWithEmptyContext(t *testing.T) {
 	server := newTestServer()
 
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
-
-	ctx := NewContext(request)
-	c :=ctx.Done()
-	if c ==nil{
+	request := NewRequest(server.URL+"/testGET", GET, &TestParser{})
+	spider := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
+	ctx := NewContext(request,spider)
+	c := ctx.Done()
+	if c == nil {
 		t.Errorf("Context done channel is nil")
 
 	}
-	_, ok:=ctx.Deadline()
-	if ok{
+	_, ok := ctx.Deadline()
+	if ok {
 		t.Errorf("Context deadline is not false")
 
 	}
-	if ctx.Err() !=nil {
+	if ctx.Err() != nil {
 		t.Errorf("Context error is not nil")
 
 	}
 	type ContextKey string
 	k := ContextKey("test_key")
-	if ctx.Value(k) !=nil{
+	if ctx.Value(k) != nil {
 		t.Errorf("Context value is not nil")
 
 	}
