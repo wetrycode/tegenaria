@@ -11,9 +11,11 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spaolacci/murmur3 v1.1.0
+	github.com/spf13/cobra v1.4.0 // indirect
 	github.com/spf13/viper v1.10.1
 	github.com/wxnacy/wgo v1.0.4
 	github.com/yireyun/go-queue v0.0.0-20210520035143-72b190eafcba
+	go.uber.org/ratelimit v0.2.0 // indirect
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
 )

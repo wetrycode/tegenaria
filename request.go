@@ -38,10 +38,11 @@ type Request struct {
 	Meta            map[string]interface{} // Set other data
 	AllowRedirects  bool                   // Set if allow redirects. default is true
 	MaxRedirects    int                    // Set max allow redirects number
-	parser          Parser                 // Set response parser funcation
+	Parser          Parser                 // Set response parser funcation
 	maxConnsPerHost int                    // Set max connect number for per host
 	BodyReader      io.Reader              // Set request body reader
 	ResponseWriter  io.Writer              // Set request response body writer,like file
+	AllowStatusCode []uint64
 	// RequestId       string                 // Set request uuid
 }
 
@@ -134,6 +135,12 @@ func RequestWithMaxConnsPerHost(maxConnsPerHost int) Option {
 	}
 }
 
+func RequestWithAllowedStatusCode(allowStatusCode []uint64) Option {
+	return func(r *Request) {
+		r.AllowStatusCode = allowStatusCode
+	}
+}
+
 // updateQueryParams update url query  params
 func (r *Request) updateQueryParams() {
 	defer func() {
@@ -161,13 +168,14 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 	request := requestPool.Get().(*Request)
 	request.Url = url
 	request.Method = method
-	request.parser = parser
+	request.Parser = parser
 	request.ResponseWriter = nil
 	request.BodyReader = nil
 	request.Header = make(map[string]string)
 	request.MaxRedirects = 3
 	request.AllowRedirects = true
 	request.Proxy = nil
+	request.AllowStatusCode = make([]uint64, 0)
 	for _, o := range opts {
 		o(request)
 	}
@@ -178,7 +186,7 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 
 // freeRequest reset Request and the put it into requestPool
 func freeRequest(r *Request) {
-	r.parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+	r.Parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
 		// default response parser
 		return nil
 	}

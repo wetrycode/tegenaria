@@ -20,7 +20,6 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -145,6 +144,11 @@ type SpiderEngine struct {
 
 	// timer engine running timer
 	timer time.Time
+
+	// killSignalNum count recv ctrl-c signal nums
+	killSignalNum int
+	// isDownloading
+	isDownloading bool
 }
 
 var (
@@ -214,6 +218,10 @@ func (e *SpiderEngine) statsReportTicker() {
 
 // listenNotify listen system signal such as ctrl-c
 func (e *SpiderEngine) listenNotify() {
+	if e.killSignalNum > 1 {
+		os.Exit(0)
+
+	}
 	for {
 		select {
 		case s, ok := <-e.quitSignal:
@@ -242,7 +250,7 @@ func (e *SpiderEngine) listenNotify() {
 // Start spider engine start.
 // It will schedule all spider system
 func (e *SpiderEngine) Start(spiderName string) {
-	signal.Notify(e.quitSignal, os.Interrupt, syscall.SIGUSR1, syscall.SIGUSR2)
+	// signal.Notify(e.quitSignal, os.Interrupt, syscall.SIGUSR1, syscall.SIGUSR2)
 	e.timer = time.Now()
 	engineLog.Infof("Ready to start %s spider \n", spiderName)
 
@@ -250,21 +258,20 @@ func (e *SpiderEngine) Start(spiderName string) {
 		e.Close()
 		engineLog.Info("Spider engine is closed!")
 		if p := recover(); p != nil {
-			engineLog.Errorf("Close engier fail")
+			engineLog.Errorf("Close engier fail %s", p)
 		}
 	}()
 	// Load an get specify spider object
 	spider, ok := e.spiders.SpidersModules[spiderName]
 	if !ok {
-		panic(fmt.Sprintf("Spider %s not found", spider))
+		panic(fmt.Sprintf("Spider %s not found", spiderName))
 	}
 	// engineScheduler number
 	runtime.GOMAXPROCS(int(e.schedulerNum))
 	e.waitGroup.Add(1)
 	// run Spiders StartRequest function and get feeds request
 	go e.startSpiders(spiderName)
-	// e.mainWaitGroup.Add(1)
-	go e.listenNotify()
+	// go e.listenNotify()
 	for n := 0; n < int(e.cacheReadNum); n++ {
 		e.mainWaitGroup.Add(1)
 		// read request from cache and send to cacheChan
@@ -299,10 +306,11 @@ func (e *SpiderEngine) checkChanStatus() bool {
 // if all status is ok it will stop engine and close spider
 
 func (e *SpiderEngine) checkReadyDone() bool {
-	if e.startRequestFinish && e.checkChanStatus() && e.isClosed {
+	if e.startRequestFinish && e.checkChanStatus() && e.isClosed && !e.isDownloading {
 		engineLog.Debug("Scheduler ready done")
-		return true
+		return false
 	} else {
+		engineLog.Infof("start request status:%s, channel len status:%s, download status:%s, colse status %s", e.startRequestFinish, e.checkChanStatus(), e.isClosed, e.isDownloading)
 		return false
 	}
 }
@@ -375,6 +383,8 @@ func (e *SpiderEngine) readCache() {
 func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
 	e.ErrorHandler(spider, err)
+	engineLog.WithField("request_id", err.CtxId).Errorf(err.Error())
+
 	spider.ErrorHandler(err, e.requestsChan)
 	if err.Request != nil {
 		freeRequest(err.Request)
@@ -392,6 +402,7 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 	}()
 	// use download middleware to handle request object
 	for _, middleware := range e.downloaderMiddlewares {
+		// engineLog.Infof("正准备处理链接 %s", ctx.Request.Url)
 		err := middleware.ProcessRequest(ctx)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
@@ -402,7 +413,10 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 	}
 	// incr request download number
 	atomic.AddUint64(&e.Stats.RequestDownloaded, 1)
+	e.isDownloading = true
 	e.requestDownloader.Download(ctx, e.requestResultChan)
+	e.isDownloading = false
+
 }
 
 // doFilter filer duplicate request if filterDuplicateReq is true
@@ -453,7 +467,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 		engineLog.WithField("request_id", result.CtxId).Errorf("Request is fail with error %s", err.Error())
 
 	} else {
-		if e.requestDownloader.CheckStatus(uint64(result.DownloadResult.Response.Status), e.allowStatusCode) {
+		if e.requestDownloader.CheckStatus(uint64(result.DownloadResult.Response.Status), result.Request.AllowStatusCode) {
 			// response status code is ok
 			// send response to respChan
 			engineLog.WithField("request_id", result.CtxId).Debugf("Request %s success status code %d", result.Request.Url, result.DownloadResult.Response.Status)
@@ -462,7 +476,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 
 		} else {
 			// send error
-			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
+			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s %s", result.DownloadResult.Response.Status, result.Request.Url, result.DownloadResult.Response.String())
 			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
 			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 
@@ -482,7 +496,7 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
 	} else {
 		e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
-		err := resp.Request.parser(resp, e.itemsChan, e.requestsChan)
+		err := resp.Request.Parser(resp, e.itemsChan, e.requestsChan)
 		// release Request and Response object memory to buffer
 		if err != nil {
 			errMsg := fmt.Errorf("%s %s", ErrResponseParse.Error(), err.Error())
@@ -504,7 +518,11 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 	}()
 	for _, pipeline := range e.pipelines {
 		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into pipelines chans")
+		e.isDownloading = true
+		e.isRunning = true
 		err := pipeline.ProcessItem(spider, item)
+		e.isDownloading = false
+		e.isRunning = false
 		if err != nil {
 			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
 			e.errorChan <- handleError
@@ -558,7 +576,7 @@ func DefaultErrorHandler(spider SpiderInterface, err *HandleError) {
 }
 
 func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
-	numCPU:=runtime.NumCPU()
+	numCPU := runtime.NumCPU()
 	Engine = &SpiderEngine{
 		spiders:               NewSpiders(),
 		requestsChan:          make(chan *Context, 1024),
@@ -578,10 +596,12 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 		filterDuplicateReq: true,
 		RFPDupeFilter:      NewRFPDupeFilter(1024*4, 8),
 		engineStatus:       0,
+		killSignalNum:      0,
 		waitGroup:          &sync.WaitGroup{},
 		mainWaitGroup:      &sync.WaitGroup{},
 		isDone:             false,
 		isRunning:          false,
+		isDownloading:      false,
 		schedulerNum:       uint(numCPU),
 		Stats:              &SpiderStats{0, 0, 0.0, 0},
 		cache:              NewRequestCache(),
