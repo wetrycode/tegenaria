@@ -476,7 +476,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 
 		} else {
 			// send error
-			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s %s", result.DownloadResult.Response.Status, result.Request.Url, result.DownloadResult.Response.String())
+			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
 			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
 			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 

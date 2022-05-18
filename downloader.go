@@ -323,13 +323,14 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	}
 	// Start request
 	downloadLog.Debugf("Downloader %s is downloading", ctx.Request.Url)
+	d.RateLimiter.Take()
+
 	resp, err := d.client.Do(req)
 
 	defer func() {
 		if resp != nil && resp.Body != nil {
 
 			resp.Body.Close()
-			d.RateLimiter.Take()
 
 		}
 		req.Close = true
