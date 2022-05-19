@@ -351,15 +351,17 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		// The response data is written into a custom io.Writer interface,
 		// such as a file in the file download process
 		_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			err = nil
+		}
 	} else {
 		// Response data is buffered to memory by default
 		_, err = io.Copy(response.Buffer, resp.Body)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			err = nil
+		}
 
 	}
-	// if strings.Contains(ctx.Request.Url, "https://api.opensea.io/api/v1/assets") {
-	// 	downloadLog.Infof("https://api.opensea.io/api/v1/assets 响应状态%s %s", resp.Status, response.String())
-
-	// }
 	if err != nil {
 		msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
 		downloadLog.Errorf("%s\n", msg)

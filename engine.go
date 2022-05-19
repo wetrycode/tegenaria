@@ -200,8 +200,8 @@ Loop:
 
 // statsReport output download and scraped stats count
 func (e *SpiderEngine) statsReport() {
-	engineLog.Infof("DownloadCount %d ErrorCount %d ItemScraped %d Timing %fs",
-		e.Stats.RequestDownloaded, e.Stats.ErrorCount, e.Stats.ItemScraped, time.Since(e.timer).Seconds())
+	engineLog.Infof("DownloadCount %d ErrorCount %d ItemScraped %d RequestQueue %d Timing %fs",
+		e.Stats.RequestDownloaded, e.Stats.ErrorCount, e.Stats.ItemScraped, len(e.requestsChan), time.Since(e.timer).Seconds())
 
 }
 
@@ -308,7 +308,7 @@ func (e *SpiderEngine) checkChanStatus() bool {
 func (e *SpiderEngine) checkReadyDone() bool {
 	if e.startRequestFinish && e.checkChanStatus() && e.isClosed && !e.isDownloading {
 		engineLog.Debug("Scheduler ready done")
-		return false
+		return true
 	} else {
 		engineLog.Infof("start request status:%s, channel len status:%s, download status:%s, colse status %s", e.startRequestFinish, e.checkChanStatus(), e.isClosed, e.isDownloading)
 		return false
@@ -517,7 +517,7 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 
 	}()
 	for _, pipeline := range e.pipelines {
-		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into pipelines chans")
+		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into %d pipelines", pipeline.GetPriority())
 		e.isDownloading = true
 		e.isRunning = true
 		err := pipeline.ProcessItem(spider, item)
