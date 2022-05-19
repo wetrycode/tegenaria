@@ -36,7 +36,6 @@ type Context struct {
 
 	//
 	Cancel context.CancelFunc
-
 }
 type ContextOption func(c *Context)
 
@@ -49,6 +48,8 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 		DownloadResult: NewDownloadResult(),
 		Cancel:         cancel,
 	}
+	log.Infof("生成新的请求%s %s", ctx.CtxId, request.Url)
+
 	for _, o := range opts {
 		o(ctx)
 	}

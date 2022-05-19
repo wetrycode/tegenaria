@@ -522,7 +522,6 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 		e.isRunning = true
 		err := pipeline.ProcessItem(spider, item)
 		e.isDownloading = false
-		e.isRunning = false
 		if err != nil {
 			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
 			e.errorChan <- handleError
