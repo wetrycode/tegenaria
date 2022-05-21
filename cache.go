@@ -37,10 +37,11 @@ func (c *requestCache) enqueue(ctx *Context) error {
 		return nil
 	}
 	for {
-		ok, _ := c.queue.Put(ctx)
+		ok, q := c.queue.Put(ctx)
 		if ok {
 			return nil
 		} else {
+			engineLog.Infof("请求入队列失败%d", q)
 			runtime.Gosched()
 		}
 	}

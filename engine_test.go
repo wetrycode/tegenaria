@@ -90,8 +90,8 @@ func TestCache(t *testing.T) {
 	engine.waitGroup.Add(1)
 
 	// write new request
-	ctx := newTestRequest()
-	go engine.writeCache(ctx)
+	// ctx := newTestRequest()
+	go engine.writeCache()
 	engine.waitGroup.Wait()
 
 	// read a request from cache
@@ -112,11 +112,11 @@ func TestCache(t *testing.T) {
 
 func TestDoFilter(t *testing.T) {
 	engine := NewSpiderEngine(EngineWithUniqueReq(true))
-	ctx := newTestRequest()
+	// ctx := newTestRequest()
 
 	for i := 0; i < 3; i++ {
 		engine.waitGroup.Add(1)
-		go engine.writeCache(ctx)
+		go engine.writeCache()
 	}
 	engine.waitGroup.Wait()
 
@@ -231,7 +231,7 @@ func TestNotAllowedStatus(t *testing.T) {
 	engine.waitGroup.Wait()
 	err := <-engine.errorChan
 
-	if err.Error() != fmt.Sprintf("%s %d with context id %s", ErrNotAllowStatusCode.Error(), 403, err.CtxId) {
+	if err.Error() != fmt.Sprintf("%s %d with context id %s", ErrNotAllowStatusCode.Error(), 403, err.Ctx.CtxId) {
 		t.Errorf("Download response error get %s\n", err.Error())
 	}
 

@@ -164,14 +164,6 @@ Loop:
 	for {
 		if atomic.LoadUint32(&e.isRunning) == 1 {
 			select {
-			case open := <-ctxManager.OpenSignal:
-				ctxManager.ContextTabel[open] = ""
-			case close := <-ctxManager.CloseSignal:
-				delete(ctxManager.ContextTabel, close)
-			case req := <-e.requestsChan:
-				// write request to cache
-				e.waitGroup.Add(1)
-				go e.writeCache(req)
 			case requestResult := <-e.requestResultChan:
 				// handle request download result
 				e.waitGroup.Add(1)
@@ -204,8 +196,8 @@ Loop:
 
 // statsReport output download and scraped stats count
 func (e *SpiderEngine) statsReport() {
-	engineLog.Infof("DownloadCount %d Traffic %d ErrorCount %d ItemScraped %d Timing %fs",
-		atomic.LoadUint64(&e.Stats.RequestDownloaded), atomic.LoadUint64(&e.Stats.NetworkTraffic), atomic.LoadUint64(&e.Stats.ErrorCount), atomic.LoadUint64(&e.Stats.ItemScraped), time.Since(e.timer).Seconds())
+	engineLog.Infof("DownloadCount %d Traffic %d ErrorCount %d ItemScraped %d RunningTask %d RequestQuene %d Timing %fs",
+		atomic.LoadUint64(&e.Stats.RequestDownloaded), atomic.LoadUint64(&e.Stats.NetworkTraffic), atomic.LoadUint64(&e.Stats.ErrorCount), atomic.LoadUint64(&e.Stats.ItemScraped), atomic.LoadInt64(&ctxManager.Count), len(e.requestsChan), time.Since(e.timer).Seconds())
 
 }
 
@@ -277,8 +269,9 @@ func (e *SpiderEngine) Start(spiderName string) {
 	go e.startSpiders(spiderName)
 	// go e.listenNotify()
 	for n := 0; n < int(e.cacheReadNum); n++ {
-		e.mainWaitGroup.Add(1)
+		e.mainWaitGroup.Add(2)
 		// read request from cache and send to cacheChan
+		go e.writeCache()
 		go e.readCache()
 	}
 	// start schedulers
@@ -301,8 +294,8 @@ func (e *SpiderEngine) Start(spiderName string) {
 }
 
 func (e *SpiderEngine) checkReadyDone() bool {
-	if atomic.LoadInt32(&e.startRequestFinish) == 1 && len(ctxManager.ContextTabel) == 0 {
-		return false
+	if atomic.LoadInt32(&e.startRequestFinish) == 1 && atomic.LoadInt64(&ctxManager.Count) == 0 {
+		return true
 	}
 	return false
 
@@ -332,17 +325,31 @@ func (e *SpiderEngine) startSpiders(spiderName string) {
 }
 
 // writeCache write request from requestsChan to cache
-func (e *SpiderEngine) writeCache(ctx *Context) {
+func (e *SpiderEngine) writeCache() {
 	defer func() {
-		e.waitGroup.Done()
-	}()
+		e.mainWaitGroup.Done()
+		engineLog.Debug("Close write cache\n")
+		if p := recover(); p != nil {
+			engineLog.Errorln("write cache error \n", p)
 
-	if e.doFilter(ctx, ctx.Request) && !e.isDone {
-		err := e.cache.enqueue(ctx)
-		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("Push request to cache queue error %s", err.Error())
-			e.errorChan <- NewError(ctx.CtxId, err)
 		}
+	}()
+	for {
+		select {
+		case ctx := <-e.requestsChan:
+			if e.doFilter(ctx, ctx.Request) && !e.isDone {
+				err := e.cache.enqueue(ctx)
+				if err != nil {
+					engineLog.WithField("request_id", ctx.CtxId).Errorf("Push request to cache queue error %s", err.Error())
+					e.errorChan <- NewError(ctx, err)
+				}
+			}
+		default:
+			if e.isDone {
+				return
+			}
+		}
+		runtime.Gosched()
 	}
 
 }
@@ -358,6 +365,7 @@ func (e *SpiderEngine) readCache() {
 		}
 	}()
 	for {
+		// if atomic.LoadInt64(&ctxManager.Count) < 64 {
 		req, err := e.cache.dequeue()
 		if req != nil && err == nil && !e.isDone {
 			request := req.(*Context)
@@ -365,6 +373,8 @@ func (e *SpiderEngine) readCache() {
 			go e.recvRequestHandler(request)
 
 		}
+		//}
+
 		if e.isDone {
 			return
 		}
@@ -374,20 +384,14 @@ func (e *SpiderEngine) readCache() {
 
 // doError handle all error which is from errorChan
 func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
-	defer func(ctxId string) {
-		ctxManager.CloseSignal <- ctxId
-	}(err.CtxId)
+	defer func(cxt *Context) {
+		cxt.Close()
+	}(err.Ctx)
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
 	e.ErrorHandler(spider, err)
-	engineLog.WithField("request_id", err.CtxId).Errorf(err.Error())
+	engineLog.WithField("request_id", err.Ctx.CtxId).Errorf(err.Error())
 
 	spider.ErrorHandler(err, e.requestsChan)
-	if err.Request != nil {
-		freeRequest(err.Request)
-	}
-	if err.Response != nil {
-		freeResponse(err.Response)
-	}
 	e.waitGroup.Done()
 }
 
@@ -396,7 +400,7 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 	defer func() {
 		e.waitGroup.Done()
 		if err := recover(); err != nil {
-			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Download error %s", err), ErrorWithRequest(ctx.Request))
+			e.errorChan <- NewError(ctx, fmt.Errorf("Download error %s", err), ErrorWithRequest(ctx.Request))
 		}
 	}()
 	// use download middleware to handle request object
@@ -405,7 +409,7 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
+			e.errorChan <- NewError(ctx, err, ErrorWithRequest(ctx.Request))
 			return
 		}
 	}
@@ -424,7 +428,7 @@ func (e *SpiderEngine) doFilter(ctx *Context, r *Request) bool {
 		result, err := e.RFPDupeFilter.DoDupeFilter(r)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Warningf("Request do unique error %s", err.Error())
-			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
+			e.errorChan <- NewError(ctx, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
 		}
 		if result {
 			engineLog.WithField("request_id", ctx.CtxId).Debugf("Request is not unique")
@@ -445,7 +449,7 @@ func (e *SpiderEngine) processResponse(ctx *Context) {
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
 			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request), ErrorWithResponse(ctx.DownloadResult.Response))
+			e.errorChan <- NewError(ctx, err, ErrorWithRequest(ctx.Request), ErrorWithResponse(ctx.DownloadResult.Response))
 			return
 		}
 	}
@@ -460,7 +464,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 	err := result.DownloadResult.Error
 	if err != nil {
 		result.Error = err
-		e.errorChan <- NewError(result.CtxId, err, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
+		e.errorChan <- NewError(result, err, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 		engineLog.WithField("request_id", result.CtxId).Errorf("Request is fail with error %s", err.Error())
 
 	} else {
@@ -475,7 +479,7 @@ func (e *SpiderEngine) doRequestResult(result *Context) {
 			// send error
 			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
 			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
-			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
+			e.errorChan <- NewError(result, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
 
 		}
 
@@ -488,25 +492,19 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 	defer func() {
 		e.waitGroup.Done()
 		if err := recover(); err != nil {
-			e.errorChan <- NewError(resp.CtxId, fmt.Errorf("response parse handle item error %s", err))
+			e.errorChan <- NewError(resp, fmt.Errorf("response parse handle item error %s with %s %s", err, resp.Request.Url, string(resp.Request.Body)))
 		}
 	}()
 	if resp.DownloadResult.Error != nil {
 		engineLog.WithField("request_id", resp.CtxId).Warningf("Download result is error %s and response can not parse", resp.DownloadResult.Error.Error())
-		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
+		e.errorChan <- NewError(resp, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
 	} else {
 		atomic.AddUint64(&e.Stats.NetworkTraffic, uint64(resp.DownloadResult.Response.ContentLength))
-		// e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
 		err := resp.Request.Parser(resp, e.itemsChan, e.requestsChan)
-		// release Request and Response object memory to buffer
 		if err != nil {
 			errMsg := fmt.Errorf("%s %s", ErrResponseParse.Error(), err.Error())
-			e.errorChan <- NewError(resp.CtxId, errMsg, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
+			e.errorChan <- NewError(resp, errMsg, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
 
-		} else {
-			freeRequest(resp.Request)
-
-			freeResponse(resp.DownloadResult.Response)
 		}
 	}
 }
@@ -516,23 +514,20 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 	defer func() {
 		e.waitGroup.Done()
 		if err := recover(); err != nil {
-			e.errorChan <- NewError(item.CtxId, fmt.Errorf("pipeline handle item error %s", err))
+			e.errorChan <- NewError(item.Ctx, fmt.Errorf("pipeline handle item error %s", err))
 		}
-		ctxManager.CloseSignal <- item.CtxId
-
 	}()
 	for _, pipeline := range e.pipelines {
 		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into %d pipelines", pipeline.GetPriority())
-		// e.isDownloading = true
-		// e.isRunning = true
+
 		err := pipeline.ProcessItem(spider, item)
-		// e.isDownloading = false
 		if err != nil {
-			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
+			handleError := NewError(item.Ctx, err, ErrorWithItem(item))
 			e.errorChan <- handleError
 			return
 		}
 	}
+	item.Ctx.Close()
 	atomic.AddUint64(&e.Stats.ItemScraped, 1)
 
 }

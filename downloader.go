@@ -272,7 +272,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 
 	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
 		// request url is not vaildate
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
+		ctx.DownloadResult.Error = NewError(ctx, err, ErrorWithRequest(ctx.Request))
 		downloadLog.Errorf(err.Error())
 		return
 	}
@@ -305,7 +305,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
+		ctx.DownloadResult.Error = NewError(ctx, err, ErrorWithRequest(ctx.Request))
 		return
 	}
 
@@ -336,7 +336,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		req.Close = true
 	}()
 	if err != nil {
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
+		ctx.DownloadResult.Error = NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
 		return
 
 	}
@@ -352,13 +352,13 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		// The response data is written into a custom io.Writer interface,
 		// such as a file in the file download process
 		_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			err = nil
 		}
 	} else {
 		// Response data is buffered to memory by default
 		_, err = io.Copy(response.Buffer, resp.Body)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF {
 			err = nil
 		}
 
@@ -367,7 +367,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
 		downloadLog.Errorf("%s\n", msg)
 		ctx.DownloadResult.Response = nil
-		ctx.DownloadResult.Error = NewError(ctx.CtxId, ErrResponseRead, ErrorWithRequest(ctx.Request))
+		ctx.DownloadResult.Error = NewError(ctx, ErrResponseRead, ErrorWithRequest(ctx.Request))
 		return
 	}
 	// response.write()

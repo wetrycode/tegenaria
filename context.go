@@ -14,6 +14,7 @@ package tegenaria
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -42,13 +43,11 @@ type Context struct {
 	//
 	Cancel context.CancelFunc
 	//
-	isDone bool
+	isDone uint32
 }
 
 type ContextManager struct {
-	ContextTabel map[string]string
-	OpenSignal   chan string
-	CloseSignal  chan string
+	Count int64
 }
 
 var onceContextManager sync.Once
@@ -59,27 +58,10 @@ var ctxManager *ContextManager
 
 func newContextManager() {
 	onceContextManager.Do(func() {
-		ctxManager = &ContextManager{
-			ContextTabel: make(map[string]string, 1024),
-			OpenSignal:   make(chan string, 1024),
-			CloseSignal:  make(chan string, 1024),
-		}
+		ctxManager = &ContextManager{}
 	})
 }
-func (manager *ContextManager) managerLoop() {
-	for {
-		select {
-		case open := <-manager.OpenSignal:
-			manager.ContextTabel[open] = ""
-		case close := <-manager.CloseSignal:
-			delete(manager.ContextTabel, close)
-		default:
-			if len(manager.ContextTabel) == 0 {
-				return
-			}
-		}
-	}
-}
+
 func NewContext(request *Request, opts ...ContextOption) *Context {
 	parent, cancel := context.WithCancel(context.TODO())
 	ctx := &Context{
@@ -94,9 +76,26 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 	for _, o := range opts {
 		o(ctx)
 	}
-	ctxManager.OpenSignal <- ctx.CtxId
-	return ctx
+	for {
+		if atomic.LoadInt64(&ctxManager.Count) <= 64 {
+			atomic.AddInt64(&ctxManager.Count, 1)
+			atomic.StoreUint32(&ctx.isDone, 0)
+			return ctx
+		}
+	}
 
+}
+func (c *Context) Close() {
+	if atomic.LoadUint32(&c.isDone) == 0 {
+		atomic.AddInt64(&ctxManager.Count, -1)
+		atomic.StoreUint32(&c.isDone, 1)
+		if c.Request != nil {
+			freeRequest(c.Request)
+		}
+		if c.DownloadResult.Response != nil {
+			freeResponse(c.DownloadResult.Response)
+		}
+	}
 }
 func WithContext(ctx context.Context) ContextOption {
 	return func(c *Context) {
@@ -144,8 +143,4 @@ func (c *Context) Value(key interface{}) interface{} {
 }
 func (c Context) GetCtxId() string {
 	return c.CtxId
-}
-
-func (c Context) IsDone() bool {
-	return c.isDone
 }
