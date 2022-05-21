@@ -19,6 +19,7 @@ func init() {
 	onceInit.Do(func() {
 		initSettings()
 		initLog()
+		newContextManager()
 	})
 
 }

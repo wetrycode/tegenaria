@@ -13,8 +13,13 @@ package tegenaria
 
 import (
 	"context"
+	"sync"
 	"time"
 )
+
+type ContextInterface interface {
+	IsDone() bool
+}
 
 // Context spider crawl request schedule unit
 // it is used on all data flow
@@ -36,9 +41,45 @@ type Context struct {
 
 	//
 	Cancel context.CancelFunc
+	//
+	isDone bool
 }
+
+type ContextManager struct {
+	ContextTabel map[string]string
+	OpenSignal   chan string
+	CloseSignal  chan string
+}
+
+var onceContextManager sync.Once
+
 type ContextOption func(c *Context)
 
+var ctxManager *ContextManager
+
+func newContextManager() {
+	onceContextManager.Do(func() {
+		ctxManager = &ContextManager{
+			ContextTabel: make(map[string]string, 1024),
+			OpenSignal:   make(chan string, 1024),
+			CloseSignal:  make(chan string, 1024),
+		}
+	})
+}
+func (manager *ContextManager) managerLoop() {
+	for {
+		select {
+		case open := <-manager.OpenSignal:
+			manager.ContextTabel[open] = ""
+		case close := <-manager.CloseSignal:
+			delete(manager.ContextTabel, close)
+		default:
+			if len(manager.ContextTabel) == 0 {
+				return
+			}
+		}
+	}
+}
 func NewContext(request *Request, opts ...ContextOption) *Context {
 	parent, cancel := context.WithCancel(context.TODO())
 	ctx := &Context{
@@ -53,6 +94,7 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 	for _, o := range opts {
 		o(ctx)
 	}
+	ctxManager.OpenSignal <- ctx.CtxId
 	return ctx
 
 }
@@ -102,4 +144,8 @@ func (c *Context) Value(key interface{}) interface{} {
 }
 func (c Context) GetCtxId() string {
 	return c.CtxId
+}
+
+func (c Context) IsDone() bool {
+	return c.isDone
 }

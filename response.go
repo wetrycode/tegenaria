@@ -24,7 +24,7 @@ type Response struct {
 	Status        int                 // Status request response status code
 	Header        map[string][]string // Header response header
 	Delay         float64             // Delay the time of handle download request
-	ContentLength int                 // ContentLength response content length
+	ContentLength uint64                 // ContentLength response content length
 	URL           string              // URL of request url
 	Buffer        *bytes.Buffer       // buffer read response buffer
 }

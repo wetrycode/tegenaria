@@ -346,6 +346,7 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	response.Status = resp.StatusCode
 	response.URL = req.URL.String()
 	response.Delay = time.Since(now).Seconds()
+	response.ContentLength = uint64(resp.ContentLength) 
 
 	if ctx.Request.ResponseWriter != nil {
 		// The response data is written into a custom io.Writer interface,
