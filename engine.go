@@ -415,7 +415,6 @@ func (e *SpiderEngine) doDownload(ctx *Context) {
 	}
 	// incr request download number
 	atomic.AddUint64(&e.Stats.RequestDownloaded, 1)
-	e.isDownloading = true
 	e.requestDownloader.Download(ctx, e.requestResultChan)
 
 }

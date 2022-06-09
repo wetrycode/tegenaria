@@ -76,13 +76,15 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 	for _, o := range opts {
 		o(ctx)
 	}
-	for {
-		if atomic.LoadInt64(&ctxManager.Count) <= 64 {
-			atomic.AddInt64(&ctxManager.Count, 1)
-			atomic.StoreUint32(&ctx.isDone, 0)
-			return ctx
-		}
-	}
+	// for {
+	// 	if atomic.LoadInt64(&ctxManager.Count) < 16 {
+
+	// 	}
+
+	// }
+	atomic.AddInt64(&ctxManager.Count, 1)
+	atomic.StoreUint32(&ctx.isDone, 0)
+	return ctx
 
 }
 func (c *Context) Close() {

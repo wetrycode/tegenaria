@@ -14,7 +14,7 @@ import (
 var rootEngine *tegenaria.SpiderEngine
 
 // rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
+var RootCmd = &cobra.Command{
 	Use:   "tegenaria",
 	Short: "tegenaria is a crawler framework based on golang",
 	// Uncomment the following line if your bare application
@@ -35,9 +35,9 @@ var crawlCmd = &cobra.Command{
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute(engine *tegenaria.SpiderEngine) {
 	rootEngine = engine
-	err := rootCmd.Execute()
+	err := RootCmd.Execute()
 	if err != nil {
-		os.Exit(1)
+		os.Exit(1)	
 	}
 }
 
@@ -50,6 +50,6 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.AddCommand(crawlCmd)
+	RootCmd.AddCommand(crawlCmd)
 	// rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
