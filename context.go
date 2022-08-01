@@ -76,15 +76,17 @@ func NewContext(request *Request, opts ...ContextOption) *Context {
 	for _, o := range opts {
 		o(ctx)
 	}
-	// for {
-	// 	if atomic.LoadInt64(&ctxManager.Count) < 16 {
-
-	// 	}
-
-	// }
 	atomic.AddInt64(&ctxManager.Count, 1)
 	atomic.StoreUint32(&ctx.isDone, 0)
 	return ctx
+	// for {
+	// 	if atomic.LoadInt64(&ctxManager.Count) < 16 {
+	// 		atomic.AddInt64(&ctxManager.Count, 1)
+	// 		atomic.StoreUint32(&ctx.isDone, 0)
+	// 		return ctx
+	// 	}
+
+	// }
 
 }
 func (c *Context) Close() {
@@ -97,6 +99,10 @@ func (c *Context) Close() {
 		if c.DownloadResult.Response != nil {
 			freeResponse(c.DownloadResult.Response)
 		}
+		engineLog.Infof("关闭上下文%s", c.CtxId)
+	} else {
+		engineLog.Infof("已经关闭上下文%s", c.CtxId)
+
 	}
 }
 func WithContext(ctx context.Context) ContextOption {

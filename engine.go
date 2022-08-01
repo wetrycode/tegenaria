@@ -139,6 +139,9 @@ type SpiderEngine struct {
 	// cacheReadNum count is read request number from cache
 	cacheReadNum uint
 
+	//
+	currentDownloading int64
+
 	// ErrorHandler see ErrorHandler funcation description
 	ErrorHandler ErrorHandler
 
@@ -303,12 +306,16 @@ func (e *SpiderEngine) checkReadyDone() bool {
 
 // recvRequest receive request from cacheChan and do download.
 func (e *SpiderEngine) recvRequestHandler(req *Context) {
-	defer e.waitGroup.Done()
+	atomic.AddInt64(&e.currentDownloading, 1)
+	defer func() {
+		e.waitGroup.Done()
+		atomic.AddInt64(&e.currentDownloading, -1)
+	}()
 	if req == nil {
 		return
 	}
-	e.waitGroup.Add(1)
-	go e.doDownload(req)
+	// e.waitGroup.Add(1)
+	e.doDownload(req)
 
 }
 
@@ -367,7 +374,7 @@ func (e *SpiderEngine) readCache() {
 	for {
 		// if atomic.LoadInt64(&ctxManager.Count) < 64 {
 		req, err := e.cache.dequeue()
-		if req != nil && err == nil && !e.isDone {
+		if req != nil && err == nil && !e.isDone && atomic.LoadInt64(&e.currentDownloading) < 16 {
 			request := req.(*Context)
 			e.waitGroup.Add(1)
 			go e.recvRequestHandler(request)
@@ -385,6 +392,7 @@ func (e *SpiderEngine) readCache() {
 // doError handle all error which is from errorChan
 func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	defer func(cxt *Context) {
+		engineLog.Infof("发生异常准备关闭上下文%s", cxt.CtxId)
 		cxt.Close()
 	}(err.Ctx)
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
@@ -398,7 +406,7 @@ func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 // doDownload handle request download
 func (e *SpiderEngine) doDownload(ctx *Context) {
 	defer func() {
-		e.waitGroup.Done()
+		// e.waitGroup.Done()
 		if err := recover(); err != nil {
 			e.errorChan <- NewError(ctx, fmt.Errorf("Download error %s", err), ErrorWithRequest(ctx.Request))
 		}
@@ -510,17 +518,19 @@ func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
 
 // doPipelinesHandlers handle items by pipelines chan
 func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMeta) {
+	priority := 0
 	defer func() {
 		e.waitGroup.Done()
 		if err := recover(); err != nil {
-			e.errorChan <- NewError(item.Ctx, fmt.Errorf("pipeline handle item error %s", err))
+			e.errorChan <- NewError(item.Ctx, fmt.Errorf("pipeline %d handle item error %s", priority	, err))
 		}
 	}()
 	for _, pipeline := range e.pipelines {
 		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into %d pipelines", pipeline.GetPriority())
-
+		priority = pipeline.GetPriority()
 		err := pipeline.ProcessItem(spider, item)
 		if err != nil {
+			engineLog.Errorf("Pipeline %d handle item error %s", pipeline.GetPriority(), err.Error())
 			handleError := NewError(item.Ctx, err, ErrorWithItem(item))
 			e.errorChan <- handleError
 			return
@@ -595,6 +605,7 @@ func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
 		RFPDupeFilter:      NewRFPDupeFilter(1024*4, 8),
 		engineStatus:       0,
 		killSignalNum:      0,
+		currentDownloading: 0,
 		waitGroup:          &sync.WaitGroup{},
 		mainWaitGroup:      &sync.WaitGroup{},
 		isDone:             false,

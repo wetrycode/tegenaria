@@ -23,8 +23,6 @@ import (
 	"sync"
 	"time"
 
-	sentinel "github.com/alibaba/sentinel-golang/api"
-	"github.com/alibaba/sentinel-golang/core/base"
 	"github.com/sirupsen/logrus"
 	"github.com/wxnacy/wgo/arrays"
 	"go.uber.org/ratelimit"
@@ -326,62 +324,62 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	}
 	// Start request
 	downloadLog.Debugf("Downloader %s is downloading", ctx.Request.Url)
-	// d.RateLimiter.Take()
-	for {
-		e, b := sentinel.Entry("sentinel", sentinel.WithTrafficType(base.Inbound))
-		if b != nil {
-		} else {
-			resp, err := d.client.Do(req)
-			defer func() {
-				if resp != nil && resp.Body != nil {
+	resp, err := d.client.Do(req)
+	defer func() {
+		if resp != nil && resp.Body != nil {
 
-					resp.Body.Close()
+			resp.Body.Close()
 
-				}
-				e.Exit()
-				req.Close = true
-			}()
-			if err != nil {
-				ctx.DownloadResult.Error = NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
-				return
+		}
+		req.Close = true
+	}()
+	if err != nil {
+		ctx.DownloadResult.Error = NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
+		return
 
-			}
-			// Construct response body structure
-			response := NewResponse()
-			response.Header = resp.Header
-			response.Status = resp.StatusCode
-			response.URL = req.URL.String()
-			response.Delay = time.Since(now).Seconds()
-			response.ContentLength = uint64(resp.ContentLength)
+	}
+	// Construct response body structure
+	response := NewResponse()
+	response.Header = resp.Header
+	response.Status = resp.StatusCode
+	response.URL = req.URL.String()
+	response.Delay = time.Since(now).Seconds()
+	response.ContentLength = uint64(resp.ContentLength)
 
-			if ctx.Request.ResponseWriter != nil {
-				// The response data is written into a custom io.Writer interface,
-				// such as a file in the file download process
-				_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
-				if err == io.EOF {
-					err = nil
-				}
-			} else {
-				// Response data is buffered to memory by default
-				_, err = io.Copy(response.Buffer, resp.Body)
-				if err == io.EOF {
-					err = nil
-				}
-
-			}
-			if err != nil {
-				msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
-				downloadLog.Errorf("%s\n", msg)
-				ctx.DownloadResult.Response = nil
-				ctx.DownloadResult.Error = NewError(ctx, ErrResponseRead, ErrorWithRequest(ctx.Request))
-				return
-			}
-			// response.write()
-			ctx.DownloadResult.Response = response
-			return
+	if ctx.Request.ResponseWriter != nil {
+		// The response data is written into a custom io.Writer interface,
+		// such as a file in the file download process
+		_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
+		if err == io.EOF {
+			err = nil
+		}
+	} else {
+		// Response data is buffered to memory by default
+		_, err = io.Copy(response.Buffer, resp.Body)
+		if err == io.EOF {
+			err = nil
 		}
 
 	}
+	if err != nil {
+		msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
+		downloadLog.Errorf("%s\n", msg)
+		ctx.DownloadResult.Response = nil
+		ctx.DownloadResult.Error = NewError(ctx, ErrResponseRead, ErrorWithRequest(ctx.Request))
+		return
+	}
+	// response.write()
+	ctx.DownloadResult.Response = response
+	return
+	// d.RateLimiter.Take()
+	// for {
+	// 	e, b := sentinel.Entry("sentinel", sentinel.WithTrafficType(base.Inbound))
+	// 	if b != nil {
+	// 	} else {
+
+	// 	}
+
+	// }
 
 }
 
