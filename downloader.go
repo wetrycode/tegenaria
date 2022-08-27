@@ -35,7 +35,7 @@ type ctxKey string
 // Downloader interface
 type Downloader interface {
 	// Download core funcation
-	Download(ctx *Context, result chan<- *Context)
+	Download(ctx *Context)(*Response, *HandleError)
 
 	// CheckStatus check response status code if allow handle
 	CheckStatus(statusCode uint64, allowStatus []uint64) bool
@@ -219,14 +219,14 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 		},
 		Proxy: proxyFunc,
 		DialContext: (&net.Dialer{
-			Timeout:   2 * 60 * time.Second,
+			Timeout:   60 * time.Second,
 			KeepAlive: 2 * 60 * time.Second,
 		}).DialContext,
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          1024,
-		IdleConnTimeout:       2 * 60 * time.Second,
-		TLSHandshakeTimeout:   60 * time.Second,
-		ExpectContinueTimeout: 60 * time.Second,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ExpectContinueTimeout: 30 * time.Second,
 		MaxIdleConnsPerHost:   1024,
 		MaxConnsPerHost:       1024,
 	}
@@ -263,19 +263,23 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 }
 
 // Download network downloader
-func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
+func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
 	downloadLog := log.WithField("request_id", ctx.CtxId)
 	defer func() {
-		result <- ctx
+		// result <- ctx
+		if err := recover(); err != nil {
+			downloadLog.Fatalf("download panic: %v", err)
+		}
+
 	}()
 	// record request handle start time
 	now := time.Now()
 
 	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
 		// request url is not vaildate
-		ctx.DownloadResult.Error = NewError(ctx, err, ErrorWithRequest(ctx.Request))
+		downloadErr := NewError(ctx, err, ErrorWithRequest(ctx.Request))
 		downloadLog.Errorf(err.Error())
-		return
+		return nil,downloadErr
 	}
 
 	// ValueContext
@@ -306,8 +310,8 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
-		ctx.DownloadResult.Error = NewError(ctx, err, ErrorWithRequest(ctx.Request))
-		return
+		downloadErr := NewError(ctx, err, ErrorWithRequest(ctx.Request))
+		return nil, downloadErr
 	}
 
 	// Set request header
@@ -334,8 +338,8 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 		req.Close = true
 	}()
 	if err != nil {
-		ctx.DownloadResult.Error = NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
-		return
+		downloadErr := NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
+		return nil, downloadErr
 
 	}
 	// Construct response body structure
@@ -364,22 +368,12 @@ func (d *SpiderDownloader) Download(ctx *Context, result chan<- *Context) {
 	if err != nil {
 		msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
 		downloadLog.Errorf("%s\n", msg)
-		ctx.DownloadResult.Response = nil
-		ctx.DownloadResult.Error = NewError(ctx, ErrResponseRead, ErrorWithRequest(ctx.Request))
-		return
+		// ctx.DownloadResult.Response = nil
+		dowloadError := NewError(ctx, ErrResponseRead, ErrorWithRequest(ctx.Request))
+		return nil, dowloadError
 	}
-	// response.write()
-	ctx.DownloadResult.Response = response
-	return
-	// d.RateLimiter.Take()
-	// for {
-	// 	e, b := sentinel.Entry("sentinel", sentinel.WithTrafficType(base.Inbound))
-	// 	if b != nil {
-	// 	} else {
+	return response, nil
 
-	// 	}
-
-	// }
 
 }
 

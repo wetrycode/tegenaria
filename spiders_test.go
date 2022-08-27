@@ -9,16 +9,17 @@ type TestSpider struct {
 }
 
 func (s *TestSpider) StartRequest(req chan<- *Context) {
+	
 	for _, url := range s.FeedUrls {
 		request := NewRequest(url, GET, s.Parser)
-		ctx := NewContext(request)
+		ctx := NewContext(request, s)
 		req <- ctx
 	}
 }
-func (s *TestSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
-	return testParser(resp, item, req)
+func (s *TestSpider) Parser(resp *Context, req chan<- *Context) error {
+	return testParser(resp, req)
 }
-func (s *TestSpider) ErrorHandler(err *HandleError, req chan<- *Context){
+func (s *TestSpider) ErrorHandler(err *Context, req chan<- *Context){
 
 }
 func (s *TestSpider) GetName() string {

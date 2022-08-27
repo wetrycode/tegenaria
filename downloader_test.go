@@ -24,20 +24,26 @@ var onceServer sync.Once
 var onceProxyServer sync.Once
 var ts *httptest.Server
 var proxyServer *httptest.Server
+var testSpider *TestSpider
+var onceTestSpider sync.Once
 
-func testParser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+func testParser(resp *Context, req chan<- *Context)error {
 	newItem := &testItem{
 		test:      "test",
 		pipelines: make([]int, 0),
 	}
-	item <- NewItem(resp, newItem)
+	resp.Items <- NewItem(resp, newItem)
 	return nil
 }
 
-// func doTest(request *Request)(Response, Error, context.CancelFunc){
-// 	return nil, nil, nil
+func newTestSpider(){
+	onceTestSpider.Do(func() {
+		testSpider = &TestSpider{
+			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+		}
+	})
+}
 
-// }
 func newTestProxyServer() *httptest.Server {
 	onceProxyServer.Do(func() {
 		gin.SetMode(gin.ReleaseMode)
@@ -154,25 +160,22 @@ func newTestServer() *httptest.Server {
 }
 func TestRequestGet(t *testing.T) {
 	server := newTestServer()
-
+	newTestSpider()
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request, testSpider,WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
 	downloader := NewDownloader(DownloadWithTlsConfig(&tls.Config{InsecureSkipVerify: true}))
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
-	if err != nil {
+	resp, errHandle:=downloader.Download(ctx)
+
+	if errHandle != nil {
 		t.Errorf("request error")
 
 	}
@@ -192,25 +195,21 @@ func TestRequestPost(t *testing.T) {
 		"key1": "value1",
 	}
 	server := newTestServer()
-
+	newTestSpider()
 	request := NewRequest(server.URL+"/testPOST", POST, testParser, RequestWithRequestBody(body))
 
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 	downloader := NewDownloader()
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp, err:=downloader.Download(ctx)
 	if err != nil {
 		t.Errorf("request error %s", err.Error())
 
@@ -240,19 +239,16 @@ func TestRequestCookie(t *testing.T) {
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 	downloader := NewDownloader()
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp, err:=downloader.Download(ctx)
+
 
 	if err != nil {
 		t.Errorf("request error with cookies")
@@ -272,6 +268,7 @@ func TestRequestQueryParams(t *testing.T) {
 		"key": "value",
 	}
 	server := newTestServer()
+	newTestSpider()
 	downloader := NewDownloader()
 
 	request := NewRequest(server.URL+"/testParams", GET, testParser, RequestWithRequestParams(params))
@@ -279,18 +276,15 @@ func TestRequestQueryParams(t *testing.T) {
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp, err:=downloader.Download(ctx)
+
 	if err != nil {
 		t.Errorf("request error")
 
@@ -309,7 +303,7 @@ func TestRequestQueryParams(t *testing.T) {
 func TestRequestProxy(t *testing.T) {
 	server := newTestServer()
 	proxyServer := newTestProxyServer()
-
+	newTestSpider()
 	downloader := NewDownloader()
 	proxy := Proxy{
 		ProxyUrl: proxyServer.URL,
@@ -321,18 +315,14 @@ func TestRequestProxy(t *testing.T) {
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp,err:=downloader.Download(ctx)
 	if err != nil {
 		t.Errorf("request error")
 
@@ -350,6 +340,7 @@ func TestRequestProxy(t *testing.T) {
 
 func TestRequestHeaders(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 	downloader := NewDownloader()
 
 	headers := map[string]string{
@@ -362,18 +353,13 @@ func TestRequestHeaders(t *testing.T) {
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	go downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp,err:=downloader.Download(ctx)
 	if err != nil {
 		t.Errorf("request error")
 
@@ -390,6 +376,7 @@ func TestRequestHeaders(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
 
 	request := NewRequest(server.URL+"/testTimeout", GET, testParser)
@@ -397,18 +384,15 @@ func TestTimeout(t *testing.T) {
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp, err:=downloader.Download(ctx)
+
 	if err == nil {
 		t.Errorf("request timeout expected error but no any errors")
 
@@ -420,6 +404,7 @@ func TestTimeout(t *testing.T) {
 }
 func TestLargeFile(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 	file, _ := os.Create("test.file")
 	// writer := bufio.NewWriter(file)
 	defer os.Remove("test.file")
@@ -430,18 +415,15 @@ func TestLargeFile(t *testing.T) {
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 	// var MainCtx context.Context = context.Background()
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp,err:=downloader.Download(ctx)
+
 	if err != nil || resp == nil {
 		t.Errorf("request error %s", err.Error())
 
@@ -463,23 +445,21 @@ func TestLargeFile(t *testing.T) {
 
 func TestJsonResponse(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 	downloader := NewDownloader()
 	request := NewRequest(server.URL+"/testJson", GET, testParser)
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp,err:=downloader.Download(ctx)
+
 	if err != nil {
 		t.Errorf("request json error %s", err.Error())
 
@@ -509,23 +489,21 @@ func TestJsonResponse(t *testing.T) {
 }
 func TestRedirectLimit(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 	downloader := NewDownloader()
 	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithMaxRedirects(1))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp,err:=downloader.Download(ctx)
+
 	if err == nil {
 		t.Errorf("request redirect should be limit error\n")
 
@@ -538,23 +516,21 @@ func TestRedirectLimit(t *testing.T) {
 
 func TestNotAllowRedirect(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 	downloader := NewDownloader()
 	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithAllowRedirects(false))
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request, testSpider,WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
-	resp := result.DownloadResult.Response
+	resp,err:=downloader.Download(ctx)
+
 	if !strings.Contains(err.Error(), "maximum number of redirects") {
 		t.Errorf("Except error exceeded the maximum number of redirects,but get %s\n", err.Error())
 	}
@@ -567,21 +543,19 @@ func TestNotAllowRedirect(t *testing.T) {
 
 func TestInvalidURL(t *testing.T) {
 	downloader := NewDownloader()
+	newTestSpider()
 	request := NewRequest("error"+"/testRedirect1", GET, testParser)
 	var MainCtx context.Context = context.Background()
 
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
+	_, err:=downloader.Download(ctx)
 	if err == nil {
 		t.Errorf("request invlid url should get an error\n")
 
@@ -590,26 +564,25 @@ func TestInvalidURL(t *testing.T) {
 
 func TestResponseReadError(t *testing.T) {
 	server := newTestServer()
+	newTestSpider()
 
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 	monkey.Patch(io.Copy, func(dst io.Writer, src io.Reader) (written int64, err error) {
 		return 0, errors.New("empty buffer in CopyBuffer")
 	})
 
 	downloader := NewDownloader()
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
+	_,err:=downloader.Download(ctx)
+
 	msg := err.Error()
 	if !strings.Contains(msg, "read response to buffer error") {
 		t.Errorf("request should have error read response to buffer error,but get %s\n", err.Error())
@@ -620,7 +593,7 @@ func TestResponseReadError(t *testing.T) {
 func TestProxyUrlError(t *testing.T) {
 	server := newTestServer()
 	proxyServer := newTestProxyServer()
-
+	newTestSpider()
 	proxy := Proxy{
 		ProxyUrl: "error",
 	}
@@ -633,17 +606,14 @@ func TestProxyUrlError(t *testing.T) {
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request,testSpider, WithContext(cancelCtx))
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 
 	downloader := NewDownloader()
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
+	_,err:=downloader.Download(ctx)
 	if err.Error() == "proxy invail url" {
 		t.Errorf("request should have error proxy invail url, but get %s\n", err.Error())
 
@@ -652,26 +622,23 @@ func TestProxyUrlError(t *testing.T) {
 
 func TestDownloaderRequestConextError(t *testing.T) {
 	server := newTestServer()
-
+	newTestSpider()
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	var MainCtx context.Context = context.Background()
 	cancelCtx, cancel := context.WithCancel(MainCtx)
 
-	ctx := NewContext(request, WithContext(cancelCtx))
+	ctx := NewContext(request, testSpider,WithContext(cancelCtx))
 
 	defer func() {
 		cancel()
 	}()
-	resultChan := make(chan *Context, 1)
 	monkey.Patch(http.NewRequestWithContext, func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
 		return nil, errors.New("creat request with context fail")
 	})
 
 	downloader := NewDownloader()
 
-	downloader.Download(ctx, resultChan)
-	result := <-resultChan
-	err := result.DownloadResult.Error
+	_,err:=downloader.Download(ctx)
 	if err.Error() == "creat request with context fail" {
 		t.Errorf("request should have error creat request with context fail, but get %s\n", err.Error())
 

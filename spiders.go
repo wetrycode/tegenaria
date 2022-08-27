@@ -24,10 +24,10 @@ type SpiderInterface interface {
 
 	// Parser parse response ,it can generate ItemMeta and send to engine
 	// it also can generate new Request
-	Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
+	Parser(resp *Context,req chan<- *Context) error
 
 	// ErrorHandler it is used to handler all error recive from engine
-	ErrorHandler(err *HandleError, req chan<- *Context)
+	ErrorHandler(err *Context, req chan<- *Context)
 
 	// GetName get spider name
 	GetName() string

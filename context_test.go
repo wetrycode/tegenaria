@@ -23,13 +23,15 @@ import (
 
 func TestWithDeadline(t *testing.T) {
 	server := newTestServer()
-
+	spider1 := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	deadLine, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*3))
 	defer cancel()
 	t1 := time.Now() // get current time
 
-	ctx := NewContext(request, WithContext(deadLine))
+	ctx := NewContext(request, spider1, WithContext(deadLine))
 	<-ctx.Done()
 	elapsed := time.Since(t1)
 	if elapsed.Seconds() < 3.0 {
@@ -40,12 +42,14 @@ func TestWithDeadline(t *testing.T) {
 
 func TestWithTimeout(t *testing.T) {
 	server := newTestServer()
-
+	spider1 := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	timeout, cancel := context.WithTimeout(context.Background(), time.Second*3)
 	defer cancel()
 
-	ctx := NewContext(request, WithContext(timeout))
+	ctx := NewContext(request,spider1, WithContext(timeout))
 	time.Sleep(time.Second * 5)
 	<-ctx.Done()
 	if !strings.Contains(ctx.Err().Error(), "context deadline exceeded") {
@@ -57,13 +61,15 @@ func TestWithTimeout(t *testing.T) {
 func TestWithValue(t *testing.T) {
 	type ContextKey string
 	k := ContextKey("test_key")
-
+	spider1 := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
 	server := newTestServer()
 
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 	valueCtx := context.WithValue(context.Background(), k, "tegenaria")
 
-	ctx := NewContext(request, WithContext(valueCtx))
+	ctx := NewContext(request,spider1, WithContext(valueCtx))
 	if ctx.Value(k).(string) != "tegenaria" {
 		t.Errorf("Set context value fail it should tegenaria")
 
@@ -76,10 +82,12 @@ func TestWithValue(t *testing.T) {
 }
 func TestWithEmptyContext(t *testing.T) {
 	server := newTestServer()
-
+	spider1 := &TestSpider{
+		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+	}
 	request := NewRequest(server.URL+"/testGET", GET, testParser)
 
-	ctx := NewContext(request)
+	ctx := NewContext(request, spider1)
 	c :=ctx.Done()
 	if c ==nil{
 		t.Errorf("Context done channel is nil")

@@ -199,8 +199,10 @@ Loop:
 
 // statsReport output download and scraped stats count
 func (e *SpiderEngine) statsReport() {
-	engineLog.Infof("DownloadCount %d Traffic %d ErrorCount %d ItemScraped %d RunningTask %d RequestQuene %d Timing %fs",
-		atomic.LoadUint64(&e.Stats.RequestDownloaded), atomic.LoadUint64(&e.Stats.NetworkTraffic), atomic.LoadUint64(&e.Stats.ErrorCount), atomic.LoadUint64(&e.Stats.ItemScraped), atomic.LoadInt64(&ctxManager.Count), len(e.requestsChan), time.Since(e.timer).Seconds())
+	engineLog.Infof("DownloadCount %d Traffic %d ErrorCount %d ItemScraped%d ContextCount %d RunningTask %d RequestQuene %d ItemQuene %d errorQuene %d requestResultChan %d respChan %d quenue %d Timing %fs",
+		atomic.LoadUint64(&e.Stats.RequestDownloaded), atomic.LoadUint64(&e.Stats.NetworkTraffic), atomic.LoadUint64(&e.Stats.ErrorCount),
+		atomic.LoadUint64(&e.Stats.ItemScraped), ctxManager.Count(), atomic.LoadInt64(&e.currentDownloading), len(e.requestsChan),
+		len(e.itemsChan), len(e.errorChan), len(e.requestResultChan), len(e.respChan), e.cache.getSize(), time.Since(e.timer).Seconds())
 
 }
 
@@ -211,8 +213,10 @@ func (e *SpiderEngine) statsReportTicker() {
 	for {
 		<-ticker.C
 		e.statsReport()
+		// for k, v := range ctxManager.ContextList {
+		// 	engineLog.Infof("Context %s status %d", k, atomic.LoadUint32(&v.isDone))
+		// }
 	}
-
 }
 
 // listenNotify listen system signal such as ctrl-c
@@ -297,7 +301,7 @@ func (e *SpiderEngine) Start(spiderName string) {
 }
 
 func (e *SpiderEngine) checkReadyDone() bool {
-	if atomic.LoadInt32(&e.startRequestFinish) == 1 && atomic.LoadInt64(&ctxManager.Count) == 0 {
+	if atomic.LoadInt32(&e.startRequestFinish) == 1 && ctxManager.Count() == 0 {
 		return true
 	}
 	return false
@@ -374,14 +378,17 @@ func (e *SpiderEngine) readCache() {
 	for {
 		// if atomic.LoadInt64(&ctxManager.Count) < 64 {
 		req, err := e.cache.dequeue()
-		if req != nil && err == nil && !e.isDone && atomic.LoadInt64(&e.currentDownloading) < 16 {
+		if req != nil && err == nil && !e.isDone && atomic.LoadInt64(&e.currentDownloading) < 8 {
 			request := req.(*Context)
 			e.waitGroup.Add(1)
 			go e.recvRequestHandler(request)
 
 		}
 		//}
+		if err != nil {
+			// engineLog.Errorf("Dequeue request from cache queue %s", err.Error())
 
+		}
 		if e.isDone {
 			return
 		}
@@ -393,6 +400,8 @@ func (e *SpiderEngine) readCache() {
 func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	defer func(cxt *Context) {
 		engineLog.Infof("发生异常准备关闭上下文%s", cxt.CtxId)
+		e.waitGroup.Done()
+
 		cxt.Close()
 	}(err.Ctx)
 	atomic.AddUint64(&e.Stats.ErrorCount, 1)
@@ -400,7 +409,6 @@ func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
 	engineLog.WithField("request_id", err.Ctx.CtxId).Errorf(err.Error())
 
 	spider.ErrorHandler(err, e.requestsChan)
-	e.waitGroup.Done()
 }
 
 // doDownload handle request download
@@ -521,8 +529,10 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 	priority := 0
 	defer func() {
 		e.waitGroup.Done()
+		item.Ctx.Close()
+
 		if err := recover(); err != nil {
-			e.errorChan <- NewError(item.Ctx, fmt.Errorf("pipeline %d handle item error %s", priority	, err))
+			e.errorChan <- NewError(item.Ctx, fmt.Errorf("pipeline %d handle item error %s", priority, err))
 		}
 	}()
 	for _, pipeline := range e.pipelines {
@@ -536,7 +546,6 @@ func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMet
 			return
 		}
 	}
-	item.Ctx.Close()
 	atomic.AddUint64(&e.Stats.ItemScraped, 1)
 
 }

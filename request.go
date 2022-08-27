@@ -57,7 +57,7 @@ var requestPool *sync.Pool = &sync.Pool{
 type Option func(r *Request)
 
 // Parser response parse handler
-type Parser func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error
+type Parser func(resp *Context, req chan<- *Context) error
 
 // bufferPool buffer object pool
 var bufferPool *sync.Pool = &sync.Pool{
@@ -186,7 +186,7 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 
 // freeRequest reset Request and the put it into requestPool
 func freeRequest(r *Request) {
-	r.Parser = func(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
+	r.Parser = func(resp *Context, req chan<- *Context)error {
 		// default response parser
 		return nil
 	}

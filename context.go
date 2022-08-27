@@ -14,8 +14,9 @@ package tegenaria
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	cmap "github.com/orcaman/concurrent-map/v2"
 )
 
 type ContextInterface interface {
@@ -29,7 +30,7 @@ type Context struct {
 	Request *Request
 
 	// DownloadResult downloader handler result
-	DownloadResult *RequestResult
+	Response *Response
 
 	//parent parent context
 	parent context.Context
@@ -44,66 +45,63 @@ type Context struct {
 	Cancel context.CancelFunc
 	//
 	isDone uint32
+	//
+	Ref int64
+
+	//
+	Items chan *ItemMeta
+
+	Spider SpiderInterface
 }
 
 type ContextManager struct {
-	Count int64
+	Count       int64
+	ContextList map[string]*Context
 }
 
 var onceContextManager sync.Once
 
 type ContextOption func(c *Context)
 
-var ctxManager *ContextManager
+var ctxManager cmap.ConcurrentMap[*Context]
 
 func newContextManager() {
 	onceContextManager.Do(func() {
-		ctxManager = &ContextManager{}
+		ctxManager = cmap.New[*Context]()
 	})
 }
 
-func NewContext(request *Request, opts ...ContextOption) *Context {
+func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption) *Context {
 	parent, cancel := context.WithCancel(context.TODO())
 	ctx := &Context{
-		Request:        request,
-		parent:         parent,
-		CtxId:          GetUUID(),
-		DownloadResult: NewDownloadResult(),
-		Cancel:         cancel,
+		Request: request,
+		parent:  parent,
+		CtxId:   GetUUID(),
+		Cancel:  cancel,
+		Spider:  Spider,
 	}
 	log.Infof("生成新的请求%s %s", ctx.CtxId, request.Url)
 
 	for _, o := range opts {
 		o(ctx)
 	}
-	atomic.AddInt64(&ctxManager.Count, 1)
-	atomic.StoreUint32(&ctx.isDone, 0)
-	return ctx
-	// for {
-	// 	if atomic.LoadInt64(&ctxManager.Count) < 16 {
-	// 		atomic.AddInt64(&ctxManager.Count, 1)
-	// 		atomic.StoreUint32(&ctx.isDone, 0)
-	// 		return ctx
-	// 	}
+	ctxManager.Set(ctx.CtxId, ctx)
 
-	// }
+	return ctx
 
 }
+func (c *Context) setResponse(resp *Response) {
+	c.Response = resp
+}
 func (c *Context) Close() {
-	if atomic.LoadUint32(&c.isDone) == 0 {
-		atomic.AddInt64(&ctxManager.Count, -1)
-		atomic.StoreUint32(&c.isDone, 1)
-		if c.Request != nil {
-			freeRequest(c.Request)
-		}
-		if c.DownloadResult.Response != nil {
-			freeResponse(c.DownloadResult.Response)
-		}
-		engineLog.Infof("关闭上下文%s", c.CtxId)
-	} else {
-		engineLog.Infof("已经关闭上下文%s", c.CtxId)
-
+	if c.Request != nil {
+		freeRequest(c.Request)
 	}
+	if c.Response != nil {
+		freeResponse(c.Response)
+	}
+	ctxManager.Remove(c.CtxId)
+
 }
 func WithContext(ctx context.Context) ContextOption {
 	return func(c *Context) {
