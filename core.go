@@ -80,7 +80,6 @@ func (e *CrawlEngine) Start(spiderName string) {
 		spider,ok := e.spiders.SpidersModules[spiderName]
 		if !ok {
 			panic(fmt.Sprintf("Spider %s not found", spiderName))
-			return
 		}
 		spider.StartRequest(e.requestsChan)
 	}(spiderName)
