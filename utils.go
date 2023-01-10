@@ -10,11 +10,27 @@
 // limitations under the License.
 package tegenaria
 
-import "github.com/google/uuid"
+import (
+	"sync"
+
+	"github.com/google/uuid"
+)
 
 func GetUUID() string {
 	u4 := uuid.New()
 	uuid := u4.String()
 	return uuid
 
+}
+type GoFunc func()
+
+func GoSyncWait(wg *sync.WaitGroup, funcs ...GoFunc){
+	for _, readyFunc := range funcs{
+		_func := readyFunc
+		wg.Add(1)
+		go func(){
+			defer wg.Done()
+			_func()
+		}()
+	}
 }

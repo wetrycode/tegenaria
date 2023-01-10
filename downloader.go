@@ -306,7 +306,6 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
 	// Build the request here and pass in the context information
 	var asCtxKey ctxKey = "key"
 	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
-
 	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))

@@ -16,8 +16,8 @@ package tegenaria
 // 	"time"
 // )
 
-// // EngineOption the options params of NewDownloader
-// type EngineOption func(r *CrawlEngine)
+// EngineOption the options params of NewDownloader
+type EngineOption func(r *CrawlEngine)
 
 // // EngineWithContext set engine context
 // func EngineWithContext(ctx context.Context) EngineOption {
@@ -36,14 +36,14 @@ package tegenaria
 // 	}
 // }
 
-// // EngineWithDownloader set spider engine downloader
-// func EngineWithDownloader(downloader Downloader) EngineOption {
-// 	return func(r *CrawlEngine) {
-// 		r.requestDownloader = downloader
-// 		engineLog.Infoln("Set downloader to ", downloader)
+// EngineWithDownloader set spider engine downloader
+func EngineWithDownloader(downloader Downloader) EngineOption {
+	return func(r *CrawlEngine) {
+		r.Downloader = downloader
+		engineLog.Infoln("Set downloader to ", downloader)
 
-// 	}
-// }
+	}
+}
 
 // // EngineWithAllowStatusCode set request response allow status
 // func EngineWithAllowStatusCode(allowStatusCode []uint64) EngineOption {
@@ -54,14 +54,14 @@ package tegenaria
 // 	}
 // }
 
-// // EngineWithUniqueReq set request unique flag
-// func EngineWithUniqueReq(uniqueReq bool) EngineOption {
-// 	return func(r *CrawlEngine) {
-// 		r.filterDuplicateReq = uniqueReq
-// 		engineLog.Infoln("Set request unique flag to ", uniqueReq)
+// EngineWithUniqueReq set request unique flag
+func EngineWithUniqueReq(uniqueReq bool) EngineOption {
+	return func(r *CrawlEngine) {
+		r.filterDuplicateReq = uniqueReq
+		engineLog.Infoln("Set request unique flag to ", uniqueReq)
 
-// 	}
-// }
+	}
+}
 
 // // EngineWithSchedulerNum set engine scheduler number
 // // default to cpu number

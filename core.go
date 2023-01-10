@@ -40,8 +40,15 @@ type CrawlEngine struct {
 	// receiver is SpiderEngine.writeCache
 	requestsChan chan *Context
 	cacheChan    chan *Context
-
+	// filterDuplicateReq flag if filter duplicate request fingerprint.
+	// to filter duplicate request fingerprint set true or not set false.
+	filterDuplicateReq bool
+	// RFPDupeFilter request fingerprint BloomFilter
+	// it will work if filterDuplicateReq is true
+	RFPDupeFilter     RFPDupeFilterInterface
 	startSpiderFinish bool
+
+	isStop bool
 }
 
 // RegisterSpider register a spider to engine
@@ -70,38 +77,52 @@ func (e *CrawlEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterfa
 // Start spider engine start.
 // It will schedule all spider system
 func (e *CrawlEngine) Start(spiderName string) {
+	fmt.Printf("spider is ready to start")
+
+	spider, ok := e.spiders.SpidersModules[spiderName]
+
+	if !ok {
+		panic(fmt.Sprintf("Spider %s not found", spiderName))
+	}
 	e.waitGroup.Add(1)
-	go func(spiderName string){
+
+	go func(spiderName string) {
 		defer func() {
 			e.waitGroup.Done()
 			e.startSpiderFinish = true
 		}()
 		e.startSpiderFinish = false
-		spider,ok := e.spiders.SpidersModules[spiderName]
-		if !ok {
-			panic(fmt.Sprintf("Spider %s not found", spiderName))
-		}
+
 		spider.StartRequest(e.requestsChan)
 	}(spiderName)
+
+	e.waitGroup.Add(1)
+	go e.recvRequest()
+	e.waitGroup.Add(1)
+	go e.Scheduler(spider)
 	e.waitGroup.Wait()
 }
 
 func (e *CrawlEngine) Scheduler(spider SpiderInterface) {
-	e.waitGroup.Add(1)
-	go e.recvRequest()
+	defer e.waitGroup.Done()
 	for {
+		if e.isStop{
+			engineLog.Infof("调度已经结束")
+			return 
+		}
 		req, err := e.cache.dequeue()
 		if err != nil {
 			time.Sleep(time.Second)
 			continue
 		}
 		request := req.(*Context)
+		engineLog.Infof("request %s is ready work", request.CtxId)
 		e.waitGroup.Add(1)
-		go e.crawl(request)
+		go e.worker(request)
 
 	}
 }
-func (e *CrawlEngine) crawl(ctx *Context) {
+func (e *CrawlEngine) worker(ctx *Context) {
 	defer func() {
 		e.waitGroup.Done()
 		if err := recover(); err != nil {
@@ -116,12 +137,16 @@ func (e *CrawlEngine) crawl(ctx *Context) {
 	}()
 	resp, err := e.doDownload(ctx)
 	if err != nil {
+		engineLog.Errorf("download error %s", err.Error())
+		ctx.Error = err
 		return
 	}
 	ctx.setResponse(resp)
-	e.waitGroup.Add(1)
-	go e.doParse(ctx)
-	pipeErr:=e.doPipelinesHandlers(ctx)
+	e.doParse(ctx)
+	if ctx.Error != nil {
+		return
+	}
+	pipeErr := e.doPipelinesHandlers(ctx)
 	if pipeErr != nil {
 		return
 	}
@@ -130,22 +155,20 @@ func (e *CrawlEngine) recvRequest() {
 	defer func() {
 		e.waitGroup.Done()
 	}()
-Loop:
 	for {
 		select {
 		case req := <-e.requestsChan:
 			e.writeCache(req)
 		case <-time.After(time.Second * 3):
 			if e.checkReadyDone() {
-				break Loop
+				e.isStop = true
+				return
 			}
 		}
-
 	}
-	return
 }
 func (e *CrawlEngine) checkReadyDone() bool {
-	return false
+	return e.startSpiderFinish && ctxManager.isEmpty()
 }
 func (e *CrawlEngine) writeCache(ctx *Context) {
 	defer func() {
@@ -157,49 +180,25 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 		}
 	}()
 	var err error = nil
-	for i := 0; i < 3; i++ {
-		err = e.cache.enqueue(ctx)
+	if e.filterDuplicateReq {
+		var ret bool = false
+		ret, err = e.RFPDupeFilter.DoDupeFilter(ctx.Request)
 		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Warnf("Cache enqueue error %s", err.Error())
-			time.Sleep(time.Second)
-			continue
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("request unique error %s", err.Error())
+			return
 		}
-		err = nil
-		ctx.Error = err
-		return
-	}
-
-}
-func (e *CrawlEngine) readCache() {
-	defer func() {
-		// e.waitGroup.Done()
-		if err := recover(); err != nil {
-			engineLog.Errorf("write cache error %v", err)
+		if !ret {
+			return
 		}
-	}()
-	for {
-		req, err := e.cache.dequeue()
-		request := req.(*Context)
-		if err != nil {
-			time.Sleep(time.Second)
-			continue
-		}
-		e.cacheChan <- request
 	}
-
-
-}
-
-// recvRequest receive request from cacheChan and do download.
-func (e *CrawlEngine) doRequestHandler(req *Context) {
-	defer func() {
-		e.waitGroup.Done()
-	}()
-	if req == nil {
-		return
+	err = e.cache.enqueue(ctx)
+	if err != nil {
+		engineLog.WithField("request_id", ctx.CtxId).Warnf("Cache enqueue error %s", err.Error())
+		time.Sleep(time.Second)
+		e.cacheChan <- ctx
 	}
-	// e.waitGroup.Add(1)
-	e.doDownload(req)
+	err = nil
+	ctx.Error = err
 
 }
 
@@ -229,11 +228,10 @@ func (e *CrawlEngine) doDownload(ctx *Context) (*Response, *HandleError) {
 func (e *CrawlEngine) doParse(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("Parse error %s", err), ErrorWithRequest(ctx.Request))
+			err := NewError(ctx, fmt.Errorf("parse error %s", err), ErrorWithRequest(ctx.Request))
 			ctx.Error = err
 			engineLog.Errorf("Parse error %s", err.Error())
 		}
-		e.waitGroup.Done()
 		close(ctx.Items)
 	}()
 	if ctx.Response == nil {
@@ -250,6 +248,7 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 		}
 	}()
 	for item := range ctx.Items {
+		engineLog.Infof("get item %v", item)
 		for _, pipeline := range e.pipelines {
 			err := pipeline.ProcessItem(ctx.Spider, item)
 			if err != nil {
@@ -260,4 +259,23 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 		}
 	}
 	return nil
+}
+func NewEngine(opts ...EngineOption) *CrawlEngine {
+	Engine := &CrawlEngine{
+		waitGroup:             &sync.WaitGroup{},
+		spiders:               NewSpiders(),
+		requestsChan:          make(chan *Context, 1024),
+		pipelines:             make(ItemPipelines, 0),
+		downloaderMiddlewares: make(Middlewares, 0),
+		cache:                 NewRequestCache(),
+		cacheChan:             make(chan *Context, 512),
+
+		filterDuplicateReq: true,
+		RFPDupeFilter:      NewRFPDupeFilter(1024*4, 8),
+		isStop: false,
+	}
+	for _, o := range opts {
+		o(Engine)
+	}
+	return Engine
 }

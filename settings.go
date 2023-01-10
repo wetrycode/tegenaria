@@ -33,7 +33,7 @@ type Configuration struct {
 var Config *Configuration = &Configuration{
 	Log: &Logger{
 		Path:  "/var/log",
-		Level: "warn",
+		Level: "info",
 	},
 }
 
@@ -56,7 +56,7 @@ func initSettings() {
 		Config = &Configuration{
 			Log: &Logger{
 				Path:  "/var/log",
-				Level: "warn",
+				Level: "info",
 			},
 		}
 	}

@@ -14,6 +14,7 @@ package tegenaria
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
@@ -54,20 +55,41 @@ type Context struct {
 	Spider SpiderInterface
 }
 
-type ContextManager struct {
-	Count       int64
-	ContextList map[string]*Context
+type contextManager struct {
+	ctxCount int64
+	ctxMap   cmap.ConcurrentMap[*Context]
 }
 
 var onceContextManager sync.Once
 
 type ContextOption func(c *Context)
 
-var ctxManager cmap.ConcurrentMap[*Context]
+var ctxManager *contextManager
 
+func (c *contextManager) add(ctx *Context) {
+	c.ctxMap.Set(ctx.CtxId, ctx)
+	atomic.AddInt64(&c.ctxCount, 1)
+
+}
+
+func (c *contextManager) remove(ctx *Context) {
+	c.ctxMap.Remove(ctx.CtxId)
+	engineLog.Infof("删除任务:%s", ctx.CtxId)
+	atomic.AddInt64(&c.ctxCount, -1)
+
+}
+func (c *contextManager) isEmpty() bool {
+	engineLog.Infof("剩余任务数:%s", atomic.LoadInt64(&c.ctxCount))
+	return atomic.LoadInt64(&c.ctxCount) == 0
+}
+
+// var ctxCount int64
 func newContextManager() {
 	onceContextManager.Do(func() {
-		ctxManager = cmap.New[*Context]()
+		ctxManager = &contextManager{
+			ctxCount: 0,
+			ctxMap:   cmap.New[*Context](),
+		}
 	})
 }
 
@@ -79,14 +101,14 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 		CtxId:   GetUUID(),
 		Cancel:  cancel,
 		Spider:  Spider,
+		Items:   make(chan *ItemMeta, 16),
 	}
 	log.Infof("生成新的请求%s %s", ctx.CtxId, request.Url)
 
 	for _, o := range opts {
 		o(ctx)
 	}
-	ctxManager.Set(ctx.CtxId, ctx)
-
+	ctxManager.add(ctx)
 	return ctx
 
 }
@@ -100,7 +122,7 @@ func (c *Context) Close() {
 	if c.Response != nil {
 		freeResponse(c.Response)
 	}
-	ctxManager.Remove(c.CtxId)
+	ctxManager.remove(c)
 
 }
 func WithContext(ctx context.Context) ContextOption {

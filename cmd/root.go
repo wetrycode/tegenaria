@@ -5,6 +5,7 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -27,6 +28,7 @@ var crawlCmd = &cobra.Command{
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("准备启动%s爬虫", args[0])
 		rootEngine.Start(args[0])
 	},
 }
@@ -37,7 +39,7 @@ func Execute(engine *tegenaria.CrawlEngine) {
 	rootEngine = engine
 	err := RootCmd.Execute()
 	if err != nil {
-		os.Exit(1)	
+		os.Exit(1)
 	}
 }
 
