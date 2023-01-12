@@ -48,7 +48,8 @@ type CrawlEngine struct {
 	RFPDupeFilter     RFPDupeFilterInterface
 	startSpiderFinish bool
 
-	isStop bool
+	statistic *Statistic
+	isStop    bool
 }
 
 // RegisterSpider register a spider to engine
@@ -73,42 +74,34 @@ func (e *CrawlEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterfa
 	e.downloaderMiddlewares = append(e.downloaderMiddlewares, middlewares)
 	sort.Sort(e.downloaderMiddlewares)
 }
+func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
+	_spiderName := spiderName
+	return func() {
+		spider, ok := e.spiders.SpidersModules[_spiderName]
+
+		if !ok {
+			panic(fmt.Sprintf("Spider %s not found", _spiderName))
+		}
+		spider.StartRequest(e.requestsChan)
+		e.startSpiderFinish = true
+	}
+
+}
 
 // Start spider engine start.
 // It will schedule all spider system
 func (e *CrawlEngine) Start(spiderName string) {
-	fmt.Printf("spider is ready to start")
+	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
 
-	spider, ok := e.spiders.SpidersModules[spiderName]
-
-	if !ok {
-		panic(fmt.Sprintf("Spider %s not found", spiderName))
-	}
-	e.waitGroup.Add(1)
-
-	go func(spiderName string) {
-		defer func() {
-			e.waitGroup.Done()
-			e.startSpiderFinish = true
-		}()
-		e.startSpiderFinish = false
-
-		spider.StartRequest(e.requestsChan)
-	}(spiderName)
-
-	e.waitGroup.Add(1)
-	go e.recvRequest()
-	e.waitGroup.Add(1)
-	go e.Scheduler(spider)
+	GoSyncWait(e.waitGroup, tasks...)
 	e.waitGroup.Wait()
+	e.statistic.OutputStats()
 }
 
-func (e *CrawlEngine) Scheduler(spider SpiderInterface) {
-	defer e.waitGroup.Done()
+func (e *CrawlEngine) Scheduler() {
 	for {
-		if e.isStop{
-			engineLog.Infof("调度已经结束")
-			return 
+		if e.isStop {
+			return
 		}
 		req, err := e.cache.dequeue()
 		if err != nil {
@@ -116,45 +109,45 @@ func (e *CrawlEngine) Scheduler(spider SpiderInterface) {
 			continue
 		}
 		request := req.(*Context)
-		engineLog.Infof("request %s is ready work", request.CtxId)
-		e.waitGroup.Add(1)
-		go e.worker(request)
+		f := []GoFunc{e.worker(request)}
+		GoSyncWait(e.waitGroup, f...)
 
 	}
 }
-func (e *CrawlEngine) worker(ctx *Context) {
-	defer func() {
-		e.waitGroup.Done()
-		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("crawl error %s", err), ErrorWithRequest(ctx.Request))
-			engineLog.Errorf("crawl error %s", err.Error())
-		}
-		if ctx.Error != nil {
-			ctx.Spider.ErrorHandler(ctx, e.requestsChan)
-		}
-		ctx.Close()
+func (e *CrawlEngine) worker(ctx *Context) GoFunc {
+	c := ctx
+	return func() {
+		defer func() {
+			if err := recover(); err != nil {
+				err := NewError(c, fmt.Errorf("crawl error %s", err), ErrorWithRequest(c.Request))
+				engineLog.Errorf("crawl error %s", err.Error())
+			}
+			if c.Error != nil {
+				e.statistic.IncrErrorCount()
+				c.Spider.ErrorHandler(c, e.requestsChan)
+			}
+			c.Close()
 
-	}()
-	resp, err := e.doDownload(ctx)
-	if err != nil {
-		engineLog.Errorf("download error %s", err.Error())
-		ctx.Error = err
-		return
-	}
-	ctx.setResponse(resp)
-	e.doParse(ctx)
-	if ctx.Error != nil {
-		return
-	}
-	pipeErr := e.doPipelinesHandlers(ctx)
-	if pipeErr != nil {
-		return
+		}()
+		resp, err := e.doDownload(c)
+		if err != nil {
+			e.statistic.IncrDownloadFail()
+			engineLog.Errorf("download error %s", err.Error())
+			ctx.Error = err
+			return
+		}
+		ctx.setResponse(resp)
+		e.doParse(c)
+		if ctx.Error != nil {
+			return
+		}
+		pipeErr := e.doPipelinesHandlers(c)
+		if pipeErr != nil {
+			return
+		}
 	}
 }
 func (e *CrawlEngine) recvRequest() {
-	defer func() {
-		e.waitGroup.Done()
-	}()
 	for {
 		select {
 		case req := <-e.requestsChan:
@@ -221,6 +214,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) (*Response, *HandleError) {
 		}
 	}
 	// incr request download number
+	e.statistic.IncrRequestSent()
 	return e.Downloader.Download(ctx)
 
 }
@@ -248,6 +242,7 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 		}
 	}()
 	for item := range ctx.Items {
+		e.statistic.IncrItemScraped()
 		engineLog.Infof("get item %v", item)
 		for _, pipeline := range e.pipelines {
 			err := pipeline.ProcessItem(ctx.Spider, item)
@@ -260,6 +255,9 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 	}
 	return nil
 }
+func (e *CrawlEngine)GetSpiders()*Spiders{
+	return e.spiders
+}
 func NewEngine(opts ...EngineOption) *CrawlEngine {
 	Engine := &CrawlEngine{
 		waitGroup:             &sync.WaitGroup{},
@@ -269,10 +267,10 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		downloaderMiddlewares: make(Middlewares, 0),
 		cache:                 NewRequestCache(),
 		cacheChan:             make(chan *Context, 512),
-
-		filterDuplicateReq: true,
-		RFPDupeFilter:      NewRFPDupeFilter(1024*4, 8),
-		isStop: false,
+		statistic:             NewStatistic(),
+		filterDuplicateReq:    true,
+		RFPDupeFilter:         NewRFPDupeFilter(1024*4, 8),
+		isStop:                false,
 	}
 	for _, o := range opts {
 		o(Engine)

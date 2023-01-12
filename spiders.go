@@ -44,6 +44,7 @@ type BaseSpider struct {
 
 type Spiders struct {
 	SpidersModules map[string]SpiderInterface
+	Parsers map[string]Parser
 }
 
 var SpidersList *Spiders
@@ -72,6 +73,7 @@ func NewSpiders() *Spiders {
 	onceSpiders.Do(func() {
 		SpidersList = &Spiders{
 			SpidersModules: make(map[string]SpiderInterface),
+			Parsers: make(map[string]Parser),
 		}
 	})
 	return SpidersList

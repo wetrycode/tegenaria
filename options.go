@@ -18,7 +18,11 @@ package tegenaria
 
 // EngineOption the options params of NewDownloader
 type EngineOption func(r *CrawlEngine)
-
+func EngineWithCache(cache CacheInterface)EngineOption{
+	return func (r *CrawlEngine){
+		r.cache = cache
+	}
+}
 // // EngineWithContext set engine context
 // func EngineWithContext(ctx context.Context) EngineOption {
 // 	return func(r *CrawlEngine) {

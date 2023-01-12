@@ -13,12 +13,14 @@ package tegenaria
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/mitchellh/mapstructure"
 	"github.com/sirupsen/logrus"
 )
 
@@ -28,21 +30,21 @@ type Proxy struct {
 
 // Request a spider request config
 type Request struct {
-	Url             string                 // Set request URL
-	Header          map[string]string      // Set request header
-	Method          string                 // Set request Method
-	Body            []byte                 // Set request body
-	Params          map[string]string      // Set request query params
-	Proxy           *Proxy                 // Set request proxy addr
-	Cookies         map[string]string      // Set request cookie
-	Meta            map[string]interface{} // Set other data
-	AllowRedirects  bool                   // Set if allow redirects. default is true
-	MaxRedirects    int                    // Set max allow redirects number
-	Parser          Parser                 // Set response parser funcation
-	maxConnsPerHost int                    // Set max connect number for per host
-	BodyReader      io.Reader              // Set request body reader
-	ResponseWriter  io.Writer              // Set request response body writer,like file
-	AllowStatusCode []uint64
+	Url             string                 `json:"url"`             // Set request URL
+	Header          map[string]string      `json:"header"`          // Set request header
+	Method          string                 `json:"method"`          // Set request Method
+	Body            []byte                 `json:"body"`            // Set request body
+	Params          map[string]string      `json:"params"`          // Set request query params
+	Proxy           *Proxy                 `json:"-"`               // Set request proxy addr
+	Cookies         map[string]string      `json:"cookies"`         // Set request cookie
+	Meta            map[string]interface{} `json:"meta"`            // Set other data
+	AllowRedirects  bool                   `json:"allowRedirects"`  // Set if allow redirects. default is true
+	MaxRedirects    int                    `json:"maxRedirects"`    // Set max allow redirects number
+	Parser          Parser                 `json:"-"`               // Set response parser funcation
+	MaxConnsPerHost int                    `json:"maxConnsPerHost"` // Set max connect number for per host
+	BodyReader      io.Reader              `json:"-"`               // Set request body reader
+	ResponseWriter  io.Writer              `json:"-"`               // Set request response body writer,like file
+	AllowStatusCode []uint64               `json:"allowStatusCode"`
 	// RequestId       string                 // Set request uuid
 }
 
@@ -80,6 +82,11 @@ func RequestWithRequestBody(body map[string]interface{}) Option {
 			reqLog.Errorf("set request body err %s", err.Error())
 			panic(fmt.Sprintf("set request body err %s", err.Error()))
 		}
+	}
+}
+func RequestWithRequestBytesBody(body []byte) Option {
+	return func(r *Request) {
+		r.Body = body
 	}
 }
 func RequestWithRequestParams(params map[string]string) Option {
@@ -131,13 +138,19 @@ func RequestWithResponseWriter(write io.Writer) Option {
 }
 func RequestWithMaxConnsPerHost(maxConnsPerHost int) Option {
 	return func(r *Request) {
-		r.maxConnsPerHost = maxConnsPerHost
+		r.MaxConnsPerHost = maxConnsPerHost
 	}
 }
 
 func RequestWithAllowedStatusCode(allowStatusCode []uint64) Option {
 	return func(r *Request) {
 		r.AllowStatusCode = allowStatusCode
+	}
+}
+
+func RequestWithParser(parser Parser) Option {
+	return func(r *Request) {
+		r.Parser = parser
 	}
 }
 
@@ -186,7 +199,7 @@ func NewRequest(url string, method string, parser Parser, opts ...Option) *Reque
 
 // freeRequest reset Request and the put it into requestPool
 func freeRequest(r *Request) {
-	r.Parser = func(resp *Context, req chan<- *Context)error {
+	r.Parser = func(resp *Context, req chan<- *Context) error {
 		// default response parser
 		return nil
 	}
@@ -200,10 +213,30 @@ func freeRequest(r *Request) {
 	r.Params = nil
 	r.Proxy = nil
 	r.Cookies = nil
-	r.maxConnsPerHost = 512
+	r.MaxConnsPerHost = 512
 	r.ResponseWriter = nil
 	r.BodyReader = nil
 	requestPool.Put(r)
 	r = nil
+
+}
+func (r *Request) ToMap() (map[string]interface{}, error) {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]interface{}
+	err = json.Unmarshal(b, &m)
+	return m, err
+
+}
+func RequestFromMap(src map[string]interface{}, opts ...Option) *Request {
+	request := requestPool.Get().(*Request)
+	mapstructure.Decode(src, request)
+	for _, o := range opts {
+		o(request)
+	}
+	request.updateQueryParams()
+	return request
 
 }

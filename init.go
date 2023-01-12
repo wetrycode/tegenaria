@@ -11,7 +11,10 @@
 
 package tegenaria
 
-import "sync"
+import (
+	"encoding/gob"
+	"sync"
+)
 
 var onceInit sync.Once
 
@@ -20,6 +23,8 @@ func init() {
 		initSettings()
 		initLog()
 		newContextManager()
+		gob.Register(map[string]interface{}{})
+		gob.Register([]interface{}{})
 	})
 
 }

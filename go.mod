@@ -19,7 +19,14 @@ require (
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
 )
 
-require github.com/andybalholm/cascadia v1.3.1 // indirect
+require (
+	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
+	github.com/alicebob/miniredis/v2 v2.30.0 // indirect
+	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
+	github.com/go-redis/redis/v8 v8.11.5 // indirect
+	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
+)
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.0

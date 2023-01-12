@@ -45,8 +45,6 @@ type Context struct {
 	//
 	Cancel context.CancelFunc
 	//
-	isDone uint32
-	//
 	Ref int64
 
 	//
@@ -74,12 +72,11 @@ func (c *contextManager) add(ctx *Context) {
 
 func (c *contextManager) remove(ctx *Context) {
 	c.ctxMap.Remove(ctx.CtxId)
-	engineLog.Infof("删除任务:%s", ctx.CtxId)
 	atomic.AddInt64(&c.ctxCount, -1)
 
 }
 func (c *contextManager) isEmpty() bool {
-	engineLog.Infof("剩余任务数:%s", atomic.LoadInt64(&c.ctxCount))
+	engineLog.Debugf("Number of remaining tasks:%d", atomic.LoadInt64(&c.ctxCount))
 	return atomic.LoadInt64(&c.ctxCount) == 0
 }
 
@@ -92,7 +89,11 @@ func newContextManager() {
 		}
 	})
 }
-
+func WithContextId(ctxId string) ContextOption {
+	return func(c *Context) {
+		c.CtxId = ctxId
+	}
+}
 func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption) *Context {
 	parent, cancel := context.WithCancel(context.TODO())
 	ctx := &Context{
@@ -103,7 +104,7 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 		Spider:  Spider,
 		Items:   make(chan *ItemMeta, 16),
 	}
-	log.Infof("生成新的请求%s %s", ctx.CtxId, request.Url)
+	log.Debugf("Generate a new request%s %s", ctx.CtxId, request.Url)
 
 	for _, o := range opts {
 		o(ctx)
