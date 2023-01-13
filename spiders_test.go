@@ -45,9 +45,10 @@ func TestSpiders(t *testing.T) {
 		t.Errorf("Unexpected error register %s", err.Error())
 
 	}
+
 	err = spiders.Register(spider2)
 	if err == nil {
-		t.Error("Register duplicate spider name")
+		t.Error("spider name should be duplicated")
 	} else {
 		if err.Error() != ErrDuplicateSpiderName.Error() {
 			t.Errorf("Unexpected error register %s", err.Error())

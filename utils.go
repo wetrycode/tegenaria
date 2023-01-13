@@ -62,12 +62,6 @@ func GetParserByName(spider SpiderInterface, name string) Parser {
 	}
 }
 
-// func funcEqual(a, b interface{}) bool {
-// 	av := reflect.ValueOf(&a).Elem()
-// 	bv := reflect.ValueOf(&b).Elem()
-// 	return av.Type() == bv.Type()
-// }
-
 func GetAllParserMethod(spider SpiderInterface) map[string]Parser {
 	val := reflect.ValueOf(spider)
 	sType := reflect.TypeOf(spider)

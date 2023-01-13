@@ -36,9 +36,11 @@ type RFPDupeFilter struct {
 	bloomFilter *bloom.BloomFilter
 }
 
-func NewRFPDupeFilter(bloomM uint, bloomK uint) *RFPDupeFilter {
+func NewRFPDupeFilter(bloomP float64, bloomN uint) *RFPDupeFilter {
+	bloomM:=OptimalNumOfBits(int64(bloomN),bloomP)
+	bloomK:=OptimalNumOfHashFunctions(int64(bloomN), bloomM)
 	return &RFPDupeFilter{
-		bloomFilter: bloom.New(bloomM, bloomK),
+		bloomFilter: bloom.New(uint(bloomM), uint(bloomK)),
 	}
 }
 

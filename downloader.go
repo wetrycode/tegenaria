@@ -25,7 +25,6 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/wxnacy/wgo/arrays"
-	"go.uber.org/ratelimit"
 	"golang.org/x/net/http/httpproxy"
 )
 
@@ -35,18 +34,10 @@ type ctxKey string
 // Downloader interface
 type Downloader interface {
 	// Download core funcation
-	Download(ctx *Context)(*Response, *HandleError)
+	Download(ctx *Context) (*Response, error)
 
 	// CheckStatus check response status code if allow handle
 	CheckStatus(statusCode uint64, allowStatus []uint64) bool
-
-	// setTimeout set downloader timeout
-	setTimeout(timeout time.Duration)
-
-	//
-	// SetRatelimiter set download RPS
-	// See https://github.com/uber-go/ratelimit
-	SetRatelimiter(limiter ratelimit.Limiter)
 }
 
 // SpiderDownloader tegenaria spider downloader
@@ -62,8 +53,8 @@ type SpiderDownloader struct {
 	// client network request client
 	client *http.Client
 	// ProxyFunc update proxy for per request
-	ProxyFunc   func(req *http.Request) (*url.URL, error)
-	RateLimiter ratelimit.Limiter
+	ProxyFunc func(req *http.Request) (*url.URL, error)
+	// RateLimiter ratelimit.Limiter
 }
 
 // RequestResult network request response result
@@ -197,13 +188,6 @@ func DownloadWithH2(h2 bool) DownloaderOption {
 	}
 }
 
-// DownloadWithTlsConfig set tls configure for downloader
-func DownloadWithRateLimit(rateLimit ratelimit.Limiter) DownloaderOption {
-	return func(d *SpiderDownloader) {
-		d.RateLimiter = rateLimit
-
-	}
-}
 func NewDownloadResult() *RequestResult {
 	return &RequestResult{
 		Response: nil,
@@ -219,14 +203,14 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 		},
 		Proxy: proxyFunc,
 		DialContext: (&net.Dialer{
-			Timeout:   60 * time.Second,
-			KeepAlive: 2 * 60 * time.Second,
+			Timeout:   10 * time.Second,
+			KeepAlive: 1 * 60 * time.Second,
 		}).DialContext,
 		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          1024,
-		IdleConnTimeout:       30 * time.Second,
-		TLSHandshakeTimeout:   30 * time.Second,
-		ExpectContinueTimeout: 30 * time.Second,
+		IdleConnTimeout:       10 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 10 * time.Second,
 		MaxIdleConnsPerHost:   1024,
 		MaxConnsPerHost:       1024,
 	}
@@ -238,12 +222,10 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 		StreamThreshold: 1024 * 1024 * 10,
 		transport:       transport,
 		client:          globalClient,
-		RateLimiter:     ratelimit.New(16),
 	}
 	for _, opt := range opts {
 		opt(downloader)
 	}
-	initSentinel()
 	return downloader
 }
 
@@ -256,6 +238,9 @@ func checkUrlVaildate(requestUrl string) error {
 
 // CheckStatus check response status
 func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) bool {
+	if len(allowStatus) == 0 {
+		return true
+	}
 	if statusCode >= 400 && -1 == arrays.ContainsUint(allowStatus, statusCode) {
 		return false
 	}
@@ -263,7 +248,7 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 }
 
 // Download network downloader
-func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
+func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	downloadLog := log.WithField("request_id", ctx.CtxId)
 	defer func() {
 		// result <- ctx
@@ -277,9 +262,9 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
 
 	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
 		// request url is not vaildate
-		downloadErr := NewError(ctx, err, ErrorWithRequest(ctx.Request))
+		// downloadErr := NewError(ctx, err, ErrorWithRequest(ctx.Request))
 		downloadLog.Errorf(err.Error())
-		return nil,downloadErr
+		return nil, err
 	}
 
 	// ValueContext
@@ -309,8 +294,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
 	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
-		downloadErr := NewError(ctx, err, ErrorWithRequest(ctx.Request))
-		return nil, downloadErr
+		return nil, err
 	}
 
 	// Set request header
@@ -337,7 +321,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
 		req.Close = true
 	}()
 	if err != nil {
-		downloadErr := NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()), ErrorWithRequest(ctx.Request))
+		downloadErr := NewError(ctx, fmt.Errorf("Request url %s error %s when reading response", ctx.Request.Url, err.Error()))
 		return nil, downloadErr
 
 	}
@@ -367,26 +351,10 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, *HandleError) {
 	if err != nil {
 		msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
 		downloadLog.Errorf("%s\n", msg)
-		// ctx.DownloadResult.Response = nil
-		dowloadError := NewError(ctx, ErrResponseRead, ErrorWithRequest(ctx.Request))
-		return nil, dowloadError
+
+		return nil, err
 	}
 	return response, nil
 
-
 }
 
-func (d *SpiderDownloader) setTimeout(timeout time.Duration) {
-	d.transport.DialContext = (&net.Dialer{
-		Timeout:   timeout,
-		KeepAlive: timeout,
-		DualStack: true,
-	}).DialContext
-	d.client.Timeout = timeout
-}
-
-// SetRatelimiter set download RPS
-// See https://github.com/uber-go/ratelimit
-func (d *SpiderDownloader) SetRatelimiter(limiter ratelimit.Limiter) {
-	d.RateLimiter = limiter
-}

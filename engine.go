@@ -2,6 +2,7 @@ package tegenaria
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -29,11 +30,12 @@ type CrawlEngine struct {
 	// waitGroup the engineScheduler inner goroutine task wait group
 	waitGroup *sync.WaitGroup
 
-	Downloader Downloader
+	downloader Downloader
 
 	// cache Request cache.
 	// You can set your custom cache module,like redis
-	cache CacheInterface
+	cache   CacheInterface
+	limiter LimitInterface
 
 	// requestsChan *Request channel
 	// sender is SpiderInterface.StartRequest
@@ -65,7 +67,7 @@ func (e *CrawlEngine) RegisterSpiders(spider SpiderInterface) {
 func (e *CrawlEngine) RegisterPipelines(pipeline PipelinesInterface) {
 	e.pipelines = append(e.pipelines, pipeline)
 	sort.Sort(e.pipelines)
-	engineLog.Infof("Register %v priority pipeline success\n", pipeline)
+	engineLog.Debugf("Register %v priority pipeline success\n", pipeline)
 
 }
 
@@ -105,7 +107,8 @@ func (e *CrawlEngine) Scheduler() {
 		}
 		req, err := e.cache.dequeue()
 		if err != nil {
-			time.Sleep(time.Second)
+			runtime.Gosched()
+			// time.Sleep(time.Second)
 			continue
 		}
 		request := req.(*Context)
@@ -119,7 +122,8 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 	return func() {
 		defer func() {
 			if err := recover(); err != nil {
-				err := NewError(c, fmt.Errorf("crawl error %s", err), ErrorWithRequest(c.Request))
+				err := NewError(c, fmt.Errorf("crawl error %s", err))
+				c.Error = err
 				engineLog.Errorf("crawl error %s", err.Error())
 			}
 			if c.Error != nil {
@@ -127,22 +131,31 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 				c.Spider.ErrorHandler(c, e.requestsChan)
 			}
 			c.Close()
-
 		}()
 		resp, err := e.doDownload(c)
 		if err != nil {
 			e.statistic.IncrDownloadFail()
 			engineLog.Errorf("download error %s", err.Error())
-			ctx.Error = err
+			c.Error = NewError(c, err)
 			return
 		}
-		ctx.setResponse(resp)
-		e.doParse(c)
-		if ctx.Error != nil {
+		c.setResponse(resp)
+		errRsp := e.doHandleResponse(c)
+		if errRsp != nil {
+			c.Error = errRsp
+			return
+		}
+		err = e.doParse(c)
+		if c.Error != nil {
+			return
+		}
+		if err != nil {
+			c.Error = NewError(c, fmt.Errorf("parse error %s", err.Error()))
 			return
 		}
 		pipeErr := e.doPipelinesHandlers(c)
 		if pipeErr != nil {
+			c.Error = NewError(c, fmt.Errorf("pipeline error %s", pipeErr.Error()))
 			return
 		}
 	}
@@ -157,7 +170,9 @@ func (e *CrawlEngine) recvRequest() {
 				e.isStop = true
 				return
 			}
+
 		}
+		runtime.Gosched()
 	}
 }
 func (e *CrawlEngine) checkReadyDone() bool {
@@ -167,7 +182,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 	defer func() {
 		// e.waitGroup.Done()
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("write cache error %s", err), ErrorWithRequest(ctx.Request))
+			err := NewError(ctx, fmt.Errorf("write cache error %s", err))
 			engineLog.Errorf("write cache error %s", err.Error())
 			ctx.Error = err
 		}
@@ -180,7 +195,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("request unique error %s", err.Error())
 			return
 		}
-		if !ret {
+		if ret {
 			return
 		}
 	}
@@ -196,11 +211,11 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 }
 
 // doDownload handle request download
-func (e *CrawlEngine) doDownload(ctx *Context) (*Response, *HandleError) {
+func (e *CrawlEngine) doDownload(ctx *Context) (*Response, error) {
 	defer func() {
-		// e.waitGroup.Done()
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("Download error %s", err), ErrorWithRequest(ctx.Request))
+			err := NewError(ctx, fmt.Errorf("Download error %s", err))
+			ctx.Error = err
 			engineLog.Errorf("Download error %s", err.Error())
 		}
 	}()
@@ -209,20 +224,55 @@ func (e *CrawlEngine) doDownload(ctx *Context) (*Response, *HandleError) {
 		err := middleware.ProcessRequest(ctx)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
-			ctx.Error = err
-			return nil, NewError(ctx, err, ErrorWithRequest(ctx.Request))
+			// ctx.Error = err
+			return nil, err
 		}
 	}
 	// incr request download number
+	err := e.limiter.checkAndWaitLimiterPass()
+	if err != nil {
+		return nil, err
+	}
 	e.statistic.IncrRequestSent()
-	return e.Downloader.Download(ctx)
+	return e.downloader.Download(ctx)
 
 }
 
+// doRequestResult handle download respose result
+func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
+	defer func() {
+
+	}()
+	if ctx.Response == nil {
+		err := fmt.Errorf("response is nil")
+		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
+		return NewError(ctx, err)
+	}
+	if !e.downloader.CheckStatus(uint64(ctx.Response.Status), ctx.Request.AllowStatusCode) {
+		err := fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), ctx.Response.Status)
+		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
+		return NewError(ctx, err)
+	}
+
+	if len(e.downloaderMiddlewares) == 0 {
+		return nil
+	}
+	for index := range e.downloaderMiddlewares {
+		middleware := e.downloaderMiddlewares[len(e.downloaderMiddlewares)-index-1]
+		err := middleware.ProcessResponse(ctx, e.requestsChan)
+		if err != nil {
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
+			err = NewError(ctx, err)
+			return err
+		}
+	}
+	return nil
+
+}
 func (e *CrawlEngine) doParse(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("parse error %s", err), ErrorWithRequest(ctx.Request))
+			err := NewError(ctx, fmt.Errorf("parse error %s", err))
 			ctx.Error = err
 			engineLog.Errorf("Parse error %s", err.Error())
 		}
@@ -231,32 +281,38 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 	if ctx.Response == nil {
 		return nil
 	}
-	return ctx.Spider.Parser(ctx, e.requestsChan)
+	parserErr := ctx.Request.Parser(ctx, e.requestsChan)
+
+	return parserErr
+
 }
 func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("pipeline error %s", err), ErrorWithRequest(ctx.Request))
+			err := NewError(ctx, fmt.Errorf("pipeline error %s", err))
 			ctx.Error = err
 			engineLog.Errorf("pipeline error %s", err.Error())
 		}
 	}()
 	for item := range ctx.Items {
 		e.statistic.IncrItemScraped()
-		engineLog.Infof("get item %v", item)
 		for _, pipeline := range e.pipelines {
 			err := pipeline.ProcessItem(ctx.Spider, item)
 			if err != nil {
 				engineLog.WithField("request_id", ctx.CtxId).Errorf("Pipeline %d handle item error %s", pipeline.GetPriority(), err.Error())
-				ctx.Error = err
+				// ctx.Error = err
 				return err
 			}
 		}
 	}
 	return nil
 }
-func (e *CrawlEngine)GetSpiders()*Spiders{
+func (e *CrawlEngine) GetSpiders() *Spiders {
 	return e.spiders
+}
+func (e *CrawlEngine) Close() {
+	close(e.requestsChan)
+	close(e.cacheChan)
 }
 func NewEngine(opts ...EngineOption) *CrawlEngine {
 	Engine := &CrawlEngine{
@@ -269,8 +325,10 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		cacheChan:             make(chan *Context, 512),
 		statistic:             NewStatistic(),
 		filterDuplicateReq:    true,
-		RFPDupeFilter:         NewRFPDupeFilter(1024*4, 8),
+		RFPDupeFilter:         NewRFPDupeFilter(0.001, 1024*4),
 		isStop:                false,
+		limiter:               NewDefaultLimiter(16),
+		downloader:            NewDownloader(),
 	}
 	for _, o := range opts {
 		o(Engine)

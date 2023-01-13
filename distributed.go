@@ -19,95 +19,118 @@ type GetRDBKey func(params ...interface{}) string
 // 该组件同事实现了RFPDupeFilterInterface 和CacheInterface
 type DistributedWorker struct {
 	// rdb redis客户端支持redis单机实例和redis cluster集群模式
-	rdb               redis.Cmdable
+	rdb redis.Cmdable
 	// getQueueKey 生成队列key的函数，允许用户自定义
-	getQueueKey       GetRDBKey
+	getQueueKey GetRDBKey
 	// getBloomFilterKey 布隆过滤器对应的生成key的函数，允许用户自定义
 	getBloomFilterKey GetRDBKey
 	// spiders 所有的SpiderInterface实例
-	spiders           *Spiders
+	spiders *Spiders
 	// dupeFilter 去重组件
-	dupeFilter        *RFPDupeFilter
+	dupeFilter *RFPDupeFilter
 	// bloomP 布隆过滤器的容错率
-	bloomP            float64
+	bloomP float64
 	// bloomK hash函数个数
-	bloomK            uint
+	bloomK uint
 	// bloomN 数据规模，比如1024 * 1024
-	bloomN            uint
+	bloomN uint
 	// bloomM bitset 大小
-	bloomM            uint
+	bloomM uint
+	// 并发控制器
+	limiter LimitInterface
 }
+
 // serialize 序列化组件
 type serialize struct {
 	buf bytes.Buffer
 	val rdbCacheData
 }
+
 // RdbNodes redis cluster 节点地址
 type RdbNodes []string
+
 // DistributedWorkerConfig 分布式组件的配置参数
 type DistributedWorkerConfig struct {
 	// RedisAddr redis 地址
-	RedisAddr          string
+	RedisAddr string
 	// RedisPasswd redis 密码
-	RedisPasswd        string
+	RedisPasswd string
 	// RedisUsername redis 用户名
-	RedisUsername      string
+	RedisUsername string
 	// RedisDB redis 数据库索引 index
-	RedisDB            uint32
+	RedisDB uint32
 	// RdbConnectionsSize 连接池大小
 	RdbConnectionsSize uint64
 	// RdbTimeout redis 超时时间
-	RdbTimeout         time.Duration
+	RdbTimeout time.Duration
 	// RdbMaxRetry redis操作失败后的重试次数
-	RdbMaxRetry        int
+	RdbMaxRetry int
 	// BloomP 布隆过滤器的容错率
-	BloomP             float64
+	BloomP float64
 	// BloomN 数据规模，比如1024 * 1024
-	BloomN             uint
+	BloomN uint
+	// 并发量
+	CurrentRequestNum int
 	// GetqueueKey 生成队列key的函数，允许用户自定义
-	GetqueueKey        GetRDBKey
+	GetqueueKey GetRDBKey
 	// GetBFKey 布隆过滤器对应的生成key的函数，允许用户自定义
-	GetBFKey           GetRDBKey
+	GetBFKey GetRDBKey
+	getLimitKey GetRDBKey
+
 }
+
 // rdbCacheData request 队列缓存的数据结构
 type rdbCacheData map[string]interface{}
+
 // WorkerConfigWithRdbCluster redis cluser 模式下的分布式组件配置参数
 type WorkerConfigWithRdbCluster struct {
 	*DistributedWorkerConfig
 	RdbNodes
 }
+
 // NewDistributedWorker 构建redis单机模式下的分布式工作组件
 func NewDistributedWorker(config *DistributedWorkerConfig) *DistributedWorker {
 	// 获取最优bit 数组的大小
 	m := OptimalNumOfBits(int64(config.BloomN), config.BloomP)
 	// 获取最优的hash函数个数
 	k := OptimalNumOfHashFunctions(int64(config.BloomN), m)
+	rdb:=NewRdbClient(config)
 	return &DistributedWorker{
-		rdb:               NewRdbClient(config),
+		rdb:               rdb,
 		getQueueKey:       config.GetqueueKey,
 		getBloomFilterKey: config.GetBFKey,
-		dupeFilter:        NewRFPDupeFilter(uint(m), uint(k)),
+		dupeFilter:        NewRFPDupeFilter(config.BloomP, uint(k)),
 		bloomP:            config.BloomP,
 		bloomK:            uint(k),
 		bloomN:            config.BloomN,
 		bloomM:            uint(m),
+		limiter: NewLeakyBucketLimiterWithRdb(config.CurrentRequestNum, rdb, config.getLimitKey()),
 	}
+}
+
+func getLimiterDefaultKey(params ...interface{}) string {
+	return "tegenaria:v1:bf"
 }
 // getBloomFilterDefaultKey 自定义的布隆过滤器key生成函数
 func getBloomFilterDefaultKey(params ...interface{}) string {
 	return "tegenaria:v1:bf"
 }
+
 // getQueueDefaultKey 自定义的request缓存队列key生成函数
 func getQueueDefaultKey(params ...interface{}) string {
 	return "tegenaria:v1:request"
 
 }
+
 // NewWorkerWithRdbCluster redis cluster模式下的分布式工作组件
 func NewWorkerWithRdbCluster(config *WorkerConfigWithRdbCluster) *DistributedWorker {
 	w := NewDistributedWorker(config.DistributedWorkerConfig)
 	// 替换为redis cluster客户端
 	w.rdb = NewRdbClusterCLient(config)
 	return w
+}
+func (w *DistributedWorker)GetLimter() LimitInterface{
+	return w.limiter
 }
 // newRdbCache 构建待缓存的数据
 func newRdbCache(request *Request, ctxId string, spiderName string) (rdbCacheData, error) {
@@ -124,17 +147,20 @@ func newRdbCache(request *Request, ctxId string, spiderName string) (rdbCacheDat
 	r["spiderName"] = spiderName
 	return r, nil
 }
+
 // loads 从缓存队列中加载请求并反序列化
 func (s *serialize) loads(request []byte) error {
 	decoder := gob.NewDecoder(bytes.NewReader(request))
-	return decoder.Decode(&s.val)                      
+	return decoder.Decode(&s.val)
 
 }
+
 // dumps 序列化操作
 func (s *serialize) dumps() error {
 	enc := gob.NewEncoder(&s.buf)
 	return enc.Encode(s.val)
 }
+
 // doSerialize 对request 进行序列化操作方便缓存
 // 返回的是二进制数组
 func doSerialize(ctx *Context) ([]byte, error) {
@@ -153,6 +179,7 @@ func doSerialize(ctx *Context) ([]byte, error) {
 	}
 	return s.buf.Bytes(), nil
 }
+
 // unserialize 对从rdb中读取到的二进制数据进行反序列化
 // 返回一个rdbCacheData对象
 func unserialize(data []byte) (rdbCacheData, error) {
@@ -206,7 +233,7 @@ func (w *DistributedWorker) dequeue() (interface{}, error) {
 	}
 	spider := w.spiders.SpidersModules[req["spiderName"].(string)]
 
-	opts := []Option{}
+	opts := []RequestOption{}
 	opts = append(opts, RequestWithParser(GetParserByName(spider, req["parser"].(string))))
 	opts = append(opts, RequestWithRequestProxy(Proxy{ProxyUrl: req["proxyUrl"].(string)}))
 	request := RequestFromMap(req, opts...)
@@ -219,6 +246,7 @@ func (w *DistributedWorker) getSize() int64 {
 	length, _ := w.rdb.LLen(goContext.TODO(), w.getQueueKey()).Uint64()
 	return int64(length)
 }
+
 // Fingerprint 生成request 对象的指纹
 func (w *DistributedWorker) Fingerprint(request *Request) ([]byte, error) {
 	fp, err := w.dupeFilter.Fingerprint(request)
@@ -246,6 +274,7 @@ func location(h [4]uint64, i uint) uint64 {
 	ii := uint64(i)
 	return h[ii%2] + ii*h[2+(((ii+(ii%2))%4)/2)]
 }
+
 // getOffset 计算偏移量
 func (w *DistributedWorker) getOffset(hash [4]uint64, index uint) uint {
 	return uint(location(hash, index) % uint64(w.bloomM))
@@ -260,6 +289,7 @@ func (w *DistributedWorker) DoDupeFilter(request *Request) (bool, error) {
 	}
 	return w.TestOrAdd(fp)
 }
+
 // TestOrAdd 如果指纹已经存在则返回True,否则为False
 // 指纹不存在的情况下会将指纹添加到缓存
 func (w *DistributedWorker) TestOrAdd(fingerprint []byte) (bool, error) {
@@ -273,6 +303,7 @@ func (w *DistributedWorker) TestOrAdd(fingerprint []byte) (bool, error) {
 	err = w.Add(fingerprint)
 	return false, err
 }
+
 // Add 添加指纹到布隆过滤器
 func (w *DistributedWorker) Add(fingerprint []byte) error {
 	h := baseHashes(fingerprint)
@@ -287,6 +318,7 @@ func (w *DistributedWorker) Add(fingerprint []byte) error {
 	}
 	return nil
 }
+
 // isExists 判断指纹是否存在
 func (w *DistributedWorker) isExists(fingerprint []byte) (bool, error) {
 	h := baseHashes(fingerprint)

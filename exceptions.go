@@ -49,9 +49,6 @@ func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 	h := &HandleError{
 		Ctx:      ctx,
 		Err:      err,
-		Request:  nil,
-		Response: nil,
-		Item:     nil,
 	}
 	for _, o := range opts {
 		o(h)
@@ -59,23 +56,6 @@ func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 	return h
 }
 
-func ErrorWithRequest(request *Request) ErrorOption {
-	return func(e *HandleError) {
-		e.Request = request
-	}
-}
-
-func ErrorWithResponse(response *Response) ErrorOption {
-	return func(e *HandleError) {
-		e.Response = response
-	}
-}
-
-func ErrorWithItem(item *ItemMeta) ErrorOption {
-	return func(e *HandleError) {
-		e.Item = item
-	}
-}
 func (e *HandleError) Error() string {
 	return fmt.Sprintf("%s with context id %s", e.Err.Error(), e.Ctx.CtxId)
 }

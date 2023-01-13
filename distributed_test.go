@@ -50,6 +50,9 @@ func TestDistributedWorker(t *testing.T){
 		RdbConnectionsSize: 15,
 		RdbTimeout: 5 * time.Second,
 		RdbMaxRetry: 3,
+		getLimitKey: getLimiterDefaultKey,
+		GetqueueKey: getQueueDefaultKey,
+		GetBFKey: getBloomFilterDefaultKey,
 	})
 	defer mockRedis.Close()
 	spider1 := &TestSpider{
@@ -98,6 +101,8 @@ func TestDistributedBloomFilter(t *testing.T){
 		GetBFKey: getBloomFilterDefaultKey,
 		BloomP: 0.001,
 		BloomN: 1024 * 1024 * 4,
+		getLimitKey: getLimiterDefaultKey,
+
 
 	})
 	defer mockRedis.Close()
@@ -148,6 +153,5 @@ func TestDistributedBloomFilter(t *testing.T){
 		t.Errorf("except filter result is false,but get true")
 	}
 
-
-
 }
+

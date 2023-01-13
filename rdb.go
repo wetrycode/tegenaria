@@ -9,7 +9,7 @@ import (
 func NewRdbConfig(config *DistributedWorkerConfig) *redis.Options {
 	return &redis.Options{
 		//连接信息
-		Network:  "tcp", //网络类型，tcp or unix，默认tcp
+		// Network:  "tcp", //网络类型，tcp or unix，默认tcp
 		Password: config.RedisPasswd,
 		Username: config.RedisUsername, //密码
 		DB:       int(config.RedisDB),  // redis数据库index
@@ -46,9 +46,13 @@ func NewRdbClient(config *DistributedWorkerConfig) *redis.Client {
 func NewRdbClusterCLient(config *WorkerConfigWithRdbCluster) *redis.ClusterClient {
 	return redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs: config.RdbNodes,
+		// MaxRetries: config.DistributedWorkerConfig.RdbMaxRetry,
+
 		//连接池容量及闲置连接数量
 		NewClient: func(opt *redis.Options) *redis.Client {
+			addr :=opt.Addr
 			opt = NewRdbConfig(config.DistributedWorkerConfig)
+			opt.Addr = addr
 			return redis.NewClient(opt)
 		},
 		// To route commands by latency or randomly, enable one of the following.

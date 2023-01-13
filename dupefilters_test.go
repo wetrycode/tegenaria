@@ -16,7 +16,7 @@ func TestDoDupeFilter(t *testing.T) {
 	request2 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
 	request3 := NewRequest(server.URL+"/testHeader2", GET, testParser, RequestWithRequestHeader(headers))
 
-	duplicates := NewRFPDupeFilter(1024*1024, 5)
+	duplicates := NewRFPDupeFilter(0.001,1024*1024)
 	if r1, _ := duplicates.DoDupeFilter(request1); r1 {
 		t.Errorf("Request1 error expected=%v, get=%v", false, true)
 	}
@@ -47,7 +47,7 @@ func TestDoBodyDupeFilter(t *testing.T) {
 	request2 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers),RequestWithRequestBody(body))
 	request3 := NewRequest(server.URL+"/testHeader2", GET, testParser, RequestWithRequestHeader(headers))
 	request4 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers),RequestWithRequestBody(body))
-	duplicates := NewRFPDupeFilter(1024*1024, 5)
+	duplicates := NewRFPDupeFilter(0.001,1024*1024)
 	if r1, err := duplicates.DoDupeFilter(request1); r1||err!=nil {
 		t.Errorf("Request1 error expected=%v, get=%v", false, true)
 	}

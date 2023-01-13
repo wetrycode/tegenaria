@@ -56,7 +56,7 @@ var requestPool *sync.Pool = &sync.Pool{
 }
 
 // Option NewRequest options
-type Option func(r *Request)
+type RequestOption func(r *Request)
 
 // Parser response parse handler
 type Parser func(resp *Context, req chan<- *Context) error
@@ -72,7 +72,7 @@ var bufferPool *sync.Pool = &sync.Pool{
 // reqLog request logger
 var reqLog *logrus.Entry = GetLogger("request")
 
-func RequestWithRequestBody(body map[string]interface{}) Option {
+func RequestWithRequestBody(body map[string]interface{}) RequestOption {
 	return func(r *Request) {
 		var err error
 
@@ -84,38 +84,38 @@ func RequestWithRequestBody(body map[string]interface{}) Option {
 		}
 	}
 }
-func RequestWithRequestBytesBody(body []byte) Option {
+func RequestWithRequestBytesBody(body []byte) RequestOption {
 	return func(r *Request) {
 		r.Body = body
 	}
 }
-func RequestWithRequestParams(params map[string]string) Option {
+func RequestWithRequestParams(params map[string]string) RequestOption {
 	return func(r *Request) {
 		r.Params = params
 	}
 }
-func RequestWithRequestProxy(proxy Proxy) Option {
+func RequestWithRequestProxy(proxy Proxy) RequestOption {
 	return func(r *Request) {
 		r.Proxy = &proxy
 	}
 }
-func RequestWithRequestHeader(header map[string]string) Option {
+func RequestWithRequestHeader(header map[string]string) RequestOption {
 	return func(r *Request) {
 		r.Header = header
 	}
 }
-func RequestWithRequestCookies(cookies map[string]string) Option {
+func RequestWithRequestCookies(cookies map[string]string) RequestOption {
 	return func(r *Request) {
 		r.Cookies = cookies
 	}
 }
 
-func RequestWithRequestMeta(meta map[string]interface{}) Option {
+func RequestWithRequestMeta(meta map[string]interface{}) RequestOption {
 	return func(r *Request) {
 		r.Meta = meta
 	}
 }
-func RequestWithAllowRedirects(allowRedirects bool) Option {
+func RequestWithAllowRedirects(allowRedirects bool) RequestOption {
 	return func(r *Request) {
 		r.AllowRedirects = allowRedirects
 		if !allowRedirects {
@@ -123,7 +123,7 @@ func RequestWithAllowRedirects(allowRedirects bool) Option {
 		}
 	}
 }
-func RequestWithMaxRedirects(maxRedirects int) Option {
+func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 	return func(r *Request) {
 		r.MaxRedirects = maxRedirects
 		if maxRedirects <= 0 {
@@ -131,24 +131,24 @@ func RequestWithMaxRedirects(maxRedirects int) Option {
 		}
 	}
 }
-func RequestWithResponseWriter(write io.Writer) Option {
+func RequestWithResponseWriter(write io.Writer) RequestOption {
 	return func(r *Request) {
 		r.ResponseWriter = write
 	}
 }
-func RequestWithMaxConnsPerHost(maxConnsPerHost int) Option {
+func RequestWithMaxConnsPerHost(maxConnsPerHost int) RequestOption {
 	return func(r *Request) {
 		r.MaxConnsPerHost = maxConnsPerHost
 	}
 }
 
-func RequestWithAllowedStatusCode(allowStatusCode []uint64) Option {
+func RequestWithAllowedStatusCode(allowStatusCode []uint64) RequestOption {
 	return func(r *Request) {
 		r.AllowStatusCode = allowStatusCode
 	}
 }
 
-func RequestWithParser(parser Parser) Option {
+func RequestWithParser(parser Parser) RequestOption {
 	return func(r *Request) {
 		r.Parser = parser
 	}
@@ -177,7 +177,7 @@ func (r *Request) updateQueryParams() {
 
 // NewRequest create a new Request.
 // It will get a nil request form requestPool and then init params
-func NewRequest(url string, method string, parser Parser, opts ...Option) *Request {
+func NewRequest(url string, method string, parser Parser, opts ...RequestOption) *Request {
 	request := requestPool.Get().(*Request)
 	request.Url = url
 	request.Method = method
@@ -230,7 +230,7 @@ func (r *Request) ToMap() (map[string]interface{}, error) {
 	return m, err
 
 }
-func RequestFromMap(src map[string]interface{}, opts ...Option) *Request {
+func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request {
 	request := requestPool.Get().(*Request)
 	mapstructure.Decode(src, request)
 	for _, o := range opts {

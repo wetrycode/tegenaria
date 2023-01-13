@@ -79,6 +79,10 @@ func (c *contextManager) isEmpty() bool {
 	engineLog.Debugf("Number of remaining tasks:%d", atomic.LoadInt64(&c.ctxCount))
 	return atomic.LoadInt64(&c.ctxCount) == 0
 }
+func (c *contextManager)Clear(){
+	atomic.StoreInt64(&c.ctxCount, 0)
+	c.ctxMap.Clear()
+}
 
 // var ctxCount int64
 func newContextManager() {
