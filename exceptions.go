@@ -37,17 +37,14 @@ type RedirectError struct {
 }
 
 type HandleError struct {
-	Ctx      *Context
+	CtxId      string
 	Err      error
-	Request  *Request
-	Response *Response
-	Item     *ItemMeta
 }
 type ErrorOption func(e *HandleError)
 
 func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 	h := &HandleError{
-		Ctx:      ctx,
+		CtxId:      ctx.CtxId,
 		Err:      err,
 	}
 	for _, o := range opts {
@@ -57,7 +54,7 @@ func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 }
 
 func (e *HandleError) Error() string {
-	return fmt.Sprintf("%s with context id %s", e.Err.Error(), e.Ctx.CtxId)
+	return fmt.Sprintf("%s with context id %s", e.Err.Error(), e.CtxId)
 }
 func (e *RedirectError) Error() string {
 	return "exceeded the maximum number of redirects: " + strconv.Itoa(e.RedirectNum)

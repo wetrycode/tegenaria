@@ -13,11 +13,14 @@ package tegenaria
 
 import (
 	"context"
+	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	cmap "github.com/orcaman/concurrent-map/v2"
+	"github.com/sirupsen/logrus"
 )
 
 type ContextInterface interface {
@@ -79,7 +82,7 @@ func (c *contextManager) isEmpty() bool {
 	engineLog.Debugf("Number of remaining tasks:%d", atomic.LoadInt64(&c.ctxCount))
 	return atomic.LoadInt64(&c.ctxCount) == 0
 }
-func (c *contextManager)Clear(){
+func (c *contextManager) Clear() {
 	atomic.StoreInt64(&c.ctxCount, 0)
 	c.ctxMap.Clear()
 }
@@ -119,6 +122,21 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 }
 func (c *Context) setResponse(resp *Response) {
 	c.Response = resp
+}
+func (c *Context) setError(msg string) {
+	err := NewError(c, fmt.Errorf("%s", msg))
+	c.Error = err
+	pc, file, lineNo, _ := runtime.Caller(1)
+	f := runtime.FuncForPC(pc)
+	fields:=logrus.Fields{
+		"request_id":c.CtxId,
+		"func": f.Name(),
+		"file":fmt.Sprintf("%s:%d",file,lineNo),
+	}
+	log := engineLog.WithFields(fields)
+	log.Logger.SetReportCaller(false)
+	log.Errorf("%s", err.Error())
+
 }
 func (c *Context) Close() {
 	if c.Request != nil {

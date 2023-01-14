@@ -11,6 +11,7 @@ import (
 )
 
 var engineLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
+type wokerUnit func(c *Context) error
 
 // Engine is the main struct of tegenaria
 // it is used to start a spider crawl
@@ -108,7 +109,6 @@ func (e *CrawlEngine) Scheduler() {
 		req, err := e.cache.dequeue()
 		if err != nil {
 			runtime.Gosched()
-			// time.Sleep(time.Second)
 			continue
 		}
 		request := req.(*Context)
@@ -122,9 +122,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 	return func() {
 		defer func() {
 			if err := recover(); err != nil {
-				err := NewError(c, fmt.Errorf("crawl error %s", err))
-				c.Error = err
-				engineLog.Errorf("crawl error %s", err.Error())
+				c.setError(fmt.Sprintf("crawl error %s", err))
 			}
 			if c.Error != nil {
 				e.statistic.IncrErrorCount()
@@ -132,31 +130,13 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			}
 			c.Close()
 		}()
-		resp, err := e.doDownload(c)
-		if err != nil {
-			e.statistic.IncrDownloadFail()
-			engineLog.Errorf("download error %s", err.Error())
-			c.Error = NewError(c, err)
-			return
-		}
-		c.setResponse(resp)
-		errRsp := e.doHandleResponse(c)
-		if errRsp != nil {
-			c.Error = errRsp
-			return
-		}
-		err = e.doParse(c)
-		if c.Error != nil {
-			return
-		}
-		if err != nil {
-			c.Error = NewError(c, fmt.Errorf("parse error %s", err.Error()))
-			return
-		}
-		pipeErr := e.doPipelinesHandlers(c)
-		if pipeErr != nil {
-			c.Error = NewError(c, fmt.Errorf("pipeline error %s", pipeErr.Error()))
-			return
+		units := []wokerUnit{e.doDownload, e.doHandleResponse, e.doParse, e.doPipelinesHandlers}
+		for _, unit := range units {
+			err := unit(c)
+			if err != nil {
+				c.Error = NewError(c, err)
+				return
+			}
 		}
 	}
 }
@@ -182,9 +162,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 	defer func() {
 		// e.waitGroup.Done()
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("write cache error %s", err))
-			engineLog.Errorf("write cache error %s", err.Error())
-			ctx.Error = err
+			ctx.setError(fmt.Sprintf("write cache error %s", err))
 		}
 	}()
 	var err error = nil
@@ -211,12 +189,14 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 }
 
 // doDownload handle request download
-func (e *CrawlEngine) doDownload(ctx *Context) (*Response, error) {
+func (e *CrawlEngine) doDownload(ctx *Context) error {
+	var err error = nil
 	defer func() {
-		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("Download error %s", err))
-			ctx.Error = err
-			engineLog.Errorf("Download error %s", err.Error())
+		if p := recover(); p != nil {
+			ctx.setError(fmt.Sprintf("Download error %s", p))
+		}
+		if err != nil {
+			e.statistic.IncrDownloadFail()
 		}
 	}()
 	// use download middleware to handle request object
@@ -224,34 +204,41 @@ func (e *CrawlEngine) doDownload(ctx *Context) (*Response, error) {
 		err := middleware.ProcessRequest(ctx)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
-			// ctx.Error = err
-			return nil, err
+			return err
 		}
 	}
 	// incr request download number
-	err := e.limiter.checkAndWaitLimiterPass()
+	err = e.limiter.checkAndWaitLimiterPass()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	e.statistic.IncrRequestSent()
-	return e.downloader.Download(ctx)
+	var rsp *Response = nil
+	rsp, err = e.downloader.Download(ctx)
+	if err != nil {
+		return err
+	}
+	ctx.setResponse(rsp)
+	return nil
 
 }
 
 // doRequestResult handle download respose result
 func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 	defer func() {
-
+		if p := recover(); p != nil {
+			ctx.setError(fmt.Sprintf("handle response error %s", p))
+		}
 	}()
 	if ctx.Response == nil {
 		err := fmt.Errorf("response is nil")
 		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
-		return NewError(ctx, err)
+		return err
 	}
 	if !e.downloader.CheckStatus(uint64(ctx.Response.Status), ctx.Request.AllowStatusCode) {
 		err := fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), ctx.Response.Status)
 		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
-		return NewError(ctx, err)
+		return err
 	}
 
 	if len(e.downloaderMiddlewares) == 0 {
@@ -262,7 +249,6 @@ func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 		err := middleware.ProcessResponse(ctx, e.requestsChan)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
-			err = NewError(ctx, err)
 			return err
 		}
 	}
@@ -272,9 +258,7 @@ func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 func (e *CrawlEngine) doParse(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("parse error %s", err))
-			ctx.Error = err
-			engineLog.Errorf("Parse error %s", err.Error())
+			ctx.setError(fmt.Sprintf("parse error %s", err))
 		}
 		close(ctx.Items)
 	}()
@@ -289,9 +273,7 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			err := NewError(ctx, fmt.Errorf("pipeline error %s", err))
-			ctx.Error = err
-			engineLog.Errorf("pipeline error %s", err.Error())
+			ctx.setError(fmt.Sprintf("pipeline error %s", err))
 		}
 	}()
 	for item := range ctx.Items {

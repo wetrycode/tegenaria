@@ -92,14 +92,13 @@ func TestDoDownload(t *testing.T) {
 
 	ctx := newTestRequest()
 
-	resp, err := engine.doDownload(ctx)
+	err := engine.doDownload(ctx)
 	if err != nil {
 		t.Errorf("download err:%s", err.Error())
 	}
-	if resp.Status != 200 {
-		t.Errorf("downloader except get 200 status code ,but get %d", resp.Status)
+	if ctx.Response.Status != 200 {
+		t.Errorf("downloader except get 200 status code ,but get %d", ctx.Response.Status)
 	}
-	ctx.setResponse(resp)
 	value, ok := ctx.Request.Header["priority-0"]
 	if !ok {
 		t.Errorf("Download middlerwares not work except priority-0 header, but get nil\n")
@@ -130,12 +129,11 @@ func TestErrResponse(t *testing.T) {
 	engine := newTestEngine("testSpider4", EngineWithDownloader(downloader))
 	ctx := newTestRequest()
 	ctx.Request.Url = newTestServer().URL + "/testTimeout"
-	rsp, err := engine.doDownload(ctx)
+	err := engine.doDownload(ctx)
 	if err == nil {
 		t.Errorf("Download should be timeout but not \n")
 
 	}
-	ctx.setResponse(rsp)
 
 }
 
@@ -144,11 +142,10 @@ func TestAllowedStatusCode(t *testing.T) {
 	ctx := newTestRequest(RequestWithAllowedStatusCode([]uint64{404, 403}))
 	ctx.Request.Url = newTestServer().URL + "/test404"
 
-	rsp, err := engine.doDownload(ctx)
+	err := engine.doDownload(ctx)
 	if err != nil {
 		t.Errorf("download request error %s", err.Error())
 	}
-	ctx.setResponse(rsp)
 
 	err = engine.doHandleResponse(ctx)
 	if err != nil {
@@ -162,11 +159,10 @@ func TestNotAllowedStatus(t *testing.T) {
 	ctx := newTestRequest(RequestWithAllowedStatusCode([]uint64{404}))
 	ctx.Request.Url = newTestServer().URL + "/test403"
 
-	rsp, err := engine.doDownload(ctx)
+	err := engine.doDownload(ctx)
 	if err != nil {
 		t.Errorf("download request error %s", err.Error())
 	}
-	ctx.setResponse(rsp)
 
 	err = engine.doHandleResponse(ctx)
 	if err == nil || !strings.Contains(err.Error(), "not allow handle status code") {
@@ -230,7 +226,7 @@ func TestProcessRequestError(t *testing.T) {
 
 	ctx := newTestRequest()
 
-	_, err := engine.doDownload(ctx)
+	err := engine.doDownload(ctx)
 	if !strings.Contains(err.Error(), "process request fail") {
 		t.Errorf("request should have error process request fail, but get %s\n", err.Error())
 	}
@@ -262,11 +258,10 @@ func TestParseError(t *testing.T) {
 		return errors.New("parse response error")
 	})
 	ctx := NewContext(request, spider)
-	rsp, err := engine.doDownload(ctx)
+	err = engine.doDownload(ctx)
 	if err != nil {
 		t.Errorf("download error %s", err.Error())
 	}
-	ctx.setResponse(rsp)
 	err = engine.doParse(ctx)
 	if err == nil {
 		t.Errorf("Except parse response error but get nil")
@@ -294,7 +289,7 @@ func TestWorkerErr(t *testing.T) {
 	ctx := newTestRequest()
 	url := ctx.Request.Url
 	engine := newTestEngine("wokerSpider")
-	monkey.Patch((*CrawlEngine).doDownload, func(_ *CrawlEngine, _ *Context) (*Response, error) { return nil, fmt.Errorf("call download error") })
+	monkey.Patch((*CrawlEngine).doDownload, func(_ *CrawlEngine, _ *Context) (error) { return fmt.Errorf("call download error") })
 
 	f := engine.worker(ctx)
 	f()
@@ -325,7 +320,7 @@ func TestWorkerErr(t *testing.T) {
 	monkey.Unpatch((*CrawlEngine).doPipelinesHandlers)
 
 	restContext(ctx, url)
-	monkey.Patch((*CrawlEngine).doDownload, func(_ *CrawlEngine, _ *Context) (*Response, error) {
+	monkey.Patch((*CrawlEngine).doDownload, func(_ *CrawlEngine, _ *Context) (error) {
 		panic("call doDownload panic")
 	})
 	f = engine.worker(ctx)
