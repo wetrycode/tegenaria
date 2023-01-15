@@ -2,6 +2,7 @@ package tegenaria
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -11,6 +12,7 @@ import (
 type LimitInterface interface {
 	// tryPassLimiter() (bool, error)
 	checkAndWaitLimiterPass() error
+	setCurrrentSpider(spider string)
 }
 
 const leakyBucketLuaScript string = `-- 最高水位
@@ -54,27 +56,32 @@ redis.call("expire", key, safetyLevel / waterVelocity)
 return 1`
 
 type leakyBucketLimiterWithRdb struct {
-	safetyLevel   int            // 最高水位
-	currentLevel  int            // 当前水位
-	waterVelocity int            // 水流速度/秒
+	safetyLevel   int // 最高水位
+	currentLevel  int // 当前水位
+	waterVelocity int // 水流速度/秒
+	currentSpider string
 	rdb           redis.Cmdable // redis 客户端
-	script        *redis.Script  // lua脚本
-	key string
+	script        *redis.Script // lua脚本
+	keyFunc       GetRDBKey
 }
-type defaultLimiter struct{
+type defaultLimiter struct {
 	limiter ratelimit.Limiter
 }
-func NewDefaultLimiter(limitRate int) *defaultLimiter{
+
+func NewDefaultLimiter(limitRate int) *defaultLimiter {
 	return &defaultLimiter{
-		limiter: ratelimit.New(limitRate,ratelimit.WithoutSlack),
+		limiter: ratelimit.New(limitRate, ratelimit.WithoutSlack),
 	}
 }
-func (d *defaultLimiter)checkAndWaitLimiterPass() error{
+func (d *defaultLimiter) checkAndWaitLimiterPass() error {
 	d.limiter.Take()
 	return nil
 }
+func (d *defaultLimiter) setCurrrentSpider(spider string) {
 
-func NewLeakyBucketLimiterWithRdb(safetyLevel int, rdb redis.Cmdable, key string) *leakyBucketLimiterWithRdb {
+}
+
+func NewLeakyBucketLimiterWithRdb(safetyLevel int, rdb redis.Cmdable, keyFunc GetRDBKey) *leakyBucketLimiterWithRdb {
 	script := readLuaScript()
 	return &leakyBucketLimiterWithRdb{
 		safetyLevel:   safetyLevel,
@@ -82,26 +89,37 @@ func NewLeakyBucketLimiterWithRdb(safetyLevel int, rdb redis.Cmdable, key string
 		waterVelocity: safetyLevel,
 		rdb:           rdb,
 		script:        script,
-		key: key,
+		keyFunc:       keyFunc,
 	}
 
 }
 func (l *leakyBucketLimiterWithRdb) tryPassLimiter() (bool, error) {
 	now := time.Now().Unix()
-	pass, err := l.script.Run(context.TODO(), l.rdb, []string{l.key}, l.safetyLevel, l.waterVelocity, now).Int()
+	key, _ := l.keyFunc()
+	key = fmt.Sprintf("%s:%s", key, l.currentSpider)
+	pass, err := l.script.Run(context.TODO(), l.rdb, []string{key}, l.safetyLevel, l.waterVelocity, now).Int()
 	if err != nil {
 		return false, err
 	}
-	return pass==1, nil
+	return pass == 1, nil
 
 }
-func (l *leakyBucketLimiterWithRdb) checkAndWaitLimiterPass()error{
+func (l *leakyBucketLimiterWithRdb) setCurrrentSpider(spider string) {
+	l.currentSpider = spider
+	key, ttl := l.keyFunc()
+	key = fmt.Sprintf("%s:%s", key, l.currentSpider)
+	if ttl>0{
+		l.rdb.Expire(context.TODO(), key, ttl)
+	}
+
+}
+func (l *leakyBucketLimiterWithRdb) checkAndWaitLimiterPass() error {
 	for {
-		pass, err:= l.tryPassLimiter()
-		if err!=nil{
+		pass, err := l.tryPassLimiter()
+		if err != nil {
 			return err
 		}
-		if pass{
+		if pass {
 			return nil
 		}
 		time.Sleep(1 * time.Millisecond)

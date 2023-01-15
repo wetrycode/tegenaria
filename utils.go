@@ -11,8 +11,10 @@
 package tegenaria
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"reflect"
 	"runtime"
 	"strings"
@@ -88,4 +90,26 @@ func OptimalNumOfHashFunctions(n int64, m int64) int64 {
 // 计算位数组长度
 func OptimalNumOfBits(n int64, p float64) int64 {
 	return (int64)(-float64(n) * math.Log(p) / (math.Log(2) * math.Log(2)))
+}
+func Map2String(m interface{}) string {
+	dataType, _ := json.Marshal(m)
+	dataString := string(dataType)
+	return dataString
+
+}
+func GetMachineIp() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, address := range addrs {
+		// 检查ip地址判断是否回环地址
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return ""
+
 }

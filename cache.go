@@ -22,7 +22,11 @@ import (
 type CacheInterface interface {
 	enqueue(ctx *Context) error    // enqueue put request to cache
 	dequeue() (interface{}, error) // dequeue get request from cache
-	getSize() int64                // getSize get cache size
+	isEmpty() bool                 // getSize get cache size
+	getSize() uint64
+	close() error
+	setCurrentSpider(spider string)
+
 }
 
 // requestCache request cache
@@ -60,8 +64,17 @@ func (c *requestCache) dequeue() (interface{}, error) {
 }
 
 // getSize get cache queue size
-func (c *requestCache) getSize() int64 {
-	return int64(c.queue.Quantity())
+func (c *requestCache) isEmpty() bool {
+	return int64(c.queue.Quantity()) == 0
+}
+func (c *requestCache) getSize() uint64 {
+	return uint64(c.queue.Quantity())
+}
+func(c *requestCache)close()error{
+	return nil
+}
+func(c *requestCache)setCurrentSpider(spider string){
+	
 }
 
 // NewRequestCache get a new requestCache

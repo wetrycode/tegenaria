@@ -9,20 +9,23 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wetrycode/tegenaria"
 )
+
 var exampleLog *logrus.Entry = tegenaria.GetLogger("example")
 
-type ExampleSpider struct{
+type ExampleSpider struct {
 	Name     string
 	FeedUrls []string
 }
+
 // QuotesbotSpider an example of tegenaria item
 type QuotesbotItem struct {
 	Text   string
 	Author string
 	Tags   string
 }
-func (e *ExampleSpider)StartRequest(req chan<- *tegenaria.Context){
-	for i := 0; i < 1000; i++ {
+
+func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
+	for i := 0; i < 1; i++ {
 		for _, url := range e.FeedUrls {
 			// get a new request
 			exampleLog.Infof("request %s", url)
@@ -37,7 +40,7 @@ func (e *ExampleSpider)StartRequest(req chan<- *tegenaria.Context){
 
 // Parser parse response ,it can generate ItemMeta and send to engine
 // it also can generate new Request
-func (e *ExampleSpider) Parser(resp *tegenaria.Context,req chan<- *tegenaria.Context) error{
+func (e *ExampleSpider) Parser(resp *tegenaria.Context, req chan<- *tegenaria.Context) error {
 	text := resp.Response.String()
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(text))
@@ -59,7 +62,7 @@ func (e *ExampleSpider) Parser(resp *tegenaria.Context,req chan<- *tegenaria.Con
 			Author: author,
 			Tags:   strings.Join(tags, ","),
 		}
-		exampleLog.Infof("text:%s,author:%s, tag: %s",qText, author, tags)
+		exampleLog.Infof("text:%s,author:%s, tag: %s", qText, author, tags)
 		itemCtx := tegenaria.NewItem(resp, &quoteItem)
 		resp.Items <- itemCtx
 	})
@@ -80,13 +83,13 @@ func (e *ExampleSpider) Parser(resp *tegenaria.Context,req chan<- *tegenaria.Con
 	}
 	return nil
 }
+
 // ErrorHandler it is used to handler all error recive from engine
-func (e *ExampleSpider) ErrorHandler(err *tegenaria.Context, req chan<- *tegenaria. Context){
-	
+func (e *ExampleSpider) ErrorHandler(err *tegenaria.Context, req chan<- *tegenaria.Context) {
 
 }
+
 // GetName get spider name
-func (e *ExampleSpider) GetName() string{
+func (e *ExampleSpider) GetName() string {
 	return e.Name
 }
-

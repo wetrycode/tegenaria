@@ -55,6 +55,7 @@ func TestEngineOptions(t *testing.T) {
 		EngineWithDownloader(NewDownloader()),
 		EngineWithFilter(NewRFPDupeFilter(0.001, 1024*1024)),
 		EngineWithUniqueReq(true),
+		EngineWithLimiter(NewDefaultLimiter(32)),
 	)
 
 }
@@ -198,15 +199,14 @@ func TestEngineStart(t *testing.T) {
 	engine := newTestEngine("testSpider9")
 	engine.Start("testSpider9")
 
-	if engine.statistic.DownloadFail != 0 {
-		t.Errorf("Spider crawl get %d errors \n", engine.statistic.DownloadFail)
+	if engine.statistic.GetDownloadFail() != 0 {
+		t.Errorf("Spider crawl get %d errors \n", engine.statistic.GetDownloadFail())
 	}
-	if engine.statistic.RequestSent != 1 {
-		t.Errorf("Spider crawl except 1 download, but get %d \n", engine.statistic.RequestSent)
-
+	if engine.statistic.GetRequestSent() != 1 {
+		t.Errorf("Spider crawl except 1 download, but get %d \n", engine.statistic.GetRequestSent())
 	}
-	if engine.statistic.ItemScraped != 1 {
-		t.Errorf("Spider crawl except 1 item, but get %d \n", engine.statistic.ItemScraped)
+	if engine.statistic.GetItemScraped() != 1 {
+		t.Errorf("Spider crawl except 1 item, but get %d \n", engine.statistic.GetItemScraped())
 
 	}
 }
@@ -214,8 +214,8 @@ func TestEngineErrorHandler(t *testing.T) {
 	engine := newTestEngine("testSpider10")
 	engine.spiders.SpidersModules["testSpider10"].(*TestSpider).FeedUrls = []string{"http://127.0.0.1:12345"}
 	engine.Start("testSpider10")
-	if engine.statistic.ErrorCount != 1 {
-		t.Errorf("Spider crawl except 1 error,but get %d \n", engine.statistic.ErrorCount)
+	if engine.statistic.GetErrorCount() != 1 {
+		t.Errorf("Spider crawl except 1 error,but get %d \n", engine.statistic.GetErrorCount())
 	}
 }
 

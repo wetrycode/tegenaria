@@ -43,6 +43,7 @@ type CrawlEngine struct {
 	// receiver is SpiderEngine.writeCache
 	requestsChan chan *Context
 	cacheChan    chan *Context
+	eventsChan   chan EventType
 	// filterDuplicateReq flag if filter duplicate request fingerprint.
 	// to filter duplicate request fingerprint set true or not set false.
 	filterDuplicateReq bool
@@ -50,9 +51,10 @@ type CrawlEngine struct {
 	// it will work if filterDuplicateReq is true
 	RFPDupeFilter     RFPDupeFilterInterface
 	startSpiderFinish bool
-
-	statistic *Statistic
-	isStop    bool
+	statistic         StatisticInterface
+	hooker            EventHooksInterface
+	isStop            bool
+	useDistributed    bool
 }
 
 // RegisterSpider register a spider to engine
@@ -85,6 +87,8 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 		if !ok {
 			panic(fmt.Sprintf("Spider %s not found", _spiderName))
 		}
+		e.statistic.setCurrentSpider(spiderName)
+		e.cache.setCurrentSpider(spiderName)
 		spider.StartRequest(e.requestsChan)
 		e.startSpiderFinish = true
 	}
@@ -94,12 +98,22 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 // Start spider engine start.
 // It will schedule all spider system
 func (e *CrawlEngine) Start(spiderName string) {
-	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
 
+	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
+	wg := &sync.WaitGroup{}
+	hookTasks := []GoFunc{e.hooker.EventsWatcher(e.eventsChan)}
+	GoSyncWait(wg, hookTasks...)
 	GoSyncWait(e.waitGroup, tasks...)
+	e.eventsChan <- START
 	e.waitGroup.Wait()
-	e.statistic.OutputStats()
+	e.eventsChan <- EXIT
+	wg.Wait()
+	stats:=e.statistic.OutputStats()
+	s:=Map2String(stats)
+	engineLog.Infof(s)
+
 }
+
 
 func (e *CrawlEngine) Scheduler() {
 	for {
@@ -126,10 +140,12 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			}
 			if c.Error != nil {
 				e.statistic.IncrErrorCount()
+				e.eventsChan <- ERROR
 				c.Spider.ErrorHandler(c, e.requestsChan)
 			}
 			c.Close()
 		}()
+		e.eventsChan <- HEARTBEAT
 		units := []wokerUnit{e.doDownload, e.doHandleResponse, e.doParse, e.doPipelinesHandlers}
 		for _, unit := range units {
 			err := unit(c)
@@ -156,13 +172,17 @@ func (e *CrawlEngine) recvRequest() {
 	}
 }
 func (e *CrawlEngine) checkReadyDone() bool {
-	return e.startSpiderFinish && ctxManager.isEmpty()
+	return e.startSpiderFinish && ctxManager.isEmpty() && e.cache.isEmpty()
 }
 func (e *CrawlEngine) writeCache(ctx *Context) {
 	defer func() {
 		// e.waitGroup.Done()
 		if err := recover(); err != nil {
 			ctx.setError(fmt.Sprintf("write cache error %s", err))
+		}
+		// 写入分布式组件后主动删除
+		if e.useDistributed {
+			ctx.Close()
 		}
 	}()
 	var err error = nil
@@ -305,12 +325,15 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		downloaderMiddlewares: make(Middlewares, 0),
 		cache:                 NewRequestCache(),
 		cacheChan:             make(chan *Context, 512),
+		eventsChan:            make(chan EventType, 16),
 		statistic:             NewStatistic(),
 		filterDuplicateReq:    true,
 		RFPDupeFilter:         NewRFPDupeFilter(0.001, 1024*4),
 		isStop:                false,
-		limiter:               NewDefaultLimiter(16),
+		useDistributed:        false,
+		limiter:               NewDefaultLimiter(32),
 		downloader:            NewDownloader(),
+		hooker: NewDefualtHooks(),
 	}
 	for _, o := range opts {
 		o(Engine)

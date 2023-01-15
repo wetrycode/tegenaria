@@ -19,7 +19,7 @@ func TestLeakyBucketLimiterWithRdb(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr: mockRedis.Addr(),
 	})
-	limit := NewLeakyBucketLimiterWithRdb(16, rdb, "tegenaria:v1:limit")
+	limit := NewLeakyBucketLimiterWithRdb(16, rdb, getLimiterDefaultKey)
 	start := time.Now()
 	wg:=&sync.WaitGroup{}
 	for i := 0; i < 64; i++ {

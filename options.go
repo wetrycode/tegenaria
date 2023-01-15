@@ -11,10 +11,8 @@
 
 package tegenaria
 
-// import (
-// 	"context"
-// 	"time"
-// )
+import "time"
+
 
 // EngineOption the options params of NewDownloader
 type EngineOption func(r *CrawlEngine)
@@ -43,5 +41,73 @@ func EngineWithUniqueReq(uniqueReq bool) EngineOption {
 	return func(r *CrawlEngine) {
 		r.filterDuplicateReq = uniqueReq
 
+	}
+}
+func EngineWithLimiter(limiter LimitInterface) EngineOption {
+	return func(r *CrawlEngine) {
+		r.limiter = limiter
+	}
+}
+
+func EngineWithDistributedWorker(woker *DistributedWorker)EngineOption{
+	return func(r *CrawlEngine) {
+		r.cache = woker
+		r.limiter = woker.GetLimter()
+		r.RFPDupeFilter = woker
+		r.useDistributed = true
+		r.hooker = NewDistributedHooks(woker)
+		woker.SetSpiders(r.GetSpiders())
+	}
+}
+
+func DistributedWithConnectionsSize(size int)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.RdbConnectionsSize = uint64(size)
+	}
+}
+func DistributedWithRdbTimeout(timeout time.Duration)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.RdbTimeout = timeout
+	}
+}
+func DistributedWithRdbMaxRetry(retry int)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.RdbMaxRetry = retry
+	}
+}
+
+func DistributedWithBloomP(bloomP float64)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.BloomP = bloomP
+	}
+}
+
+func DistributedWithBloomN(bloomN uint)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.BloomN = bloomN
+	}
+}
+
+func DistributedWithLimiterRate(rate int)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.LimiterRate = rate
+	}
+}
+
+func DistributedWithGetqueueKey(keyFunc GetRDBKey)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.GetqueueKey = keyFunc
+	}
+}
+
+func DistributedWithGetBFKey(keyFunc GetRDBKey)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.GetBFKey = keyFunc
+	}
+}
+
+func DistributedWithGetLimitKey(keyFunc GetRDBKey)DistributeOptions{
+	return func(w *DistributedWorkerConfig) {
+		w.getLimitKey = keyFunc
 	}
 }

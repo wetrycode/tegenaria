@@ -634,7 +634,7 @@ func TestDownloaderRequestConextError(t *testing.T) {
 	monkey.Patch(http.NewRequestWithContext, func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
 		return nil, errors.New("create request with context fail")
 	})
-	
+
 	downloader := NewDownloader()
 
 	_, err := downloader.Download(ctx)
