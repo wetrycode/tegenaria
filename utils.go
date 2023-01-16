@@ -30,9 +30,10 @@ func GetUUID() string {
 
 }
 
-type GoFunc func()
+type GoFunc func() error
 
-func GoSyncWait(wg *sync.WaitGroup, funcs ...GoFunc) {
+func AddGo(wg *sync.WaitGroup, funcs ...GoFunc) <-chan error {
+	ch := make(chan error, len(funcs))
 	for _, readyFunc := range funcs {
 		_func := readyFunc
 		wg.Add(1)
@@ -40,9 +41,11 @@ func GoSyncWait(wg *sync.WaitGroup, funcs ...GoFunc) {
 			defer func() {
 				wg.Done()
 			}()
-			_func()
+			ch <- _func()
+
 		}()
 	}
+	return ch
 }
 
 func GetFunctionName(fn Parser) string {

@@ -279,7 +279,7 @@ func (w *DistributedWorker) enqueue(ctx *Context) error {
 	if ctx == nil || ctx.Request == nil {
 		return nil
 	}
-	key, _ := w.getQueueKey()
+	key, _ := w.queueKey()
 
 	bytes, err := doSerialize(ctx)
 	if err != nil {
@@ -294,7 +294,7 @@ func (w *DistributedWorker) enqueue(ctx *Context) error {
 // dequeue 从缓存队列中读取二进制对象并序列化为rdbCacheData
 // 随后构建context
 func (w *DistributedWorker) dequeue() (interface{}, error) {
-	key, _ := w.getQueueKey()
+	key, _ := w.queueKey()
 	data, err := w.rdb.RPop(goContext.TODO(), key).Bytes()
 	if err != nil {
 		return nil, err
@@ -342,8 +342,8 @@ func (w *DistributedWorker) getSize() uint64 {
 }
 
 // Fingerprint 生成request 对象的指纹
-func (w *DistributedWorker) Fingerprint(request *Request) ([]byte, error) {
-	fp, err := w.dupeFilter.Fingerprint(request)
+func (w *DistributedWorker) Fingerprint(ctx *Context) ([]byte, error) {
+	fp, err := w.dupeFilter.Fingerprint(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -376,8 +376,8 @@ func (w *DistributedWorker) getOffset(hash [4]uint64, index uint) uint {
 
 // DoDupeFilter request去重处理,如果指纹已经存在则返回True,否则为False
 // 指纹不存在的情况下会将指纹添加到缓存
-func (w *DistributedWorker) DoDupeFilter(request *Request) (bool, error) {
-	fp, err := w.Fingerprint(request)
+func (w *DistributedWorker) DoDupeFilter(ctx *Context) (bool, error) {
+	fp, err := w.Fingerprint(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -454,12 +454,13 @@ func (w *DistributedWorker) getNodesSetKey() string {
 func (w *DistributedWorker) AddNode() error {
 	ip := GetMachineIp()
 	key := w.getNodeKey()
-	err := w.rdb.SetEX(goContext.TODO(), key, 1, 30*time.Second).Err()
+	err := w.rdb.SetEX(goContext.TODO(), key, 1, 10*time.Second).Err()
 	if err != nil {
 		return err
 	}
 	member := []interface{}{fmt.Sprintf("%s:%s", ip, w.nodeId)}
-	err = w.rdb.SAdd(goContext.TODO(), w.getNodesSetKey(), member...).Err()
+	nodesKey := w.getNodesSetKey()
+	err = w.rdb.SAdd(goContext.TODO(), nodesKey, member...).Err()
 	return err
 }
 func (w *DistributedWorker) DelNode() error {
@@ -507,13 +508,16 @@ func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
 	for index, r := range result {
 		val, err := r.Int()
 		if err != nil {
+			engineLog.Infof("get error val %d", val)
 			return true, err
 		}
+		engineLog.Infof("%s status is %d", members[index], val)
 		if val != 1 {
 			// 删除节点
 			members = append(members[:index], members[index+1:]...)
 
 		}
+
 	}
 	return len(members) == 0, nil
 

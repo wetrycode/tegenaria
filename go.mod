@@ -5,13 +5,13 @@ go 1.18
 require (
 	github.com/alicebob/miniredis/v2 v2.30.0
 	github.com/bits-and-blooms/bloom/v3 v3.1.0
-	github.com/bsm/redislock v0.8.2
 	github.com/gin-gonic/gin v1.8.2
 	github.com/go-kiss/monkey v0.0.0-20210912230757-40cda447d0e3
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.3.0
 	github.com/json-iterator/go v1.1.12
 	github.com/sirupsen/logrus v1.8.1
+	github.com/smartystreets/goconvey v1.7.2
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/viper v1.10.1
@@ -22,17 +22,18 @@ require (
 )
 
 require (
+	github.com/agiledragon/gomonkey/v2 v2.2.0 // indirect
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
-	github.com/go-redis/redis/v9 v9.0.0-rc.2 // indirect
-	github.com/go-redis/redismock/v8 v8.11.5 // indirect
-	github.com/go-redis/redismock/v9 v9.0.0-rc.2 // indirect
 	github.com/goccy/go-json v0.9.11 // indirect
-	github.com/kr/pretty v0.3.0 // indirect
+	github.com/google/go-cmp v0.5.9 // indirect
+	github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 // indirect
+	github.com/jtolds/gls v4.20.0+incompatible // indirect
+	github.com/onsi/gomega v1.24.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
+	github.com/smartystreets/assertions v1.2.0 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
 
 require (
@@ -45,7 +46,6 @@ require (
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.11.1 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/huandu/go-tls v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect

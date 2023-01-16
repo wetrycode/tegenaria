@@ -26,10 +26,10 @@ import (
 // RFPDupeFilterInterface Request Fingerprint duplicates filter interface
 type RFPDupeFilterInterface interface {
 	// Fingerprint compute request fingerprint
-	Fingerprint(request *Request) ([]byte, error)
+	Fingerprint(ctx *Context) ([]byte, error)
 
 	// DoDupeFilter do request fingerprint duplicates filter
-	DoDupeFilter(request *Request) (bool, error)
+	DoDupeFilter(ctx *Context) (bool, error)
 }
 
 type RFPDupeFilter struct {
@@ -37,8 +37,8 @@ type RFPDupeFilter struct {
 }
 
 func NewRFPDupeFilter(bloomP float64, bloomN uint) *RFPDupeFilter {
-	bloomM:=OptimalNumOfBits(int64(bloomN),bloomP)
-	bloomK:=OptimalNumOfHashFunctions(int64(bloomN), bloomM)
+	bloomM := OptimalNumOfBits(int64(bloomN), bloomP)
+	bloomK := OptimalNumOfHashFunctions(int64(bloomN), bloomM)
 	return &RFPDupeFilter{
 		bloomFilter: bloom.New(uint(bloomM), uint(bloomK)),
 	}
@@ -75,10 +75,15 @@ func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 	return buf.String()
 }
 
-func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
+func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
+	request:=ctx.Request
+	if request.Url == "" {
+		return nil, fmt.Errorf("request is nil,maybe it had been free")
+	}
 	// get sha128
 	sha := murmur3.New128()
-	_, err := io.WriteString(sha, request.Method)
+	method:=string(request.Method)
+	_, err := io.WriteString(sha, method)
 	if err != nil {
 		return nil, err
 	}
@@ -105,9 +110,9 @@ func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
 }
 
 // DoDupeFilter deduplicate request filter by bloom
-func (f *RFPDupeFilter) DoDupeFilter(request *Request) (bool, error) {
+func (f *RFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
 	// Use bloom filter to do fingerprint deduplication
-	data, err := f.Fingerprint(request)
+	data, err := f.Fingerprint(ctx)
 	if err != nil {
 		return false, err
 	}

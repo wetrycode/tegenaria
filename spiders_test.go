@@ -2,6 +2,8 @@ package tegenaria
 
 import (
 	"testing"
+
+	"github.com/smartystreets/goconvey/convey"
 )
 
 type TestSpider struct {
@@ -27,54 +29,37 @@ func (s *TestSpider) GetName() string {
 }
 
 func TestSpiders(t *testing.T) {
-	spiders := NewSpiders()
-	spider1 := &TestSpider{
-		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
-	}
-	spider2 := &TestSpider{
-		NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
-	}
-	spider3 := &TestSpider{
-		NewBaseSpider("testspider1", []string{"https://www.baidu.com"}),
-	}
-	spider4 := &TestSpider{
-		NewBaseSpider("testspider2", []string{"https://www.baidu.com"}),
-	}
-	err:=spiders.Register(spider1)
-	if err !=nil{
-		t.Errorf("Unexpected error register %s", err.Error())
-
-	}
-
-	err = spiders.Register(spider2)
-	if err == nil {
-		t.Error("spider name should be duplicated")
-	} else {
-		if err.Error() != ErrDuplicateSpiderName.Error() {
-			t.Errorf("Unexpected error register %s", err.Error())
+	convey.Convey("test spiders",t,func(){
+		spiders := NewSpiders()
+		spider1 := &TestSpider{
+			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
-	}
-	err = spiders.Register(spider3)
-	if err !=nil{
-		t.Errorf("Unexpected error register %s", err.Error())
-
-	}
-	err =spiders.Register(spider4)
-	if err !=nil{
-		t.Errorf("Unexpected error register %s", err.Error())
-
-	}
-	spiderNames := []string{"testspider", "testspider1", "testspider2"}
-	for _, spider := range spiderNames {
-		_, err := spiders.GetSpider(spider)
-		if err != nil {
-			t.Errorf("Get spider by name error %s", err.Error())
+		spider2 := &TestSpider{
+			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
-	}
-	_, err1 := spiders.GetSpider("spider4")
-	if err1.Error() != ErrSpiderNotExist.Error() {
-		t.Errorf("Get spider by name unexpected error %s", err.Error())
+		spider3 := &TestSpider{
+			NewBaseSpider("testspider1", []string{"https://www.baidu.com"}),
+		}
+		spider4 := &TestSpider{
+			NewBaseSpider("testspider2", []string{"https://www.baidu.com"}),
+		}
+		err:=spiders.Register(spider1)
+		convey.So(err, convey.ShouldBeNil)
+	
+		err = spiders.Register(spider2)
+		convey.So(err, convey.ShouldBeError,ErrDuplicateSpiderName)
 
-	}
+		err = spiders.Register(spider3)
+		convey.So(err, convey.ShouldBeNil)
+		err =spiders.Register(spider4)
+		convey.So(err, convey.ShouldBeNil)
+		spiderNames := []string{"testspider", "testspider1", "testspider2"}
+		for _, spider := range spiderNames {
+			_, err := spiders.GetSpider(spider)
+			convey.So(err, convey.ShouldBeNil)
+		}
+		_, err1 := spiders.GetSpider("spider4")
+		convey.So(err1, convey.ShouldBeError, ErrSpiderNotExist)
+	})
 
 }

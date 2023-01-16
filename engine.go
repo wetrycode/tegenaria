@@ -12,6 +12,7 @@ import (
 
 var engineLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
 type wokerUnit func(c *Context) error
+type EventsWatcher func(ch chan EventType) error
 
 // Engine is the main struct of tegenaria
 // it is used to start a spider crawl
@@ -81,7 +82,7 @@ func (e *CrawlEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterfa
 }
 func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 	_spiderName := spiderName
-	return func() {
+	return func() error {
 		spider, ok := e.spiders.SpidersModules[_spiderName]
 
 		if !ok {
@@ -91,6 +92,7 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 		e.cache.setCurrentSpider(spiderName)
 		spider.StartRequest(e.requestsChan)
 		e.startSpiderFinish = true
+		return nil
 	}
 
 }
@@ -98,27 +100,32 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 // Start spider engine start.
 // It will schedule all spider system
 func (e *CrawlEngine) Start(spiderName string) {
-
 	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
 	wg := &sync.WaitGroup{}
-	hookTasks := []GoFunc{e.hooker.EventsWatcher(e.eventsChan)}
-	GoSyncWait(wg, hookTasks...)
-	GoSyncWait(e.waitGroup, tasks...)
+	hookTasks := []GoFunc{e.EventsWatcherRunner}
+	AddGo(wg, hookTasks...)
+	AddGo(e.waitGroup, tasks...)
 	e.eventsChan <- START
 	e.waitGroup.Wait()
 	e.eventsChan <- EXIT
 	wg.Wait()
-	stats:=e.statistic.OutputStats()
-	s:=Map2String(stats)
+	stats := e.statistic.OutputStats()
+	s := Map2String(stats)
 	engineLog.Infof(s)
 
 }
 
-
-func (e *CrawlEngine) Scheduler() {
+func (e *CrawlEngine) EventsWatcherRunner() error {
+	err := e.hooker.EventsWatcher(e.eventsChan)
+	if err != nil {
+		return fmt.Errorf("events watcher task execution error %s", err.Error())
+	}
+	return nil
+}
+func (e *CrawlEngine) Scheduler() error {
 	for {
 		if e.isStop {
-			return
+			return nil
 		}
 		req, err := e.cache.dequeue()
 		if err != nil {
@@ -127,13 +134,13 @@ func (e *CrawlEngine) Scheduler() {
 		}
 		request := req.(*Context)
 		f := []GoFunc{e.worker(request)}
-		GoSyncWait(e.waitGroup, f...)
+		AddGo(e.waitGroup, f...)
 
 	}
 }
 func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 	c := ctx
-	return func() {
+	return func() error {
 		defer func() {
 			if err := recover(); err != nil {
 				c.setError(fmt.Sprintf("crawl error %s", err))
@@ -151,12 +158,13 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			err := unit(c)
 			if err != nil {
 				c.Error = NewError(c, err)
-				return
+				return nil
 			}
 		}
+		return nil
 	}
 }
-func (e *CrawlEngine) recvRequest() {
+func (e *CrawlEngine) recvRequest() error {
 	for {
 		select {
 		case req := <-e.requestsChan:
@@ -164,7 +172,7 @@ func (e *CrawlEngine) recvRequest() {
 		case <-time.After(time.Second * 3):
 			if e.checkReadyDone() {
 				e.isStop = true
-				return
+				return nil
 			}
 
 		}
@@ -174,7 +182,7 @@ func (e *CrawlEngine) recvRequest() {
 func (e *CrawlEngine) checkReadyDone() bool {
 	return e.startSpiderFinish && ctxManager.isEmpty() && e.cache.isEmpty()
 }
-func (e *CrawlEngine) writeCache(ctx *Context) {
+func (e *CrawlEngine) writeCache(ctx *Context) error {
 	defer func() {
 		// e.waitGroup.Done()
 		if err := recover(); err != nil {
@@ -188,13 +196,13 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 	var err error = nil
 	if e.filterDuplicateReq {
 		var ret bool = false
-		ret, err = e.RFPDupeFilter.DoDupeFilter(ctx.Request)
+		ret, err = e.RFPDupeFilter.DoDupeFilter(ctx)
 		if err != nil {
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("request unique error %s", err.Error())
-			return
+			return err
 		}
 		if ret {
-			return
+			return nil
 		}
 	}
 	err = e.cache.enqueue(ctx)
@@ -205,6 +213,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) {
 	}
 	err = nil
 	ctx.Error = err
+	return nil
 
 }
 
@@ -315,6 +324,11 @@ func (e *CrawlEngine) GetSpiders() *Spiders {
 func (e *CrawlEngine) Close() {
 	close(e.requestsChan)
 	close(e.cacheChan)
+	err := e.statistic.Reset()
+	if err != nil {
+		engineLog.Errorf("reset statistic error %s", err.Error())
+
+	}
 }
 func NewEngine(opts ...EngineOption) *CrawlEngine {
 	Engine := &CrawlEngine{
@@ -333,7 +347,7 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		useDistributed:        false,
 		limiter:               NewDefaultLimiter(32),
 		downloader:            NewDownloader(),
-		hooker: NewDefualtHooks(),
+		hooker:                NewDefualtHooks(),
 	}
 	for _, o := range opts {
 		o(Engine)

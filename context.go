@@ -128,10 +128,10 @@ func (c *Context) setError(msg string) {
 	c.Error = err
 	pc, file, lineNo, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
-	fields:=logrus.Fields{
-		"request_id":c.CtxId,
-		"func": f.Name(),
-		"file":fmt.Sprintf("%s:%d",file,lineNo),
+	fields := logrus.Fields{
+		"request_id": c.CtxId,
+		"func":       f.Name(),
+		"file":       fmt.Sprintf("%s:%d", file, lineNo),
 	}
 	log := engineLog.WithFields(fields)
 	log.Logger.SetReportCaller(false)
@@ -146,6 +146,7 @@ func (c *Context) Close() {
 		freeResponse(c.Response)
 	}
 	ctxManager.remove(c)
+	c.CtxId = ""
 
 }
 func WithContext(ctx context.Context) ContextOption {

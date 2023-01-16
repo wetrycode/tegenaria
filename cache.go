@@ -12,7 +12,7 @@
 package tegenaria
 
 import (
-	"runtime"
+	"fmt"
 
 	queue "github.com/yireyun/go-queue"
 )
@@ -26,7 +26,6 @@ type CacheInterface interface {
 	getSize() uint64
 	close() error
 	setCurrentSpider(spider string)
-
 }
 
 // requestCache request cache
@@ -40,15 +39,11 @@ func (c *requestCache) enqueue(ctx *Context) error {
 	if ctx == nil || ctx.Request == nil {
 		return nil
 	}
-	for {
-		ok, q := c.queue.Put(ctx)
-		if ok {
-			return nil
-		} else {
-			engineLog.Infof("请求入队列失败%d", q)
-			runtime.Gosched()
-		}
+	ok, q := c.queue.Put(ctx)
+	if !ok {
+		return fmt.Errorf("enter queue error %d", q)
 	}
+	return nil
 
 }
 
@@ -70,11 +65,11 @@ func (c *requestCache) isEmpty() bool {
 func (c *requestCache) getSize() uint64 {
 	return uint64(c.queue.Quantity())
 }
-func(c *requestCache)close()error{
+func (c *requestCache) close() error {
 	return nil
 }
-func(c *requestCache)setCurrentSpider(spider string){
-	
+func (c *requestCache) setCurrentSpider(spider string) {
+
 }
 
 // NewRequestCache get a new requestCache

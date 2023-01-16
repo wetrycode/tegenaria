@@ -1,6 +1,8 @@
 package tegenaria
 
-import "runtime"
+import (
+	"runtime"
+)
 
 type EventType int
 
@@ -20,7 +22,7 @@ type EventHooksInterface interface {
 	Exit(params ...interface{}) error
 	Heartbeat(params ...interface{}) error
 
-	EventsWatcher(ch chan EventType) GoFunc
+	EventsWatcher(ch chan EventType) error
 }
 type DefualtHooks struct {
 }
@@ -55,8 +57,7 @@ func (d *DefualtHooks) Heartbeat(params ...interface{}) error {
 	return nil
 }
 
-func eventsWatcher(ch chan EventType, hooker EventHooksInterface) {
-
+func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 	for {
 		select {
 		case event := <-ch:
@@ -64,32 +65,30 @@ func eventsWatcher(ch chan EventType, hooker EventHooksInterface) {
 			case START:
 				err := hooker.Start()
 				if err != nil {
-					engineLog.Errorf("start event error %s", err.Error())
+					return err
 				}
 			case STOP:
 				err := hooker.Stop()
 				if err != nil {
-					engineLog.Errorf("stop event error %s", err.Error())
+					return err
 
 				}
 			case ERROR:
 				err := hooker.Error()
 				if err != nil {
-					engineLog.Errorf("error event error %s", err.Error())
+					return nil
 				}
 			case HEARTBEAT:
 				err := hooker.Heartbeat()
 				if err != nil {
-					engineLog.Errorf("error event error %s", err.Error())
-
+					return err
 				}
 			case EXIT:
 				err := hooker.Exit()
 				if err != nil {
-					engineLog.Errorf("error event error %s", err.Error())
-
+					return err
 				}
-				return
+				return nil
 			default:
 
 			}
@@ -100,11 +99,9 @@ func eventsWatcher(ch chan EventType, hooker EventHooksInterface) {
 	}
 
 }
-func (d *DefualtHooks) EventsWatcher(ch chan EventType) GoFunc {
-	return func() {
-		eventsWatcher(ch, d)
+func (d *DefualtHooks) EventsWatcher(ch chan EventType) error {
+	return DefaultventsWatcher(ch, d)
 
-	}
 }
 
 func (d *DistributedHooks) Start(params ...interface{}) error {
@@ -123,11 +120,9 @@ func (d *DistributedHooks) Exit(params ...interface{}) error {
 	return d.worker.DelNode()
 }
 
-func (d *DistributedHooks) EventsWatcher(ch chan EventType) GoFunc {
-	return func() {
-		eventsWatcher(ch, d)
+func (d *DistributedHooks) EventsWatcher(ch chan EventType) error {
+	return DefaultventsWatcher(ch, d)
 
-	}
 }
 func (d *DistributedHooks) Heartbeat(params ...interface{}) error {
 	return d.worker.Heartbeat()

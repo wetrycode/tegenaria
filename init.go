@@ -14,6 +14,7 @@ package tegenaria
 import (
 	"encoding/gob"
 	"sync"
+	"time"
 )
 
 var onceInit sync.Once
@@ -25,6 +26,8 @@ func init() {
 		newContextManager()
 		gob.Register(map[string]interface{}{})
 		gob.Register([]interface{}{})
+		gob.Register(GET)
+		gob.Register(1 * time.Second)
 	})
 
 }

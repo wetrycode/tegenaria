@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/url"
 	"sync"
+	"time"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mitchellh/mapstructure"
@@ -32,7 +33,7 @@ type Proxy struct {
 type Request struct {
 	Url             string                 `json:"url"`             // Set request URL
 	Header          map[string]string      `json:"header"`          // Set request header
-	Method          string                 `json:"method"`          // Set request Method
+	Method          RequestMethod           `json:"method"`          // Set request Method
 	Body            []byte                 `json:"body"`            // Set request body
 	Params          map[string]string      `json:"params"`          // Set request query params
 	Proxy           *Proxy                 `json:"-"`               // Set request proxy addr
@@ -45,6 +46,7 @@ type Request struct {
 	BodyReader      io.Reader              `json:"-"`               // Set request body reader
 	ResponseWriter  io.Writer              `json:"-"`               // Set request response body writer,like file
 	AllowStatusCode []uint64               `json:"allowStatusCode"`
+	Timeout time.Duration `json:"timeout"`
 	// RequestId       string                 // Set request uuid
 }
 
@@ -153,7 +155,11 @@ func RequestWithParser(parser Parser) RequestOption {
 		r.Parser = parser
 	}
 }
-
+func RequestWithTimeout(timeout time.Duration) RequestOption {
+	return func(r *Request) {
+		r.Timeout = timeout
+	}
+}
 // updateQueryParams update url query  params
 func (r *Request) updateQueryParams() {
 	defer func() {
@@ -177,7 +183,7 @@ func (r *Request) updateQueryParams() {
 
 // NewRequest create a new Request.
 // It will get a nil request form requestPool and then init params
-func NewRequest(url string, method string, parser Parser, opts ...RequestOption) *Request {
+func NewRequest(url string, method RequestMethod, parser Parser, opts ...RequestOption) *Request {
 	request := requestPool.Get().(*Request)
 	request.Url = url
 	request.Method = method
@@ -189,6 +195,7 @@ func NewRequest(url string, method string, parser Parser, opts ...RequestOption)
 	request.AllowRedirects = true
 	request.Proxy = nil
 	request.AllowStatusCode = make([]uint64, 0)
+	request.Timeout = -1 * time.Second
 	for _, o := range opts {
 		o(request)
 	}
@@ -216,6 +223,7 @@ func freeRequest(r *Request) {
 	r.MaxConnsPerHost = 512
 	r.ResponseWriter = nil
 	r.BodyReader = nil
+	r.Timeout = -1 * time.Second
 	requestPool.Put(r)
 	r = nil
 

@@ -67,13 +67,15 @@ type RequestResult struct {
 type DownloaderOption func(d *SpiderDownloader)
 
 // Request method constant definition
+type RequestMethod string
+
 const (
-	GET     string = "GET"
-	POST    string = "POST"
-	PUT     string = "PUT"
-	DELETE  string = "DELETE"
-	OPTIONS string = "OPTIONS"
-	HEAD    string = "HEAD"
+	GET     RequestMethod = "GET"
+	POST    RequestMethod = "POST"
+	PUT     RequestMethod = "PUT"
+	DELETE  RequestMethod = "DELETE"
+	OPTIONS RequestMethod = "OPTIONS"
+	HEAD    RequestMethod = "HEAD"
 )
 
 // log logging of downloader modules
@@ -99,6 +101,10 @@ func newClient(client http.Client) {
 		}
 	})
 }
+
+// func timeoutDialContext(ctx context.Context, network, addr string) (net.Conn, error){
+
+// }
 
 // proxyFunc http.Transport.Proxy return proxy
 func proxyFunc(req *http.Request) (*url.URL, error) {
@@ -241,7 +247,7 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 	if len(allowStatus) == 0 {
 		return true
 	}
-	if statusCode >= 400 && -1 == arrays.ContainsUint(allowStatus, statusCode) {
+	if statusCode >= 400 && arrays.ContainsUint(allowStatus, statusCode) == -1 {
 		return false
 	}
 	return true
@@ -290,8 +296,15 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 	// Build the request here and pass in the context information
 	var asCtxKey ctxKey = "key"
-	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
-	req, err := http.NewRequestWithContext(valCtx, ctx.Request.Method, u.String(), ctx.Request.BodyReader)
+	var timeoutCtx context.Context = nil
+	var valCtx context.Context = nil
+	if ctx.Request.Timeout > 0 {
+		timeoutCtx, _ = context.WithTimeout(ctx, ctx.Request.Timeout)
+		valCtx = context.WithValue(timeoutCtx, asCtxKey, ctxValue)
+	} else {
+		valCtx = context.WithValue(ctx, asCtxKey, ctxValue)
+	}
+	req, err := http.NewRequestWithContext(valCtx, string(ctx.Request.Method), u.String(), ctx.Request.BodyReader)
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
 		return nil, err
@@ -355,6 +368,4 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 		return nil, err
 	}
 	return response, nil
-
 }
-

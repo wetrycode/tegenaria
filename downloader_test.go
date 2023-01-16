@@ -11,13 +11,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/go-kiss/monkey"
+	"github.com/smartystreets/goconvey/convey"
 )
 
 var onceServer sync.Once
@@ -95,7 +95,7 @@ func newTestServer() *httptest.Server {
 				c.String(200, s)
 			}
 		})
-		router.GET("/testGetCookie", func(c *gin.Context) {
+		router.GET("/testGETCookie", func(c *gin.Context) {
 			cookies := c.Request.Cookies()
 
 			for _, cookie := range cookies {
@@ -158,488 +158,207 @@ func newTestServer() *httptest.Server {
 	return ts
 
 }
-func TestRequestGet(t *testing.T) {
+func newRequestDownloadCase(uri string, method RequestMethod, opts ...RequestOption) (*Response, error) {
 	server := newTestServer()
 	newTestSpider()
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
-	var MainCtx context.Context = context.Background()
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-
+	request := NewRequest(server.URL+uri, method, testParser, opts...)
+	ctx := NewContext(request, testSpider)
 	downloader := NewDownloader(DownloadWithTlsConfig(&tls.Config{InsecureSkipVerify: true}))
 
-	resp, errHandle := downloader.Download(ctx)
-
-	if errHandle != nil {
-		t.Errorf("request error")
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response status = %d; expected %d", resp.Status, 200)
-
-	}
-	if resp.String() != "GET" {
-		t.Errorf("response text = %s; expected %s", resp.String(), "GET")
-
-	}
+	return downloader.Download(ctx)
+}
+func TestRequestGet(t *testing.T) {
+	convey.Convey("test request get", t, func() {
+		resp, errHandle := newRequestDownloadCase("/testGET", GET)
+		convey.So(errHandle, convey.ShouldBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		convey.So(resp.String(), convey.ShouldContainSubstring, "GET")
+	})
 
 }
 
 func TestRequestPost(t *testing.T) {
-	body := map[string]interface{}{
-		"key1": "value1",
-	}
-	server := newTestServer()
-	newTestSpider()
-	request := NewRequest(server.URL+"/testPOST", POST, testParser, RequestWithRequestBody(body))
-
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-	downloader := NewDownloader()
-
-	resp, err := downloader.Download(ctx)
-	if err != nil {
-		t.Errorf("request error %s", err.Error())
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response status = %d; expected %d", resp.Status, 200)
-
-	}
-	data, _ := resp.Json()
-	if data["key1"].(string) != "value1" {
-		t.Errorf("response text = %v; expected %s", data, body)
-
-	}
-
+	convey.Convey("test request post", t, func() {
+		body := map[string]interface{}{
+			"key1": "value1",
+		}
+		resp, err := newRequestDownloadCase("/testPOST", POST, RequestWithRequestBody(body))
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		data, _ := resp.Json()
+		convey.So(data["key1"].(string), convey.ShouldContainSubstring, "value1")
+	})
 }
 
 func TestRequestCookie(t *testing.T) {
-	cookies := map[string]string{
-		"test1": "test1",
-		"test2": "test2",
-	}
-	server := newTestServer()
-	// downloader := NewDownloader()
+	convey.Convey("test request cookie", t, func() {
+		cookies := map[string]string{
+			"test1": "test1",
+			"test2": "test2",
+		}
+		resp, err := newRequestDownloadCase("/testGETCookie", GET, RequestWithRequestCookies(cookies))
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		convey.So(len(resp.Header["Set-Cookie"]), convey.ShouldAlmostEqual, 2)
+	})
 
-	request := NewRequest(server.URL+"/testGetCookie", GET, testParser, RequestWithRequestCookies(cookies))
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
-
-	defer func() {
-		cancel()
-	}()
-	downloader := NewDownloader()
-
-	resp, err := downloader.Download(ctx)
-
-	if err != nil {
-		t.Errorf("request error with cookies")
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response with cookies status = %d; expected %d", resp.Status, 200)
-
-	}
-	if len(resp.Header["Set-Cookie"]) != 2 {
-		t.Errorf("request with cookies get = %d; expected %d", len(resp.Header["Set-Cookie"]), 2)
-	}
 }
 
 func TestRequestQueryParams(t *testing.T) {
-	params := map[string]string{
-		"key": "value",
-	}
-	server := newTestServer()
-	newTestSpider()
-	downloader := NewDownloader()
-
-	request := NewRequest(server.URL+"/testParams", GET, testParser, RequestWithRequestParams(params))
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-
-	if err != nil {
-		t.Errorf("request error")
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response with cookies status = %d; expected %d", resp.Status, 200)
-
-	}
-	if resp.String() != "value" {
-		t.Errorf("request with params get = %s; expected %s", resp.String(), "value")
-
-	}
+	convey.Convey("test request with ext params", t, func() {
+		params := map[string]string{
+			"key": "value",
+		}
+		resp, err := newRequestDownloadCase("/testParams", GET, RequestWithRequestParams(params))
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		convey.So(resp.String(), convey.ShouldContainSubstring, "value")
+	})
 
 }
 
-func TestRequestProxy(t *testing.T) {
-	server := newTestServer()
-	proxyServer := newTestProxyServer()
-	newTestSpider()
-	downloader := NewDownloader()
-	proxy := Proxy{
-		ProxyUrl: proxyServer.URL,
-	}
+func TestRequestProxyWithTimeOut(t *testing.T) {
+	convey.Convey("test request with proxy", t, func() {
+		proxyServer := newTestProxyServer()
+		proxy := Proxy{
+			ProxyUrl: proxyServer.URL,
+		}
+		defer proxyServer.Close()
+		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy),RequestWithTimeout(10 * time.Second))
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		convey.So(resp.String(), convey.ShouldContainSubstring, "This is proxy Server.")
+	})
 
-	defer proxyServer.Close()
-	request := NewRequest(server.URL+"/proxy", GET, testParser, RequestWithRequestProxy(proxy))
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-	if err != nil {
-		t.Errorf("request error")
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response status = %d; expected %d", resp.Status, 200)
-
-	}
-	if resp.String() != "This is target website.This is proxy Server." {
-		t.Errorf("response text = %s; expected %s", resp.String(), "This is target website.This is proxy Server.")
-
-	}
-
+	convey.Convey("test request with timeout", t, func() {
+		proxyServer := newTestProxyServer()
+		proxy := Proxy{
+			ProxyUrl: proxyServer.URL,
+		}
+		defer proxyServer.Close()
+		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy),RequestWithTimeout(1 * time.Second))
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(resp, convey.ShouldBeNil)
+	})
 }
 
 func TestRequestHeaders(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	downloader := NewDownloader()
+	convey.Convey("test request with add headers", t, func() {
+		headers := map[string]string{
+			"key":        "value",
+			"Intparams":  "1",
+			"Boolparams": "false",
+		}
+		resp, err := newRequestDownloadCase("/testHeader", GET, RequestWithRequestHeader(headers))
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		content:=resp.String()
+		convey.So(content, convey.ShouldContainSubstring, "value")
 
-	headers := map[string]string{
-		"KEY":        "value",
-		"Intparams":  "1",
-		"Boolparams": "false",
-	}
-	request := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers))
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-	if err != nil {
-		t.Errorf("request error")
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response status = %d; expected %d", resp.Status, 200)
-
-	}
-	if resp.String() != "value" {
-		t.Errorf("request with headers get = %s; expected %s", resp.String(), "value")
-
-	}
+	})
 }
 
 func TestTimeout(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
+	convey.Convey("test request timeout", t, func() {
+		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithTimeout(1 * time.Second))
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(resp, convey.ShouldBeNil)
 
-	request := NewRequest(server.URL+"/testTimeout", GET, testParser)
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-
-	if err == nil {
-		t.Errorf("request timeout expected error but no any errors")
-
-	}
-	if resp != nil {
-		t.Errorf("response = %v; expected  nil", resp)
-
-	}
+	})
 }
 func TestLargeFile(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	file, _ := os.Create("test.file")
-	// writer := bufio.NewWriter(file)
-	defer os.Remove("test.file")
-	defer file.Close()
-	downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
-	request := NewRequest(server.URL+"/testFile", GET, testParser, RequestWithResponseWriter(file))
-	var MainCtx context.Context = context.Background()
+	convey.Convey("test large file", t, func() {
+		file, _ := os.Create("test.file")
+		defer os.Remove("test.file")
+		defer file.Close()
+		resp, err := newRequestDownloadCase("/testFile", GET, RequestWithResponseWriter(file))
+		fi, statErr := os.Stat("test.file")
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp, convey.ShouldNotBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		convey.So(statErr, convey.ShouldBeNil)
+		convey.So(fi.Size(), convey.ShouldBeGreaterThan, 0)
 
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-	// var MainCtx context.Context = context.Background()
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-
-	if err != nil || resp == nil {
-		t.Errorf("request error %s", err.Error())
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response status = %d; expected %d", resp.Status, 200)
-
-	}
-	fi, statErr := os.Stat("test.file")
-	if statErr != nil {
-		t.Errorf("get test.file info fail %s", err)
-
-	}
-	if fi.Size() == 0 {
-		t.Errorf("get test.file size 0")
-
-	}
+	})
 }
 
 func TestJsonResponse(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testJson", GET, testParser)
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-
-	if err != nil {
-		t.Errorf("request json error %s", err.Error())
-
-	}
-	if resp.Status != 200 {
-		t.Errorf("response status = %d; expected %d", resp.Status, 200)
-
-	}
-	r, errJson := resp.Json()
-	if r["name"] != "json" {
-		t.Errorf("request with headers get = %s; expected %s", resp.String(), "json")
-
-	}
-	if errJson != nil {
-		t.Errorf("read response json err %s", errJson.Error())
-
-	}
-	monkey.Patch(json.Unmarshal, func(data []byte, v interface{}) error {
-		return errors.New("Unmarshal json response")
+	convey.Convey("test handle json response", t, func() {
+		resp, err := newRequestDownloadCase("/testJson", GET)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp, convey.ShouldNotBeNil)
+		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
+		r, errJson := resp.Json()
+		convey.So(errJson, convey.ShouldBeNil)
+		convey.So(r["name"], convey.ShouldContainSubstring, "json")
+		patch := gomonkey.ApplyFunc(json.Unmarshal, func(data []byte, v interface{}) error {
+			return errors.New("Unmarshal json response")
+		})
+		defer patch.Reset()
+		r, errJson = resp.Json()
+		convey.So(errJson, convey.ShouldBeError, errors.New("Unmarshal json response"))
+		convey.So(r, convey.ShouldBeNil)
 	})
-	_, errJson = resp.Json()
-	if !strings.Contains(errJson.Error(), "Unmarshal json response") {
-		t.Errorf("unmarshal json response except 'Unmarshal json response' error but not")
-
-	}
-
 }
 func TestRedirectLimit(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithMaxRedirects(1))
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-
-	if err == nil {
-		t.Errorf("request redirect should be limit error\n")
-
-	}
-	if resp != nil {
-		t.Errorf("response is not empty ")
-
-	}
+	convey.Convey("test redirect limit", t, func() {
+		resp, err := newRequestDownloadCase("/testRedirect1", GET, RequestWithMaxRedirects(1))
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(resp, convey.ShouldBeNil)
+	})
 }
 
 func TestNotAllowRedirect(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	downloader := NewDownloader()
-	request := NewRequest(server.URL+"/testRedirect1", GET, testParser, RequestWithAllowRedirects(false))
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-
-	resp, err := downloader.Download(ctx)
-
-	if !strings.Contains(err.Error(), "maximum number of redirects") {
-		t.Errorf("Except error exceeded the maximum number of redirects,but get %s\n", err.Error())
-	}
-
-	if resp != nil {
-		t.Errorf("response is not empty ")
-
-	}
+	convey.Convey("test not allowed redirect", t, func() {
+		resp, err := newRequestDownloadCase("/testRedirect1", GET, RequestWithAllowRedirects(false))
+		convey.So(err.Error(), convey.ShouldContainSubstring, "maximum number of redirects")
+		convey.So(resp, convey.ShouldBeNil)
+	})
 }
 
 func TestInvalidURL(t *testing.T) {
-	downloader := NewDownloader()
-	newTestSpider()
-	request := NewRequest("error"+"/testRedirect1", GET, testParser)
-	var MainCtx context.Context = context.Background()
-
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-
-	_, err := downloader.Download(ctx)
-	if err == nil {
-		t.Errorf("request invlid url should get an error\n")
-
-	}
+	convey.Convey("test invlid url", t, func() {
+		_, err := newRequestDownloadCase("error/testRedirect1", GET)
+		convey.So(err, convey.ShouldNotBeNil)
+	})
 }
 
 func TestResponseReadError(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
-	var MainCtx context.Context = context.Background()
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-	monkey.Patch(io.Copy, func(dst io.Writer, src io.Reader) (written int64, err error) {
-		return 0, errors.New("read response to buffer error")
+	convey.Convey("test response read error", t, func() {
+		patch := gomonkey.ApplyFunc(io.Copy, func(dst io.Writer, src io.Reader) (written int64, err error) {
+			return 0, errors.New("read response to buffer error")
+		})
+		defer patch.Reset()
+		_, err := newRequestDownloadCase("/testGET", GET)
+		msg := err.Error()
+		convey.So(msg, convey.ShouldContainSubstring, "read response to buffer error")
 	})
-
-	downloader := NewDownloader()
-
-	_, err := downloader.Download(ctx)
-
-	msg := err.Error()
-	if !strings.Contains(msg, "read response to buffer error") {
-		t.Errorf("request should have error read response to buffer error,but get %s\n", err.Error())
-
-	}
 }
 
 func TestProxyUrlError(t *testing.T) {
-	server := newTestServer()
-	proxyServer := newTestProxyServer()
-	newTestSpider()
-	proxy := Proxy{
-		ProxyUrl: "error",
-	}
-
-	monkey.Patch(urlParse, func(string) (url *url.URL, err error) {
-		return nil, errors.New("proxy invail url")
+	convey.Convey("test proxy url error", t, func() {
+		proxyServer := newTestProxyServer()
+		proxy := Proxy{
+			ProxyUrl: "error",
+		}
+		patch := gomonkey.ApplyFunc(urlParse, func(string) (url *url.URL, err error) {
+			return nil, errors.New("proxy invail url")
+		})
+		defer proxyServer.Close()
+		defer patch.Reset()
+		_, err := newRequestDownloadCase("/proxy", GET, RequestWithRequestProxy(proxy))
+		convey.So(err.Error(), convey.ShouldContainSubstring, "proxy invail url")
 	})
-	defer proxyServer.Close()
-	request := NewRequest(server.URL+"/proxy", GET, testParser, RequestWithRequestProxy(proxy))
-	var MainCtx context.Context = context.Background()
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-	defer func() {
-		cancel()
-	}()
-
-	downloader := NewDownloader()
-
-	_, err := downloader.Download(ctx)
-	if err.Error() == "proxy invail url" {
-		t.Errorf("request should have error proxy invail url, but get %s\n", err.Error())
-
-	}
 }
 
 func TestDownloaderRequestConextError(t *testing.T) {
-	server := newTestServer()
-	newTestSpider()
-	request := NewRequest(server.URL+"/testGET", GET, testParser)
-	var MainCtx context.Context = context.Background()
-	cancelCtx, cancel := context.WithCancel(MainCtx)
-
-	ctx := NewContext(request, testSpider, WithContext(cancelCtx))
-
-	defer func() {
-		cancel()
-	}()
-	monkey.Patch(http.NewRequestWithContext, func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
-		return nil, errors.New("create request with context fail")
+	convey.Convey("test downloader request conext error", t, func() {
+		patch := gomonkey.ApplyFunc(http.NewRequestWithContext, func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {
+			return nil, errors.New("create request with context fail")
+		})
+		defer patch.Reset()
+		_, err := newRequestDownloadCase("/testGET", GET)
+		convey.So(err.Error(), convey.ShouldContainSubstring, "create request with context fail")
 	})
 
-	downloader := NewDownloader()
-
-	_, err := downloader.Download(ctx)
-	if !strings.Contains(err.Error(), "create request with context fail") {
-		t.Errorf("request should have error create request with context fail, but get %s\n", err.Error())
-
-	}
 }
