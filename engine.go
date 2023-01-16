@@ -56,6 +56,7 @@ type CrawlEngine struct {
 	hooker            EventHooksInterface
 	isStop            bool
 	useDistributed    bool
+	mutex             sync.Mutex
 }
 
 // RegisterSpider register a spider to engine
@@ -99,7 +100,15 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 
 // Start spider engine start.
 // It will schedule all spider system
-func (e *CrawlEngine) Start(spiderName string) {
+func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
+	e.mutex.Lock()
+	defer func(){
+		if p:=recover();p!=nil{
+			e.mutex.Unlock()
+			panic(p)
+		}
+		e.mutex.Unlock()
+	}()
 	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
 	wg := &sync.WaitGroup{}
 	hookTasks := []GoFunc{e.EventsWatcherRunner}
@@ -112,7 +121,7 @@ func (e *CrawlEngine) Start(spiderName string) {
 	stats := e.statistic.OutputStats()
 	s := Map2String(stats)
 	engineLog.Infof(s)
-
+	return e.statistic
 }
 
 func (e *CrawlEngine) EventsWatcherRunner() error {

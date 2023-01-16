@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -35,12 +36,14 @@ type Statistic struct {
 // type needLockIncr func()
 
 type DistributeStatistic struct {
-	keyPrefix string
-	nodesKey  string
-	rdb       redis.Cmdable
-	wg        *sync.WaitGroup
-	spider    string
+	keyPrefix     string
+	nodesKey      string
+	rdb           redis.Cmdable
+	wg            *sync.WaitGroup
+	afterResetTTL time.Duration
+	spider        string
 }
+type DistributeStatisticOption func(d *DistributeStatistic)
 
 func NewStatistic() *Statistic {
 	return &Statistic{
@@ -99,13 +102,18 @@ func (s *Statistic) Reset() error {
 func (s *DistributeStatistic) setCurrentSpider(spider string) {
 	s.spider = spider
 }
-func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.WaitGroup) *DistributeStatistic {
-	return &DistributeStatistic{
-		keyPrefix: statsPrefixKey,
-		nodesKey:  "tegenaria:v1:nodes",
-		rdb:       rdb,
-		wg:        wg,
+func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.WaitGroup, opts ...DistributeStatisticOption) *DistributeStatistic {
+	d := &DistributeStatistic{
+		keyPrefix:     statsPrefixKey,
+		nodesKey:      "tegenaria:v1:nodes",
+		rdb:           rdb,
+		wg:            wg,
+		afterResetTTL: -1 * time.Second,
 	}
+	for _, o := range opts {
+		o(d)
+	}
+	return d
 }
 func (s *DistributeStatistic) IncrStats(field string) {
 	f := func() error {
@@ -155,7 +163,7 @@ func (s *DistributeStatistic) GetErrorCount() uint64 {
 	return s.GetStatsField("errors")
 }
 func (s *DistributeStatistic) Reset() error {
-	nodesKey:=fmt.Sprintf("%s:%s", s.nodesKey, s.spider)
+	nodesKey := fmt.Sprintf("%s:%s", s.nodesKey, s.spider)
 	members := s.rdb.SCard(context.TODO(), nodesKey).Val()
 	if members <= 0 {
 		return nil
@@ -163,10 +171,20 @@ func (s *DistributeStatistic) Reset() error {
 	fields := []string{"items", "requests", "download_fail", "errors"}
 	pipe := s.rdb.Pipeline()
 	for _, field := range fields {
-		pipe.Del(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field))
+		key := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
+		if s.afterResetTTL > 0 {
+			pipe.Expire(context.TODO(), key, s.afterResetTTL)
+			continue
+		}
+		pipe.Del(context.TODO(), key)
 	}
-	_,err:=pipe.Exec(context.TODO())
+	_, err := pipe.Exec(context.TODO())
 	return err
+}
+func DistributeStatisticAfterResetTTL(ttl time.Duration) DistributeStatisticOption {
+	return func(d *DistributeStatistic) {
+		d.afterResetTTL = ttl
+	}
 }
 func (s *DistributeStatistic) OutputStats() map[string]uint64 {
 

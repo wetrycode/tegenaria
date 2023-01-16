@@ -5,6 +5,7 @@ import (
 	goContext "context"
 	"encoding/gob"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -508,7 +509,9 @@ func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
 	for index, r := range result {
 		val, err := r.Int()
 		if err != nil {
-			engineLog.Infof("get error val %d", val)
+			if strings.Contains(err.Error(), "nil") {
+				err = nil
+			}
 			return true, err
 		}
 		engineLog.Infof("%s status is %d", members[index], val)

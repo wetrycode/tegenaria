@@ -3,6 +3,7 @@ package tegenaria
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -13,6 +14,47 @@ import (
 	queue "github.com/yireyun/go-queue"
 )
 
+type TestDownloadMiddler struct {
+	Priority int
+	Name     string
+}
+
+func (m TestDownloadMiddler) GetPriority() int {
+	return m.Priority
+}
+func (m TestDownloadMiddler) ProcessRequest(ctx *Context) error {
+	header := fmt.Sprintf("priority-%d", m.Priority)
+	ctx.Request.Header[header] = strconv.Itoa(m.Priority)
+	return nil
+}
+
+func (m TestDownloadMiddler) ProcessResponse(ctx *Context, req chan<- *Context) error {
+	return nil
+
+}
+func (m TestDownloadMiddler) GetName() string {
+	return m.Name
+}
+
+type TestDownloadMiddler2 struct {
+	Priority int
+	Name     string
+}
+
+func (m TestDownloadMiddler2) GetPriority() int {
+	return m.Priority
+}
+func (m TestDownloadMiddler2) ProcessRequest(ctx *Context) error {
+	return errors.New("process request fail")
+}
+
+func (m TestDownloadMiddler2) ProcessResponse(ctx *Context, req chan<- *Context) error {
+	return errors.New("process response fail")
+
+}
+func (m TestDownloadMiddler2) GetName() string {
+	return m.Name
+}
 func newTestEngine(spiderName string, opts ...EngineOption) *CrawlEngine {
 	engine := NewEngine(opts...)
 	server := newTestServer()
@@ -204,11 +246,12 @@ func TestEngineStart(t *testing.T) {
 			ctxManager.Clear()
 		}
 		engine := newTestEngine("testSpider9")
-		engine.Start("testSpider9")
+		stats := engine.Start("testSpider9")
 		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
+		stats.Reset()
 	})
 
 }
@@ -236,6 +279,7 @@ func TestEngineStartWithDistributed(t *testing.T) {
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
+		engine.statistic.Reset()
 	})
 
 }
@@ -259,6 +303,24 @@ func TestProcessRequestError(t *testing.T) {
 		ctx := newTestRequest()
 		err := engine.doDownload(ctx)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "process request fail")
+	})
+
+}
+
+func TestProcessResponseError(t *testing.T) {
+	convey.Convey("test process response error", t, func() {
+
+		engine := newTestEngine("testProcessResposeErrorSpider")
+		m := TestDownloadMiddler2{9, "test"}
+		patch := gomonkey.ApplyFunc(TestDownloadMiddler2.ProcessRequest, func(_ TestDownloadMiddler2, _ *Context) error {
+			return nil
+		})
+		defer patch.Reset()
+		engine.RegisterDownloadMiddlewares(m)
+		ctx := newTestRequest()
+		engine.doDownload(ctx)
+		err := engine.doHandleResponse(ctx)
+		convey.So(err.Error(), convey.ShouldContainSubstring, "process response fail")
 	})
 
 }

@@ -39,8 +39,14 @@ type RedirectError struct {
 type HandleError struct {
 	CtxId      string
 	Err      error
+	Extras map[string]interface{}
 }
 type ErrorOption func(e *HandleError)
+func ErrorWithExtras(extras map[string]interface{}) ErrorOption{
+	return func(e *HandleError) {
+		e.Extras = extras
+	}
+}
 
 func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 	h := &HandleError{
