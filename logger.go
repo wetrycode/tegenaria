@@ -14,6 +14,7 @@ package tegenaria
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -51,9 +52,13 @@ func initLog() {
 
 	logger.SetOutput(os.Stdout)
 	_, ex := os.LookupEnv("UNITTEST")
-	logLevel := Config.Log.Level
+	logLevel := Config.GetString("log.level")
 	if ex {
 		logLevel = "error"
+	}
+	logLevel = strings.TrimSpace(logLevel)
+	if logLevel == ""{
+		logLevel = "info"
 	}
 	level, err := logrus.ParseLevel(logLevel)
 	if err != nil {

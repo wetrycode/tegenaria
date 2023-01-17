@@ -1,0 +1,3 @@
+log:
+  path: "/var/logs/Tegenaria"
+  level: "info" 

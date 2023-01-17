@@ -127,9 +127,11 @@ func RequestWithAllowRedirects(allowRedirects bool) RequestOption {
 }
 func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 	return func(r *Request) {
-		r.MaxRedirects = maxRedirects
 		if maxRedirects <= 0 {
 			r.AllowRedirects = false
+		}else{
+			r.MaxRedirects = maxRedirects
+			r.AllowRedirects = true
 		}
 	}
 }

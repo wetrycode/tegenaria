@@ -117,7 +117,13 @@ func TestCache(t *testing.T) {
 		engine.writeCache(ctx)
 		convey.So(engine.cache.getSize(), convey.ShouldAlmostEqual, 1)
 	})
-
+	convey.Convey("test empty request write to memory cache", t, func() {
+		engine := NewEngine()
+		ctx := newTestRequest()
+		ctx.Request = nil
+		err := engine.cache.enqueue(ctx)
+		convey.So(err, convey.ShouldBeError, errors.New("context or request cannot be nil"))
+	})
 	convey.Convey("request write to memory cache dupefilters", t, func() {
 		config := NewDistributedWorkerConfig("", "", 0)
 		mockRedis := miniredis.RunT(t)

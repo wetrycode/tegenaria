@@ -12,6 +12,7 @@
 package tegenaria
 
 import (
+	"errors"
 	"fmt"
 
 	queue "github.com/yireyun/go-queue"
@@ -37,7 +38,7 @@ type requestCache struct {
 func (c *requestCache) enqueue(ctx *Context) error {
 	// It will wait to put request until queue is not full
 	if ctx == nil || ctx.Request == nil {
-		return nil
+		return errors.New("context or request cannot be nil")
 	}
 	ok, q := c.queue.Put(ctx)
 	if !ok {

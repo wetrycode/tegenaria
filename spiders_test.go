@@ -43,6 +43,9 @@ func TestSpiders(t *testing.T) {
 		spider4 := &TestSpider{
 			NewBaseSpider("testspider2", []string{"https://www.baidu.com"}),
 		}
+		spider5 := &TestSpider{
+			NewBaseSpider("", []string{"https://www.baidu.com"}),
+		}
 		err:=spiders.Register(spider1)
 		convey.So(err, convey.ShouldBeNil)
 	
@@ -60,6 +63,9 @@ func TestSpiders(t *testing.T) {
 		}
 		_, err1 := spiders.GetSpider("spider4")
 		convey.So(err1, convey.ShouldBeError, ErrSpiderNotExist)
+		err = spiders.Register(spider5)
+		convey.So(err, convey.ShouldBeError, ErrEmptySpiderName)
+
 	})
 
 }

@@ -11,7 +11,13 @@ import (
 
 	"github.com/go-redis/redis/v8"
 )
-
+type StatsFieldType string
+const (
+	RequestStats StatsFieldType = "requests"
+	ItemsStats StatsFieldType = "items"
+	DownloadFailStats StatsFieldType = "download_fail"
+	ErrorStats StatsFieldType = "errors"
+)
 type StatisticInterface interface {
 	IncrItemScraped()
 	IncrRequestSent()
@@ -42,6 +48,7 @@ type DistributeStatistic struct {
 	wg            *sync.WaitGroup
 	afterResetTTL time.Duration
 	spider        string
+	fields []StatsFieldType
 }
 type DistributeStatisticOption func(d *DistributeStatistic)
 
@@ -109,13 +116,14 @@ func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.W
 		rdb:           rdb,
 		wg:            wg,
 		afterResetTTL: -1 * time.Second,
+		fields: []StatsFieldType{ItemsStats,RequestStats,DownloadFailStats,ErrorStats},
 	}
 	for _, o := range opts {
 		o(d)
 	}
 	return d
 }
-func (s *DistributeStatistic) IncrStats(field string) {
+func (s *DistributeStatistic) IncrStats(field StatsFieldType) {
 	f := func() error {
 		return s.rdb.Incr(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)).Err()
 	}
@@ -123,23 +131,23 @@ func (s *DistributeStatistic) IncrStats(field string) {
 	AddGo(s.wg, funcs...)
 }
 func (s *DistributeStatistic) IncrItemScraped() {
-	s.IncrStats("items")
+	s.IncrStats(ItemsStats)
 }
 
 func (s *DistributeStatistic) IncrRequestSent() {
-	s.IncrStats("requests")
+	s.IncrStats(RequestStats)
 
 }
 func (s *DistributeStatistic) IncrDownloadFail() {
-	s.IncrStats("download_fail")
+	s.IncrStats(DownloadFailStats)
 
 }
 
 func (s *DistributeStatistic) IncrErrorCount() {
-	s.IncrStats("errors")
+	s.IncrStats(ErrorStats)
 
 }
-func (s *DistributeStatistic) GetStatsField(field string) uint64 {
+func (s *DistributeStatistic) GetStatsField(field StatsFieldType) uint64 {
 	val, err := s.rdb.Get(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)).Int64()
 	if err != nil {
 		engineLog.Errorf("get %s stats error %s", field, err.Error())
@@ -148,19 +156,19 @@ func (s *DistributeStatistic) GetStatsField(field string) uint64 {
 	return uint64(val)
 }
 func (s *DistributeStatistic) GetItemScraped() uint64 {
-	return s.GetStatsField("items")
+	return s.GetStatsField(ItemsStats)
 }
 
 func (s *DistributeStatistic) GetRequestSent() uint64 {
-	return s.GetStatsField("requests")
+	return s.GetStatsField(RequestStats)
 }
 func (s *DistributeStatistic) GetDownloadFail() uint64 {
-	return s.GetStatsField("download_fail")
+	return s.GetStatsField(DownloadFailStats)
 
 }
 
 func (s *DistributeStatistic) GetErrorCount() uint64 {
-	return s.GetStatsField("errors")
+	return s.GetStatsField(ErrorStats)
 }
 func (s *DistributeStatistic) Reset() error {
 	nodesKey := fmt.Sprintf("%s:%s", s.nodesKey, s.spider)
@@ -168,9 +176,9 @@ func (s *DistributeStatistic) Reset() error {
 	if members <= 0 {
 		return nil
 	}
-	fields := []string{"items", "requests", "download_fail", "errors"}
+	// fields := []string{"items", "requests", "download_fail", "errors"}
 	pipe := s.rdb.Pipeline()
-	for _, field := range fields {
+	for _, field := range s.fields {
 		key := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
 		if s.afterResetTTL > 0 {
 			pipe.Expire(context.TODO(), key, s.afterResetTTL)
@@ -188,11 +196,12 @@ func DistributeStatisticAfterResetTTL(ttl time.Duration) DistributeStatisticOpti
 }
 func (s *DistributeStatistic) OutputStats() map[string]uint64 {
 
-	fields := []string{"items", "requests", "download_fail", "errors"}
+	// fields := []string{"items", "requests", "download_fail", "errors"}
 	pipe := s.rdb.Pipeline()
 	result := []*redis.StringCmd{}
-	for _, field := range fields {
-		result = append(result, pipe.Get(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)))
+	for _, field := range s.fields {
+		key:=fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
+		result = append(result, pipe.Get(context.TODO(), key))
 	}
 	_, err := pipe.Exec(context.TODO())
 	if err != nil {
@@ -206,7 +215,7 @@ func (s *DistributeStatistic) OutputStats() map[string]uint64 {
 			engineLog.Errorf("get stats error %s", err.Error())
 		}
 		v, _ := strconv.ParseInt(val, 10, 64)
-		stats[fields[index]] = uint64(v)
+		stats[string(s.fields[index])] = uint64(v)
 	}
 
 	return stats

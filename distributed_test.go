@@ -1,6 +1,8 @@
 package tegenaria
 
 import (
+	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,7 +20,9 @@ func TestSerialize(t *testing.T) {
 		spider1 := &TestSpider{
 			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
-		request := NewRequest("http://www.example.com", GET, spider1.Parser, RequestWithRequestBody(body), RequestWithRequestProxy(proxy))
+		request := NewRequest("http://www.example.com", GET, spider1.Parser, RequestWithMaxRedirects(3), RequestWithRequestBody(body), RequestWithRequestProxy(proxy))
+		convey.So(request.AllowRedirects, convey.ShouldBeTrue)
+		convey.So(request.MaxRedirects, convey.ShouldAlmostEqual,3)
 		GetAllParserMethod(spider1)
 		spiderName := spider1.GetName()
 		rd, err := newRdbCache(request, "xxxxxxx", spiderName)
@@ -52,6 +56,9 @@ func TestDistributedWorker(t *testing.T) {
 		spider1 := &TestSpider{
 			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
+		proxy := Proxy{
+			ProxyUrl: "http://127.0.0.1",
+		}
 		spiders[spider1.GetName()] = spider1
 		worker := NewDistributedWorker(mockRedis.Addr(), config)
 		worker.SetSpiders(&Spiders{
@@ -61,7 +68,15 @@ func TestDistributedWorker(t *testing.T) {
 
 		body := make(map[string]interface{})
 		body["test"] = "test"
-		request := NewRequest("http://www.example.com", GET, spider1.Parser, RequestWithRequestBody(body))
+		meta := make(map[string]interface{})
+		meta["key"] = "value"
+		requestOptions := []RequestOption{}
+		requestOptions = append(requestOptions, RequestWithRequestBody(body))
+		requestOptions = append(requestOptions, RequestWithRequestProxy(proxy))
+		requestOptions = append(requestOptions, RequestWithRequestMeta(meta))
+		requestOptions = append(requestOptions, RequestWithMaxConnsPerHost(16))
+		requestOptions = append(requestOptions, RequestWithMaxRedirects(-1))
+		request := NewRequest("http://www.example.com", GET, spider1.Parser, requestOptions...)
 		ctx := NewContext(request, spider1)
 		ctxId := ctx.CtxId
 		err = worker.enqueue(ctx)
@@ -70,40 +85,55 @@ func TestDistributedWorker(t *testing.T) {
 		c, err = worker.dequeue()
 		convey.So(err, convey.ShouldBeNil)
 		newCtx := c.(*Context)
-		convey.So(newCtx.CtxId, convey.ShouldContainSubstring, ctxId)
+		convey.So(newCtx.GetCtxId(), convey.ShouldContainSubstring, ctxId)
+		convey.So(newCtx.Request.Meta, convey.ShouldContainKey, "key")
+		convey.So(newCtx.Request.MaxConnsPerHost, convey.ShouldAlmostEqual, 16)
+		convey.So(newCtx.Request.AllowRedirects, convey.ShouldBeFalse)
+		convey.So(newCtx.Request.MaxRedirects, convey.ShouldAlmostEqual, 3)
+		convey.So(newCtx.Request.Proxy.ProxyUrl, convey.ShouldContainSubstring, "127.0.0.1")
+
 	})
 }
 func TestDistributedWorkerNodeStatus(t *testing.T) {
 	convey.Convey("test distribute worker node status", t, func() {
-		mockRedis, err := miniredis.Run()
-		if err != nil {
-			panic(err)
-		}
+		mockRedis := miniredis.RunT(t)
+		defer mockRedis.Close()
 		config := NewDistributedWorkerConfig("", "", 0)
 		spider1 := &TestSpider{
 			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
 		spiders := map[string]SpiderInterface{}
 		spiders[spider1.GetName()] = spider1
-		worker := NewDistributedWorker(mockRedis.Addr(), config)
+		// worker := NewDistributedWorker(mockRedis.Addr(), config)
+		nodes := RdbNodes{mockRedis.Addr()}
+		worker := NewWorkerWithRdbCluster(NewWorkerConfigWithRdbCluster(config, nodes))
 		worker.SetSpiders(&Spiders{
 			SpidersModules: spiders,
 		})
-		defer mockRedis.Close()
-		err = worker.AddNode()
+		err := worker.AddNode()
 		convey.So(err, convey.ShouldBeNil)
 		err = worker.Heartbeat()
 		convey.So(err, convey.ShouldBeNil)
-		err=worker.StopNode()
+		err = worker.StopNode()
 		convey.So(err, convey.ShouldBeNil)
 
-		// time.Sleep(1 * time.Second)
-		// mockRedis.FastForward(2 * time.Second)
 		r, err := worker.CheckAllNodesStop()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r, convey.ShouldBeTrue)
+
+		ip := GetMachineIp()
+		member := fmt.Sprintf("%s:%s", ip, worker.nodeId)
+		key := fmt.Sprintf("%s:%s:%s", worker.nodePrefix, worker.currentSpider, member)
+		worker.rdb.Del(context.TODO(), key)
+		r, err = worker.CheckAllNodesStop()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(r, convey.ShouldBeTrue)
+		err = worker.close()
+		convey.So(err, convey.ShouldBeNil)
+
 	})
 }
+
 func TestDistributedBloomFilter(t *testing.T) {
 	convey.Convey("test distributed bloom filter", t, func() {
 		mockRedis, err := miniredis.Run()

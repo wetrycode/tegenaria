@@ -326,12 +326,13 @@ func (w *DistributedWorker) isEmpty() bool {
 	key, _ := w.queueKey()
 	length, err := w.rdb.LLen(goContext.TODO(), key).Uint64()
 	if err != nil {
+		length = 0
 		engineLog.Errorf("get queue len error %s", err.Error())
 
 	}
 	stop, err := w.CheckAllNodesStop()
 	if err != nil {
-		engineLog.Errorf("check all nodes status error %s", err.Error())
+		engineLog.Warnf("check all nodes status error %s", err.Error())
 
 	}
 	return int64(length) == 0 && stop
@@ -503,15 +504,15 @@ func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
 	}
 	_, err := pipe.Exec(goContext.TODO())
 	if err != nil {
+		if strings.Contains(err.Error(), "nil") {
+			err = nil
+		}
 		return true, err
 	}
 	// 遍历所有的节点检查是否任务已经终止
 	for index, r := range result {
 		val, err := r.Int()
 		if err != nil {
-			if strings.Contains(err.Error(), "nil") {
-				err = nil
-			}
 			return true, err
 		}
 		engineLog.Infof("%s status is %d", members[index], val)
