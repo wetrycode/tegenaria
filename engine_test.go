@@ -252,6 +252,7 @@ func TestEngineStart(t *testing.T) {
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
 		stats.Reset()
+		engine.Close()
 	})
 
 }

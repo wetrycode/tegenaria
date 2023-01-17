@@ -233,7 +233,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 		if p := recover(); p != nil {
 			ctx.setError(fmt.Sprintf("Download error %s", p))
 		}
-		if err != nil {
+		if err != nil || ctx.Err()!=nil {
 			e.statistic.IncrDownloadFail()
 		}
 	}()
