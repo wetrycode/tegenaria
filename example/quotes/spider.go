@@ -25,7 +25,7 @@ type QuotesbotItem struct {
 }
 
 func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 512; i++ {
 		for _, url := range e.FeedUrls {
 			// get a new request
 			exampleLog.Infof("request %s", url)
@@ -42,7 +42,6 @@ func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
 // it also can generate new Request
 func (e *ExampleSpider) Parser(resp *tegenaria.Context, req chan<- *tegenaria.Context) error {
 	text := resp.Response.String()
-
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(text))
 
 	if err != nil {

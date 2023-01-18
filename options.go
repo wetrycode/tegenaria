@@ -49,12 +49,14 @@ func EngineWithLimiter(limiter LimitInterface) EngineOption {
 	}
 }
 
-func EngineWithDistributedWorker(woker *DistributedWorker)EngineOption{
+func EngineWithDistributedWorker(woker DistributedWorkerInterface)EngineOption{
 	return func(r *CrawlEngine) {
 		r.cache = woker
 		r.limiter = woker.GetLimter()
 		r.RFPDupeFilter = woker
 		r.useDistributed = true
+		r.checkMasterLive = woker.CheckMasterLive
+		woker.SetMaster(r.isMaster)
 		r.hooker = NewDistributedHooks(woker)
 		woker.SetSpiders(r.GetSpiders())
 	}

@@ -42,10 +42,6 @@ type Downloader interface {
 
 // SpiderDownloader tegenaria spider downloader
 type SpiderDownloader struct {
-	// StreamThreshold read body threshold using streaming TODO
-	// if content length is bigger that,download will read response by streaming
-	// it is a feature in the future
-	StreamThreshold uint64
 	// transport The transport used by the downloader,
 	// each request adopts a public network transmission configuration,
 	// and a connection pool is used globally
@@ -148,14 +144,6 @@ func urlParse(URL string) (*url.URL, error) {
 	return url.Parse(URL)
 }
 
-// StreamThreshold the must max size of response body  to use stream donload
-func DownloaderWithStreamThreshold(streamThreshold uint64) DownloaderOption {
-	return func(d *SpiderDownloader) {
-		d.StreamThreshold = streamThreshold
-	}
-
-}
-
 // DownloaderWithtransport download transport configure http.Transport
 func DownloaderWithtransport(transport *http.Transport) DownloaderOption {
 	return func(d *SpiderDownloader) {
@@ -194,13 +182,6 @@ func DownloadWithH2(h2 bool) DownloaderOption {
 	}
 }
 
-func NewDownloadResult() *RequestResult {
-	return &RequestResult{
-		Response: nil,
-		Error:    nil,
-	}
-}
-
 // SpiderDownloader get a new spider downloader
 func NewDownloader(opts ...DownloaderOption) Downloader {
 	transport := &http.Transport{
@@ -225,9 +206,8 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 		CheckRedirect: redirectFunc,
 	})
 	downloader := &SpiderDownloader{
-		StreamThreshold: 1024 * 1024 * 10,
-		transport:       transport,
-		client:          globalClient,
+		transport: transport,
+		client:    globalClient,
 	}
 	for _, opt := range opts {
 		opt(downloader)

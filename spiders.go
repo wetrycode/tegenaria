@@ -12,7 +12,8 @@
 package tegenaria
 
 import "sync"
-// SpiderInterface Tegenaria spider interface, developer can custom spider must be based on 
+
+// SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
 // this interface to achieve custom spider.
 
 // SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
@@ -24,7 +25,7 @@ type SpiderInterface interface {
 
 	// Parser parse response ,it can generate ItemMeta and send to engine
 	// it also can generate new Request
-	Parser(resp *Context,req chan<- *Context) error
+	Parser(resp *Context, req chan<- *Context) error
 
 	// ErrorHandler it is used to handler all error recive from engine
 	ErrorHandler(err *Context, req chan<- *Context)
@@ -44,7 +45,7 @@ type BaseSpider struct {
 
 type Spiders struct {
 	SpidersModules map[string]SpiderInterface
-	Parsers map[string]Parser
+	Parsers        map[string]Parser
 }
 
 var SpidersList *Spiders
@@ -73,7 +74,7 @@ func NewSpiders() *Spiders {
 	onceSpiders.Do(func() {
 		SpidersList = &Spiders{
 			SpidersModules: make(map[string]SpiderInterface),
-			Parsers: make(map[string]Parser),
+			Parsers:        make(map[string]Parser),
 		}
 	})
 	return SpidersList

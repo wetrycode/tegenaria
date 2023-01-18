@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	opts:= []tegenaria.EngineOption{tegenaria.EngineWithUniqueReq(true), tegenaria.EngineWithUniqueReq(false), tegenaria.EngineWithLimiter(tegenaria.NewDefaultLimiter(128))}
-	engine:=quotes.NewQuotesEngine(opts...)
-	engine.Start("example")
+	opts := []tegenaria.EngineOption{tegenaria.EngineWithUniqueReq(false), tegenaria.EngineWithLimiter(tegenaria.NewDefaultLimiter(64))}
+	engine := quotes.NewQuotesEngine(opts...)
+	engine.Execute()
 }

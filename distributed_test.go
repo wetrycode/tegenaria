@@ -22,7 +22,7 @@ func TestSerialize(t *testing.T) {
 		}
 		request := NewRequest("http://www.example.com", GET, spider1.Parser, RequestWithMaxRedirects(3), RequestWithRequestBody(body), RequestWithRequestProxy(proxy))
 		convey.So(request.AllowRedirects, convey.ShouldBeTrue)
-		convey.So(request.MaxRedirects, convey.ShouldAlmostEqual,3)
+		convey.So(request.MaxRedirects, convey.ShouldAlmostEqual, 3)
 		GetAllParserMethod(spider1)
 		spiderName := spider1.GetName()
 		rd, err := newRdbCache(request, "xxxxxxx", spiderName)
@@ -114,13 +114,19 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		err = worker.Heartbeat()
 		convey.So(err, convey.ShouldBeNil)
+
+		r, err := worker.CheckMasterLive()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(r, convey.ShouldBeTrue)
 		err = worker.StopNode()
 		convey.So(err, convey.ShouldBeNil)
 
-		r, err := worker.CheckAllNodesStop()
+		r, err = worker.CheckAllNodesStop()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r, convey.ShouldBeTrue)
-
+		r, err = worker.CheckMasterLive()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(r, convey.ShouldBeFalse)
 		ip := GetMachineIp()
 		member := fmt.Sprintf("%s:%s", ip, worker.nodeId)
 		key := fmt.Sprintf("%s:%s:%s", worker.nodePrefix, worker.currentSpider, member)

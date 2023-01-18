@@ -2,6 +2,7 @@ package tegenaria
 
 import (
 	"bytes"
+	"context"
 	goContext "context"
 	"encoding/gob"
 	"fmt"
@@ -22,6 +23,9 @@ type DistributedWorkerInterface interface {
 	Heartbeat() error
 	CheckAllNodesStop() (bool, error)
 	GetLimter() LimitInterface
+	CheckMasterLive() (bool, error)
+	SetMaster(flag bool)
+	SetSpiders(spiders *Spiders)
 }
 
 // DistributedWorker 分布式组件，包含两个组件:
@@ -53,8 +57,10 @@ type DistributedWorker struct {
 	limiter        LimitInterface
 	nodeId         string
 	nodesSetPrefix string
+	masterNodesKey string
 	nodePrefix     string
 	currentSpider  string
+	isMaster       bool
 }
 
 // serialize 序列化组件
@@ -155,6 +161,8 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 		nodeId:            GetUUID(),
 		nodesSetPrefix:    "tegenaria:v1:nodes",
 		nodePrefix:        "tegenaria:v1:node",
+		masterNodesKey:    "tegenaria:v1:master",
+		isMaster:          true,
 		limiter:           NewLeakyBucketLimiterWithRdb(config.LimiterRate, rdb, config.getLimitKey),
 	}
 	return d
@@ -201,6 +209,10 @@ func getQueueDefaultKey(params ...interface{}) (string, time.Duration) {
 
 func (w *DistributedWorker) GetLimter() LimitInterface {
 	return w.limiter
+}
+
+func (w *DistributedWorker) SetMaster(flag bool){
+	w.isMaster = flag
 }
 
 // newRdbCache 构建待缓存的数据
@@ -453,6 +465,9 @@ func (w *DistributedWorker) getNodeKey() string {
 func (w *DistributedWorker) getNodesSetKey() string {
 	return fmt.Sprintf("%s:%s", w.nodesSetPrefix, w.currentSpider)
 }
+func (w *DistributedWorker) getMaterSetKey() string {
+	return fmt.Sprintf("%s:%s", w.masterNodesKey, w.currentSpider)
+}
 func (w *DistributedWorker) AddNode() error {
 	ip := GetMachineIp()
 	key := w.getNodeKey()
@@ -463,7 +478,43 @@ func (w *DistributedWorker) AddNode() error {
 	member := []interface{}{fmt.Sprintf("%s:%s", ip, w.nodeId)}
 	nodesKey := w.getNodesSetKey()
 	err = w.rdb.SAdd(goContext.TODO(), nodesKey, member...).Err()
+	if err != nil {
+		return fmt.Errorf("add node to nodes set error:%s", err.Error())
+	}
+	if w.isMaster {
+		err = w.addMaster()
+		if err != nil {
+			return fmt.Errorf("add node to master set error:%s", err.Error())
+		}
+	}
 	return err
+}
+func (w *DistributedWorker) addMaster() error {
+	key := w.getMaterSetKey()
+	nodeKey := w.getNodeKey()
+	member := []interface{}{nodeKey}
+	err := w.rdb.SAdd(goContext.TODO(), key, member...).Err()
+	return err
+}
+func (w *DistributedWorker) delMaster() error {
+	key := w.getMaterSetKey()
+	nodeKey := w.getNodeKey()
+	member := []interface{}{nodeKey}
+	err := w.rdb.SRem(goContext.TODO(), key, member...).Err()
+	return err
+}
+func (w *DistributedWorker) CheckMasterLive() (bool, error) {
+	members := w.rdb.SMembers(goContext.TODO(), w.getMaterSetKey()).Val()
+	count := len(members)
+	pipe := w.rdb.Pipeline()
+	result := []*redis.StringCmd{}
+
+	for _, member := range members {
+		result = append(result, pipe.Get(context.TODO(), member))
+	}
+	count,err:=w.executeCheck(pipe,result,count)
+	return count != 0, err
+
 }
 func (w *DistributedWorker) DelNode() error {
 	ip := GetMachineIp()
@@ -474,6 +525,9 @@ func (w *DistributedWorker) DelNode() error {
 	}
 	member := []interface{}{fmt.Sprintf("%s:%s", ip, w.nodeId)}
 	err = w.rdb.SRem(goContext.TODO(), w.getNodesSetKey(), member...).Err()
+	if w.isMaster {
+		w.delMaster()
+	}
 	return err
 }
 func (w *DistributedWorker) StopNode() error {
@@ -493,37 +547,42 @@ func (w *DistributedWorker) Heartbeat() error {
 	}
 	return nil
 }
-func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
-	members := w.rdb.SMembers(goContext.TODO(), w.getNodesSetKey()).Val()
-	pipe := w.rdb.Pipeline()
-	result := []*redis.StringCmd{}
-
-	for _, member := range members {
-		key := fmt.Sprintf("%s:%s:%s", w.nodePrefix, w.currentSpider, member)
-		result = append(result, pipe.Get(goContext.TODO(), key))
-	}
+func (w *DistributedWorker)executeCheck(pipe redis.Pipeliner, result []*redis.StringCmd, count int)(int, error){
 	_, err := pipe.Exec(goContext.TODO())
 	if err != nil {
 		if strings.Contains(err.Error(), "nil") {
 			err = nil
+		} else {
+			return 0, err
+
 		}
-		return true, err
 	}
+
 	// 遍历所有的节点检查是否任务已经终止
-	for index, r := range result {
-		val, err := r.Int()
-		if err != nil {
-			return true, err
+	for _, r := range result {
+		val, readErr := r.Int()
+		if readErr != nil&& !strings.Contains(readErr.Error(), "nil") {
+			err = readErr
 		}
-		engineLog.Infof("%s status is %d", members[index], val)
-		if val != 1 {
+		if val < 1 {
 			// 删除节点
-			members = append(members[:index], members[index+1:]...)
-
+			count--
 		}
 
 	}
-	return len(members) == 0, nil
+	return count, err
+}
+func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
+	members := w.rdb.SMembers(goContext.TODO(), w.getNodesSetKey()).Val()
+	pipe := w.rdb.Pipeline()
+	result := []*redis.StringCmd{}
+	count := len(members)
+	for _, member := range members {
+		key := fmt.Sprintf("%s:%s:%s", w.nodePrefix, w.currentSpider, member)
+		result = append(result, pipe.Get(goContext.TODO(), key))
+	}
+	count,err:= w.executeCheck(pipe, result,count)
+	return count == 0, err
 
 }
 func (w *DistributedWorker) close() error {

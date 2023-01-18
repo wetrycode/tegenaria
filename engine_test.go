@@ -252,7 +252,7 @@ func TestEngineStart(t *testing.T) {
 			ctxManager.Clear()
 		}
 		engine := newTestEngine("testSpider9")
-		stats := engine.Start("testSpider9")
+		stats := engine.start("testSpider9")
 		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
@@ -281,7 +281,7 @@ func TestEngineStartWithDistributed(t *testing.T) {
 				mockRedis.FastForward(1 * time.Second)
 			}
 		}()
-		engine.Start("testDistributedSpider9")
+		engine.start("testDistributedSpider9")
 		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
@@ -290,11 +290,34 @@ func TestEngineStartWithDistributed(t *testing.T) {
 	})
 
 }
+func TestEngineStartWithDistributedSlove(t *testing.T) {
+	convey.Convey("engine start with distributed", t, func() {
+		if ctxManager != nil {
+			ctxManager.Clear()
+		}
+		mockRedis := miniredis.RunT(t)
+		config := NewDistributedWorkerConfig("", "", 0)
+		defer mockRedis.Close()
+		worker := NewDistributedWorker(mockRedis.Addr(), config)
+		worker.setCurrentSpider("testDistributedSloveSpider")
+		engine := newTestEngine("testDistributedSloveSpider", EngineWithDistributedWorker(worker))
+		engine.isMaster = false
+		worker.isMaster = false
+		go func() {
+			for range time.Tick(1 * time.Second) {
+				mockRedis.FastForward(1 * time.Second)
+			}
+		}()
+		f := engine.startSpider("testDistributedSloveSpider")
+		convey.So(func() { f() }, convey.ShouldPanic)
+	})
+
+}
 func TestEngineErrorHandler(t *testing.T) {
 	convey.Convey("test error handler", t, func() {
 		engine := newTestEngine("testErrorHandlerSpider")
 		engine.spiders.SpidersModules["testErrorHandlerSpider"].(*TestSpider).FeedUrls = []string{"http://127.0.0.1:12345"}
-		engine.Start("testErrorHandlerSpider")
+		engine.start("testErrorHandlerSpider")
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 1)
 
@@ -328,6 +351,10 @@ func TestProcessResponseError(t *testing.T) {
 		engine.doDownload(ctx)
 		err := engine.doHandleResponse(ctx)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "process response fail")
+		ctx.Response = nil
+		err = engine.doHandleResponse(ctx)
+		convey.So(err, convey.ShouldBeError, errors.New("response is nil"))
+
 	})
 
 }

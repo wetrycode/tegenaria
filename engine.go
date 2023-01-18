@@ -13,6 +13,7 @@ import (
 var engineLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
 type wokerUnit func(c *Context) error
 type EventsWatcher func(ch chan EventType) error
+type CheckMasterLive func() (bool, error)
 
 // Engine is the main struct of tegenaria
 // it is used to start a spider crawl
@@ -36,8 +37,9 @@ type CrawlEngine struct {
 
 	// cache Request cache.
 	// You can set your custom cache module,like redis
-	cache   CacheInterface
-	limiter LimitInterface
+	cache           CacheInterface
+	limiter         LimitInterface
+	checkMasterLive CheckMasterLive
 
 	// requestsChan *Request channel
 	// sender is SpiderInterface.StartRequest
@@ -56,6 +58,7 @@ type CrawlEngine struct {
 	hooker            EventHooksInterface
 	isStop            bool
 	useDistributed    bool
+	isMaster          bool
 	mutex             sync.Mutex
 }
 
@@ -91,19 +94,37 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 		}
 		e.statistic.setCurrentSpider(spiderName)
 		e.cache.setCurrentSpider(spiderName)
-		spider.StartRequest(e.requestsChan)
+		if e.useDistributed {
+			if e.isMaster {
+				spider.StartRequest(e.requestsChan)
+			} else {
+				live, err := e.checkMasterLive()
+				if !live || err != nil {
+					if err != nil {
+						engineLog.Errorf("check master nodes status error %s", err.Error())
+					}
+					panic("master nodes not live")
+				}
+			}
+		} else {
+			spider.StartRequest(e.requestsChan)
+		}
+
 		e.startSpiderFinish = true
 		return nil
 	}
 
 }
+func (e *CrawlEngine) Execute() {
+	ExecuteCmd(e)
+}
 
 // Start spider engine start.
 // It will schedule all spider system
-func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
+func (e *CrawlEngine) start(spiderName string) StatisticInterface {
 	e.mutex.Lock()
-	defer func(){
-		if p:=recover();p!=nil{
+	defer func() {
+		if p := recover(); p != nil {
 			e.mutex.Unlock()
 			panic(p)
 		}
@@ -117,6 +138,7 @@ func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
 	e.eventsChan <- START
 	e.waitGroup.Wait()
 	e.eventsChan <- EXIT
+	engineLog.Infof("Wating engine to stop...")
 	wg.Wait()
 	stats := e.statistic.OutputStats()
 	s := Map2String(stats)
@@ -233,7 +255,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 		if p := recover(); p != nil {
 			ctx.setError(fmt.Sprintf("Download error %s", p))
 		}
-		if err != nil || ctx.Err()!=nil {
+		if err != nil || ctx.Err() != nil {
 			e.statistic.IncrDownloadFail()
 		}
 	}()
@@ -252,6 +274,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 	}
 	e.statistic.IncrRequestSent()
 	var rsp *Response = nil
+	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request ready to download", ctx.CtxId)
 	rsp, err = e.downloader.Download(ctx)
 	if err != nil {
 		return err
@@ -303,8 +326,12 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 	if ctx.Response == nil {
 		return nil
 	}
-	parserErr := ctx.Request.Parser(ctx, e.requestsChan)
+	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request response ready to parse", ctx.CtxId)
 
+	parserErr := ctx.Request.Parser(ctx, e.requestsChan)
+	if parserErr != nil {
+		engineLog.Errorf("%s", parserErr.Error())
+	}
 	return parserErr
 
 }
@@ -316,6 +343,7 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 	}()
 	for item := range ctx.Items {
 		e.statistic.IncrItemScraped()
+		engineLog.WithField("request_id", ctx.CtxId).Infof("%s item is scraped", item.CtxId)
 		for _, pipeline := range e.pipelines {
 			err := pipeline.ProcessItem(ctx.Spider, item)
 			if err != nil {
@@ -354,6 +382,8 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		RFPDupeFilter:         NewRFPDupeFilter(0.001, 1024*4),
 		isStop:                false,
 		useDistributed:        false,
+		isMaster:              true,
+		checkMasterLive:       func() (bool, error) { return true, nil },
 		limiter:               NewDefaultLimiter(32),
 		downloader:            NewDownloader(),
 		hooker:                NewDefualtHooks(),
