@@ -19,7 +19,7 @@ tegenaria是一个基于golang开发的快速、高效率的网络爬虫框架
 1. go 版本要求>1.17  
 
 ```bash
-go get -u github.com/wetrycode/tegenaria
+go get -u github.com/wetrycode/tegenaria@latest
 ```
 
 2. 在您的项目中导入

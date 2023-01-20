@@ -220,6 +220,7 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 	request.Parser = parser
 	request.ResponseWriter = nil
 	request.BodyReader = nil
+	request.Meta = nil
 	request.Header = make(map[string]string)
 	request.MaxRedirects = 3
 	request.AllowRedirects = true
