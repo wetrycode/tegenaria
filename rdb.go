@@ -41,7 +41,8 @@ func NewRdbClient(config *DistributedWorkerConfig) *redis.Client {
 	options.Addr = config.RedisAddr
 	rdb := redis.NewClient(options)
 	err:=rdb.Ping(context.TODO()).Err()
-	if err!=nil{
+	// RedisAddr 为空说明处于集群模式
+	if err!=nil && config.RedisAddr !=""{
 		panic(err)
 	}
 	return rdb

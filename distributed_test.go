@@ -152,6 +152,7 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		spiders[spider1.GetName()] = spider1
 		// worker := NewDistributedWorker(mockRedis.Addr(), config)
 		nodes := RdbNodes{mockRedis.Addr()}
+		time.Sleep(500 * time.Millisecond)
 		worker := NewWorkerWithRdbCluster(NewWorkerConfigWithRdbCluster(config, nodes))
 		worker.SetSpiders(&Spiders{
 			SpidersModules: spiders,
