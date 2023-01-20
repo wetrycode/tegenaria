@@ -1,10 +1,12 @@
 package tegenaria
 
 import (
+	"context"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 )
+
 // NewRdbConfig redis 配置构造函数
 func NewRdbConfig(config *DistributedWorkerConfig) *redis.Options {
 	return &redis.Options{
@@ -38,11 +40,15 @@ func NewRdbClient(config *DistributedWorkerConfig) *redis.Client {
 	options := NewRdbConfig(config)
 	options.Addr = config.RedisAddr
 	rdb := redis.NewClient(options)
+	err:=rdb.Ping(context.TODO()).Err()
+	if err!=nil{
+		panic(err)
+	}
 	return rdb
 }
 
 func NewRdbClusterCLient(config *WorkerConfigWithRdbCluster) *redis.ClusterClient {
-	return redis.NewClusterClient(&redis.ClusterOptions{
+	client:=redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs: config.RdbNodes,
 		// MaxRetries: config.DistributedWorkerConfig.RdbMaxRetry,
 
@@ -57,4 +63,9 @@ func NewRdbClusterCLient(config *WorkerConfigWithRdbCluster) *redis.ClusterClien
 		RouteByLatency: true,
 		RouteRandomly:  true,
 	})
+	err:=client.Ping(context.TODO()).Err()
+	if err!=nil{
+		panic(err)
+	}
+	return client
 }

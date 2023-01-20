@@ -221,16 +221,29 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 		}()
 		// 发起心跳检查
 		e.eventsChan <- HEARTBEAT
+		// item启用新的协程进行处理
+		wg := &sync.WaitGroup{}
+		funcs := []GoFunc{func() error {
+			err := e.doPipelinesHandlers(c)
+			if err != nil {
+				c.Error = NewError(c, err)
+			}
+			return err
+		},
+		}
+		AddGo(wg, funcs...)
 		// 处理request的所有工作单元
-		units := []wokerUnit{e.doDownload, e.doHandleResponse, e.doParse, e.doPipelinesHandlers}
+		units := []wokerUnit{e.doDownload, e.doHandleResponse, e.doParse}
 		// 依次执行工作单元
 		for _, unit := range units {
 			err := unit(c)
 			if err != nil {
 				c.Error = NewError(c, err)
-				return nil
+				break
 			}
 		}
+		close(c.Items)
+		wg.Wait()
 		return nil
 	}
 }
@@ -258,7 +271,6 @@ func (e *CrawlEngine) recvRequest() error {
 // 所有的context是否都已经关闭
 // 队列是否为空
 func (e *CrawlEngine) checkReadyDone() bool {
-	engineLog.Infof("start request 状态%v", e.startSpiderFinish)
 	return e.startSpiderFinish && ctxManager.isEmpty() && e.cache.isEmpty()
 }
 
@@ -270,7 +282,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 			ctx.setError(fmt.Sprintf("write cache error %s", err))
 		}
 		// 写入分布式组件后主动删除
-		if e.useDistributed || isDuplicated{
+		if e.useDistributed || isDuplicated {
 			ctx.Close()
 		}
 	}()
@@ -382,7 +394,6 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 		if err := recover(); err != nil {
 			ctx.setError(fmt.Sprintf("parse error %s", err))
 		}
-		close(ctx.Items)
 	}()
 	if ctx.Response == nil {
 		return nil

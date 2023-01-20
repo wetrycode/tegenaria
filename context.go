@@ -27,19 +27,18 @@ type ContextInterface interface {
 	IsDone() bool
 }
 
-// Context spider crawl request schedule unit
-// it is used on all data flow
+// Context 在引擎中的数据流通载体，负责单个抓取任务的生命周期维护
 type Context struct {
-	// Request
+	// Request 请求对象
 	Request *Request
 
-	// DownloadResult downloader handler result
+	// Response 响应对象
 	Response *Response
 
-	//parent parent context
+	//parent 父 context
 	parent context.Context
 
-	// CtxId
+	// CtxId context 唯一id由uuid生成
 	CtxId string
 
 	// Error
@@ -119,7 +118,11 @@ func WithContextId(ctxId string) ContextOption {
 		c.CtxId = ctxId
 	}
 }
-
+func WithItemChannelSize(size int) ContextOption{
+	return func(c *Context) {
+		c.Items = make(chan *ItemMeta, size)
+	}
+}
 // NewContext 从内存池中构建context对象
 func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption) *Context {
 	ctx := contextPool.Get().(*Context)
@@ -128,7 +131,7 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 	ctx.Spider = Spider
 	ctx.CtxId = GetUUID()
 	ctx.Cancel = cancel
-	ctx.Items = make(chan *ItemMeta, 16)
+	ctx.Items = make(chan *ItemMeta, 32)
 	ctx.parent = parent
 	ctx.Error = nil
 	log.Debugf("Generate a new request%s %s", ctx.CtxId, request.Url)

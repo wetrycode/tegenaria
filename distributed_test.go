@@ -2,11 +2,14 @@ package tegenaria
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -93,6 +96,49 @@ func TestDistributedWorker(t *testing.T) {
 		convey.So(newCtx.Request.Proxy.ProxyUrl, convey.ShouldContainSubstring, "127.0.0.1")
 
 	})
+}
+func TestAddNodeError(t *testing.T) {
+	convey.Convey("test add node with error", t, func() {
+		mockRedis := miniredis.RunT(t)
+		defer mockRedis.Close()
+		config := NewDistributedWorkerConfig("", "", 0)
+		spider1 := &TestSpider{
+			NewBaseSpider("testAddNoeErrorSpider", []string{"https://www.baidu.com"}),
+		}
+		spiders := map[string]SpiderInterface{}
+		spiders[spider1.GetName()] = spider1
+		worker := NewDistributedWorker(mockRedis.Addr(), config)
+		worker.SetSpiders(&Spiders{
+			SpidersModules: spiders,
+		})
+		patch := gomonkey.ApplyFunc((*redis.Client).SetEX, func(_ *redis.Client, ctx context.Context, _ string, _ interface{}, _ time.Duration) *redis.StatusCmd {
+			s := redis.NewStatusCmd(ctx)
+			s.SetErr(errors.New("set ex error"))
+			return s
+		})
+		err := worker.AddNode()
+		convey.So(err, convey.ShouldBeError, errors.New("set ex error"))
+		patch.Reset()
+
+		patch = gomonkey.ApplyFunc((*redis.Client).SAdd, func(_ *redis.Client, ctx context.Context, _ string, _ ...interface{}) *redis.IntCmd {
+			s := redis.NewIntCmd(ctx)
+			s.SetErr(errors.New("sadd add node error"))
+			return s
+		})
+		err = worker.AddNode()
+		convey.So(err.Error(), convey.ShouldContainSubstring, "sadd add node error")
+		patch.Reset()
+
+		patch = gomonkey.ApplyFunc((*DistributedWorker).addMaster,func (_ *DistributedWorker)error  {
+			return errors.New("add master error")
+			
+		})
+		err = worker.AddNode()
+		convey.So(err.Error(), convey.ShouldContainSubstring,"add master error")
+		patch.Reset()
+
+	})
+
 }
 func TestDistributedWorkerNodeStatus(t *testing.T) {
 	convey.Convey("test distribute worker node status", t, func() {

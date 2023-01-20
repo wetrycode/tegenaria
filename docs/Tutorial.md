@@ -118,8 +118,6 @@ func (e *ExampleSpider) GetName() string {
 func (e *ExampleSpider) GetFeedUrls() []string {
     return e.FeedUrls
 }
-
-
 ```
 
 ## 1.2.初始化引擎
@@ -165,7 +163,7 @@ go run main.go crawl example
   - 创建新的request对象
     
     ```go
-    // 一次传入url、请求方式和爬虫实例对应的解析函数
+    // 依次传入url、请求方式和爬虫实例对应的解析函数
     request := tegenaria.NewRequest(url, tegenaria.GET, e.Parser)
     ```
   
@@ -180,6 +178,28 @@ go run main.go crawl example
     ```go
     req <- ctx 
     ```
+
+## 1.5.如何构造新的item
+
+- 在解析函数`Parser(resp *tegenaria.Context, req chan<- *tegenaria.Context) error`中item通过resp.Items channel将item专递到引擎，resp实际上是Context对象其内置了当前请求实例所需的items channel
+
+- items channel传递的是[ItemMeta](items.go)对象，包含两个属性CtxId即请求id以及ItemInterface实例是实际上的item数据
+
+- 构造一条item的流程如下:
+  
+  - 调用`tegenaria.NewItem`生成新的ItemMeta对象
+    
+    ```go
+    itemCtx := tegenaria.NewItem(resp, &quoteItem)
+    ```
+  
+  - 将item发送到引擎
+    
+    ```go
+    resp.Items <- itemCtx
+    ```
+    
+    
 
 # 2.爬虫组件
 

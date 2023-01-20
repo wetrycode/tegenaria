@@ -77,7 +77,7 @@ func newTestEngine(spiderName string, opts ...EngineOption) *CrawlEngine {
 func newTestRequest(opts ...RequestOption) *Context {
 	server := newTestServer()
 	request := NewRequest(server.URL+"/testGET", GET, testParser, opts...)
-	ctx := NewContext(request, &TestSpider{NewBaseSpider("spiderRequest", []string{server.URL + "/testGET"})})
+	ctx := NewContext(request, &TestSpider{NewBaseSpider("spiderRequest", []string{server.URL + "/testGET"})}, WithItemChannelSize(16))
 	return ctx
 }
 func TestEngineRegister(t *testing.T) {
@@ -161,6 +161,12 @@ func TestCacheError(t *testing.T) {
 		convey.So(newCtx, convey.ShouldNotBeNil)
 		size := engine.cache.getSize()
 		convey.So(size, convey.ShouldAlmostEqual, 1)
+		engine.filterDuplicateReq = true
+		engine.writeCache(ctx)
+		convey.So(ctx.CtxId, convey.ShouldNotBeEmpty)
+		engine.writeCache(ctx)
+		convey.So(ctx.CtxId, convey.ShouldBeEmpty)
+
 		engine.cache.close()
 
 	})
@@ -176,6 +182,7 @@ func TestDoDownload(t *testing.T) {
 		convey.So(ctx.Response.Status, convey.ShouldAlmostEqual, 200)
 		convey.So(ctx.Request.Header, convey.ShouldContainKey, "priority-0")
 		engine.doParse(ctx)
+		close(ctx.Items)
 		for item := range ctx.Items {
 			i := item.Item.(*testItem)
 			convey.So(i.test, convey.ShouldContainSubstring, "test")
@@ -258,6 +265,24 @@ func TestEngineStart(t *testing.T) {
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
 		stats.Reset()
+		engine.Close()
+	})
+
+}
+func TestEngineStartPanic(t *testing.T) {
+	convey.Convey("engine start panic", t, func() {
+		if ctxManager != nil {
+			ctxManager.Clear()
+		}
+		engine := newTestEngine("testStartPanicSpider")
+		patch:=gomonkey.ApplyFunc((*Statistic).OutputStats,func (_ *Statistic)map[string]uint64  {
+			panic("output panic")
+			
+		})
+		defer patch.Reset()
+		f := func(){engine.start("testStartPanicSpider")}
+		convey.So(f, convey.ShouldPanic)
+		convey.So(engine.mutex.TryLock(),convey.ShouldBeTrue)
 		engine.Close()
 	})
 
@@ -387,6 +412,7 @@ func TestParseError(t *testing.T) {
 		ctx := NewContext(request, spider)
 		err = engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
+		
 		err = engine.doParse(ctx)
 		convey.So(err, convey.ShouldNotBeNil)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "parse response error")
@@ -401,6 +427,7 @@ func wokerError(ctx *Context, url string, errMsg string, t *testing.T, patch *go
 			ctxPatch.Reset()
 			restContext(ctx, url)
 		}()
+		ctx.Items = make(chan *ItemMeta, 16)
 		f := engine.worker(ctx)
 		f()
 		convey.So(ctx.Error.Error(), convey.ShouldContainSubstring, errMsg)
