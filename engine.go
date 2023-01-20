@@ -1,563 +1,84 @@
-// Copyright 2022 geebytes
-// Licensed under the Apache License, Version 2.0 (the 'License');
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//    http://www.apache.org/licenses/LICENSE-2.0
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an 'AS IS' BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package tegenaria
 
 import (
-	"context"
 	"fmt"
-	_ "net/http/pprof"
-	"os"
-	"os/signal"
 	"runtime"
 	"sort"
 	"sync"
-	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
-// SpiderStats is spiders running stats
-type SpiderStats struct {
-	ItemScraped uint64 // ItemScraped scraped item counter
+var engineLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
+// wokerUnit context处理单元
+type wokerUnit func(c *Context) error
 
-	RequestDownloaded uint64 // RequestDownloaded request download counter
+// EventsWatcher 事件监听器
+type EventsWatcher func(ch chan EventType) error
 
-	NetworkTraffic int64 // NetworkTraffic network traffic counter
+// CheckMasterLive 检查所有的master节点是否都在线
+type CheckMasterLive func() (bool, error)
 
-	ErrorCount uint64 // ErrorCount count all error recvice
-
-}
-
-// ErrorHandler a Customizable error handler funcation
-// receive error from errchans
-type ErrorHandler func(spider SpiderInterface, err *HandleError)
-
-type SpiderEngine struct {
-	// spiders all register spiders modules
+// CrawlEngine 引擎是整个框架数据流调度核心
+type CrawlEngine struct {
+	// spiders 已经注册的spider
+	// 引擎调度的spider实例从此处根据爬虫名获取
 	spiders *Spiders
 
-	// requestsChan *Request channel
-	// sender is SpiderInterface.StartRequest
-	// receiver is SpiderEngine.writeCache
-	requestsChan chan *Context
-
-	// itemsChan ItemInterface channel
-	// sender is SpiderInterface.Parser
-	// receiver is SpiderEngine.doPipelinesHandlers
-	itemsChan chan *ItemMeta
-
-	// respChan *Response channel,its data is from doRequestResult
-	// It will receive by Request.parser and handle
-	respChan chan *Context
-
-	// requestResultChan downloader downloads result and will be send by download after download handle finish
-	// It will receive by doParse and response will be parse by Request.parser
-	requestResultChan chan *Context
-
-	// errorChan all errors will be send to this channel during hold spider process
-	// It will be received by doError funcation
-	errorChan chan *HandleError
-
-	// // cacheChan a *Request channel its data is send by writeCache and the data source is from requests cache
-	// // Its data will receive by readCache and then will be handle by download
-	// cacheChan chan *Context
-
-	// quitSignal recv quit signal such as ctrl-c
-	quitSignal chan os.Signal
-
-	// startRequestFinish it will be set True after StartRequest is done
-	startRequestFinish bool
-
-	// pipelines items process chan.
-	// Items should be handled by these pipenlines
-	// Such as save item into databases
+	// pipelines 处理item的pipelines
 	pipelines ItemPipelines
 
-	// middlewares are handle request object such as add proxy or header
+	// middlewares 注册的下载中间件
 	downloaderMiddlewares Middlewares
 
-	// Ctx context.Context
-	Ctx context.Context
-
-	// DownloadTimeout the request handle timeout value
-	DownloadTimeout time.Duration
-
-	// requestDownloader global request downloader
-	requestDownloader Downloader
-
-	// allowStatusCode set allow  handle status codes which are not 200,like 404,302
-	allowStatusCode []uint64
-
-	// filterDuplicateReq flag if filter duplicate request fingerprint.
-	// to filter duplicate request fingerprint set true or not set false.
-	filterDuplicateReq bool
-
-	// RFPDupeFilter request fingerprint BloomFilter
-	// it will work if filterDuplicateReq is true
-	RFPDupeFilter RFPDupeFilterInterface
-
-	// engineStatus the engine status but not using.
-	engineStatus int
-
-	// waitGroup the engineScheduler inner goroutine task wait group
+	// waitGroup 引擎调度任务协程控制器
 	waitGroup *sync.WaitGroup
-
-	// mainWaitGroup the engine core scheduler funcation task wait group
-	// It will ctrl readyDone、StartSpiders、recvRequest group
-	mainWaitGroup *sync.WaitGroup
-
-	downloadLimit int64
-
-	currentDownload int64
-	// isDone is all scrap task is done flag
-	// It will set for true until all channel is empty and
-	// goroutineRunning is 0 and startRequestFinish is true
-	isDone bool
-
-	// isRunning the flag for engineScheduler start run
-	isRunning bool
-
-	// isClosed a flag for engine if is closed
-	isClosed bool
-
-	// schedulerNum the engineScheduler goroutine number default 3
-	schedulerNum uint
-
-	// Stats spider status counter and recorder
-	Stats *SpiderStats
-
-	// cache Request cache.
-	// You can set your custom cache module,like redis
+	// downloader 下载器
+	downloader Downloader
+	// cache request队列缓存
+	// 可以自定义实现cache接口，例如通过redis实现缓存
 	cache CacheInterface
+	// limiter 限速器，用于并发控制
+	limiter LimitInterface
+	// checkMasterLive 检查所有的master是否都在线
+	checkMasterLive CheckMasterLive
 
-	// cacheReadNum count is read request number from cache
-	cacheReadNum uint
-
-	// ErrorHandler see ErrorHandler funcation description
-	ErrorHandler ErrorHandler
-
-	// timer engine running timer
-	timer time.Time
+	// requestsChan *Request channel
+	// 整个系统产生的request对象都应该通过该channel
+	// 提交到引擎
+	requestsChan chan *Context
+	// cacheChan 缓存Context数据数据流管道
+	// 主要用于与cache交互
+	cacheChan chan *Context
+	// eventsChan 事件管道
+	// 数据抓取过程中发起的事件都需要通过该channel与引擎进行交互
+	eventsChan chan EventType
+	// filterDuplicateReq 是否进行去重处理
+	filterDuplicateReq bool
+	// RFPDupeFilter 去重组件
+	rfpDupeFilter RFPDupeFilterInterface
+	// startSpiderFinish spider.StartRequest是否已经执行结束
+	startSpiderFinish bool
+	// statistic 数据统计组件
+	statistic StatisticInterface
+	// hooker 事件监听和处理组件
+	hooker EventHooksInterface
+	// isStop 当前的引擎是否已经停止处理数据
+	// 引擎会每三秒种调用checkReadyDone检查所有的任务
+	// 是否都已经结束，是则将isStop设置为true
+	isStop bool
+	// useDistributed 是否启用分布式年模式
+	useDistributed bool
+	// isMaster是否是master节点
+	isMaster bool
+	// mutex spider 启动锁
+	// 同一进程下只能启动一个spider
+	mutex sync.Mutex
 }
 
-var (
-	Engine    *SpiderEngine // SpiderEngine global and once spider engine
-	once      sync.Once
-	engineLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
-)
-
-// engineScheduler the engine core funcation.
-// It will schedule all channel and handle spider task
-func (e *SpiderEngine) engineScheduler(spider SpiderInterface) {
-Loop:
-	for {
-		if e.isRunning {
-			select {
-			case req := <-e.requestsChan:
-				// write request to cache
-				e.waitGroup.Add(1)
-				go e.writeCache(req)
-			case requestResult := <-e.requestResultChan:
-				// handle request download result
-				e.waitGroup.Add(1)
-				go e.doRequestResult(requestResult)
-			case response := <-e.respChan:
-				// handle request response
-				e.waitGroup.Add(1)
-				go e.doParse(spider, response)
-			case item := <-e.itemsChan:
-				// handle scape items
-				e.waitGroup.Add(1)
-				go e.doPipelinesHandlers(spider, item)
-			case err := <-e.errorChan:
-				// handle error
-				e.waitGroup.Add(1)
-				go e.doError(spider, err)
-			case sig := <-e.quitSignal:
-				engineLog.Warningln("Engine recv signal ", sig)
-				e.isDone = true
-				signal.Stop(e.quitSignal)
-			case <-time.After(time.Second * 5):
-				if e.checkReadyDone() {
-					e.isDone = true
-					break Loop
-				}
-			}
-		}
-
-	}
-	engineLog.Info("Scheduler is done")
-	e.mainWaitGroup.Done()
-}
-
-// statsReport output download and scraped stats count
-func (e *SpiderEngine) statsReport() {
-	engineLog.Infof("DownloadCount %d ErrorCount %d ItemScraped %d Timing %fs",
-		e.Stats.RequestDownloaded, e.Stats.ErrorCount, e.Stats.ItemScraped, time.Since(e.timer).Seconds())
-
-}
-
-// statsReportTicker Output running status statistics every 5 seconds
-func (e *SpiderEngine) statsReportTicker() {
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-	for {
-		<-ticker.C
-		e.statsReport()
-	}
-
-}
-
-// listenNotify listen system signal such as ctrl-c
-func (e *SpiderEngine) listenNotify() {
-	for {
-		select {
-		case s, ok := <-e.quitSignal:
-			if ok {
-				engineLog.Warningln("Engine recv signal ", s)
-				e.isDone = true
-				signal.Stop(e.quitSignal)
-				return
-			} else {
-				return
-			}
-
-		default:
-			if e.isClosed {
-				return
-			}
-
-		}
-
-		runtime.Gosched()
-	}
-
-}
-
-// Start spider engine start.
-// It will schedule all spider system
-func (e *SpiderEngine) Start(spiderName string) {
-	signal.Notify(e.quitSignal, os.Interrupt, syscall.SIGUSR1, syscall.SIGUSR2)
-	e.timer = time.Now()
-	engineLog.Infof("Ready to start %s spider \n", spiderName)
-
-	defer func() {
-		e.Close()
-		engineLog.Info("Spider engine is closed!")
-		if p := recover(); p != nil {
-			engineLog.Errorf("Close engier fail")
-		}
-	}()
-	// Load an get specify spider object
-	spider, ok := e.spiders.SpidersModules[spiderName]
-	if !ok {
-		panic(fmt.Sprintf("Spider %s not found", spider))
-	}
-	// engineScheduler number
-	runtime.GOMAXPROCS(int(e.schedulerNum))
-	e.waitGroup.Add(1)
-	// run Spiders StartRequest function and get feeds request
-	go e.startSpiders(spiderName)
-	// e.mainWaitGroup.Add(1)
-	go e.listenNotify()
-	for n := 0; n < int(e.cacheReadNum); n++ {
-		e.mainWaitGroup.Add(1)
-		// read request from cache and send to cacheChan
-		go e.readCache()
-	}
-	// start schedulers
-	for i := 0; i < int(e.schedulerNum); i++ {
-		e.mainWaitGroup.Add(1)
-		go e.engineScheduler(spider)
-	}
-	// Output handle stats counter pre 5s
-	go e.statsReportTicker()
-	engineLog.Info("Spider engine is running\n")
-	e.waitGroup.Wait()
-	e.isClosed = true
-
-	engineLog.Info("Waitting engine stop\n")
-
-	e.mainWaitGroup.Wait()
-
-	e.isDone = true
-	e.statsReport()
-}
-
-// checkChanStatus check all channel if empty
-func (e *SpiderEngine) checkChanStatus() bool {
-	return (len(e.requestsChan) + len(e.requestResultChan) + len(e.respChan) + len(e.itemsChan) + len(e.errorChan)) == 0
-}
-
-// checkReadyDone monitor engine running status and control ctx status.
-// It will check StartRequest if finish and task goroutine number and all channels len.
-// if all status is ok it will stop engine and close spider
-
-func (e *SpiderEngine) checkReadyDone() bool {
-	engineLog.Info("Check scheduler is ready stop")
-
-	if e.startRequestFinish && e.checkChanStatus() && e.isClosed && atomic.LoadInt64(&e.currentDownload) == 0 {
-		engineLog.Debug("Scheduler ready done")
-		return true
-	} else {
-		return false
-	}
-}
-
-// recvRequest receive request from cacheChan and do download.
-func (e *SpiderEngine) recvRequestHandler(req *Context) {
-	if req == nil {
-		return
-	}
-	e.waitGroup.Add(1)
-	go e.doDownload(req)
-
-}
-
-// StartSpiders start a spider specify by spider name
-func (e *SpiderEngine) startSpiders(spiderName string) {
-	spider := e.spiders.SpidersModules[spiderName]
-	defer func() {
-		e.startRequestFinish = true
-		e.waitGroup.Done()
-	}()
-	e.isRunning = true
-
-	spider.StartRequest(e.requestsChan)
-}
-
-// writeCache write request from requestsChan to cache
-func (e *SpiderEngine) writeCache(ctx *Context) {
-	defer func() {
-		e.waitGroup.Done()
-	}()
-	if e.doFilter(ctx, ctx.Request) && !e.isDone {
-		err := e.cache.enqueue(ctx)
-		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("Push request to cache queue error %s", err.Error())
-			e.errorChan <- NewError(ctx.CtxId, err)
-		}
-	}
-
-}
-
-// readCache read request from cache to cacheChan
-func (e *SpiderEngine) readCache() {
-	defer func() {
-		e.mainWaitGroup.Done()
-		engineLog.Infof("Close read cache\n")
-		if p := recover(); p != nil {
-			engineLog.Errorln("Read cache error \n", p)
-
-		}
-	}()
-	for {
-		if e.isDone {
-			return
-		}
-		if atomic.LoadInt64(&e.currentDownload) > e.downloadLimit{
-			continue
-		}
-		req, err := e.cache.dequeue()
-		if req != nil && err == nil && !e.isDone {
-			request := req.(*Context)
-			e.recvRequestHandler(request)
-
-		}
-
-		runtime.Gosched()
-	}
-}
-
-// doError handle all error which is from errorChan
-func (e *SpiderEngine) doError(spider SpiderInterface, err *HandleError) {
-	atomic.AddUint64(&e.Stats.ErrorCount, 1)
-	e.ErrorHandler(spider, err)
-	spider.ErrorHandler(err, e.requestsChan)
-	if err.Request != nil {
-		freeRequest(err.Request)
-	}
-	if err.Response != nil {
-		freeResponse(err.Response)
-	}
-	e.waitGroup.Done()
-}
-
-// doDownload handle request download
-func (e *SpiderEngine) doDownload(ctx *Context) {
-	defer func() {
-		e.waitGroup.Done()
-
-	}()
-	// use download middleware to handle request object
-	for _, middleware := range e.downloaderMiddlewares {
-		err := middleware.ProcessRequest(ctx)
-		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
-			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request))
-			return
-		}
-	}
-	// incr request download number
-	atomic.AddInt64(&e.currentDownload, 1)
-	e.requestDownloader.Download(ctx, e.requestResultChan)
-	atomic.AddInt64(&e.currentDownload, -1)
-	atomic.AddUint64(&e.Stats.RequestDownloaded, 1)
-
-}
-
-// doFilter filer duplicate request if filterDuplicateReq is true
-func (e *SpiderEngine) doFilter(ctx *Context, r *Request) bool {
-	// filter switch
-	if e.filterDuplicateReq {
-		// do filter
-		result, err := e.RFPDupeFilter.DoDupeFilter(r)
-		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Warningf("Request do unique error %s", err.Error())
-			e.errorChan <- NewError(ctx.CtxId, fmt.Errorf("Request do unique error %s", err.Error()), ErrorWithRequest(ctx.Request))
-		}
-		if result {
-			engineLog.WithField("request_id", ctx.CtxId).Debugf("Request is not unique")
-		}
-		return !result
-	}
-	return true
-}
-
-// processResponse do handle download response
-func (e *SpiderEngine) processResponse(ctx *Context) {
-	if len(e.downloaderMiddlewares) == 0 {
-		return
-	}
-	for index := range e.downloaderMiddlewares {
-		middleware := e.downloaderMiddlewares[len(e.downloaderMiddlewares)-index-1]
-		err := middleware.ProcessResponse(ctx, e.requestsChan)
-		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
-			ctx.Error = err
-			e.errorChan <- NewError(ctx.CtxId, err, ErrorWithRequest(ctx.Request), ErrorWithResponse(ctx.DownloadResult.Response))
-			return
-		}
-	}
-}
-
-// doRequestResult handle download respose result
-func (e *SpiderEngine) doRequestResult(result *Context) {
-	defer func() {
-		e.waitGroup.Done()
-
-	}()
-	err := result.DownloadResult.Error
-	if err != nil {
-		result.Error = err
-		e.errorChan <- NewError(result.CtxId, err, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
-		engineLog.WithField("request_id", result.CtxId).Errorf("Request is fail with error %s", err.Error())
-
-	} else {
-		if e.requestDownloader.CheckStatus(uint64(result.DownloadResult.Response.Status), e.allowStatusCode) {
-			// response status code is ok
-			// send response to respChan
-			engineLog.WithField("request_id", result.CtxId).Debugf("Request %s success status code %d", result.Request.Url, result.DownloadResult.Response.Status)
-
-			e.respChan <- result
-
-		} else {
-			// send error
-			engineLog.WithField("request_id", result.CtxId).Warningf("Not allow handle status code %d %s", result.DownloadResult.Response.Status, result.Request.Url)
-			result.Error = fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), result.DownloadResult.Response.Status)
-			e.errorChan <- NewError(result.CtxId, result.Error, ErrorWithRequest(result.Request), ErrorWithResponse(result.DownloadResult.Response))
-
-		}
-
-	}
-
-}
-
-// doParse parse request response
-func (e *SpiderEngine) doParse(spider SpiderInterface, resp *Context) {
-	defer func() {
-		e.waitGroup.Done()
-	}()
-	if resp.DownloadResult.Error != nil {
-		engineLog.WithField("request_id", resp.CtxId).Warningf("Download result is error %s and response can not parse", resp.DownloadResult.Error.Error())
-		e.errorChan <- NewError(resp.CtxId, resp.DownloadResult.Error, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
-	} else {
-		e.Stats.NetworkTraffic += int64(resp.DownloadResult.Response.ContentLength)
-		err := resp.Request.parser(resp, e.itemsChan, e.requestsChan)
-		// release Request and Response object memory to buffer
-		if err != nil {
-			errMsg := fmt.Errorf("%s %s", ErrResponseParse.Error(), err.Error())
-			e.errorChan <- NewError(resp.CtxId, errMsg, ErrorWithRequest(resp.Request), ErrorWithResponse(resp.DownloadResult.Response))
-
-		} else {
-			freeRequest(resp.Request)
-
-			freeResponse(resp.DownloadResult.Response)
-		}
-	}
-}
-
-// doPipelinesHandlers handle items by pipelines chan
-func (e *SpiderEngine) doPipelinesHandlers(spider SpiderInterface, item *ItemMeta) {
-	defer func() {
-		e.waitGroup.Done()
-
-	}()
-	for _, pipeline := range e.pipelines {
-		engineLog.WithField("request_id", item.CtxId).Debugf("Response parse items into pipelines chans")
-		err := pipeline.ProcessItem(spider, item)
-		if err != nil {
-			handleError := NewError(item.CtxId, err, ErrorWithItem(item))
-			e.errorChan <- handleError
-			return
-		}
-	}
-	atomic.AddUint64(&e.Stats.ItemScraped, 1)
-
-}
-
-// Close engine and close all channels
-func (e *SpiderEngine) Close() {
-	if e.checkReadyDone() {
-		once.Do(func() {
-			close(e.requestsChan)
-			close(e.itemsChan)
-			close(e.requestResultChan)
-			close(e.respChan)
-			close(e.errorChan)
-		})
-	}
-
-}
-
-// RegisterPipelines add items handle pipelines
-func (e *SpiderEngine) RegisterPipelines(pipeline PipelinesInterface) {
-	e.pipelines = append(e.pipelines, pipeline)
-	sort.Sort(e.pipelines)
-	engineLog.Infof("Register %v priority pipeline success\n", pipeline)
-
-}
-
-// RegisterDownloadMiddlewares add a download middlewares
-func (e *SpiderEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterface) {
-	e.downloaderMiddlewares = append(e.downloaderMiddlewares, middlewares)
-	sort.Sort(e.downloaderMiddlewares)
-}
-
-// RegisterSpider add spiders
-func (e *SpiderEngine) RegisterSpider(spider SpiderInterface) {
+// RegisterSpider 将spider实例注册到引擎的 spiders
+func (e *CrawlEngine) RegisterSpiders(spider SpiderInterface) {
 	err := e.spiders.Register(spider)
 	if err != nil {
 		panic(err)
@@ -565,57 +86,379 @@ func (e *SpiderEngine) RegisterSpider(spider SpiderInterface) {
 	engineLog.Infof("Register %s spider success\n", spider.GetName())
 }
 
-// // DefaultErrorHandler error default handler
-func DefaultErrorHandler(spider SpiderInterface, err *HandleError) {
-	// This is a default error handler but do nothing
+// RegisterPipelines 注册pipelines到引擎
+func (e *CrawlEngine) RegisterPipelines(pipeline PipelinesInterface) {
+	e.pipelines = append(e.pipelines, pipeline)
+	sort.Sort(e.pipelines)
+	engineLog.Debugf("Register %v priority pipeline success\n", pipeline)
+
 }
 
-func NewSpiderEngine(opts ...EngineOption) *SpiderEngine {
-	numCPU := runtime.NumCPU()
-	Engine = &SpiderEngine{
+// RegisterDownloadMiddlewares 注册下载中间件到引擎
+func (e *CrawlEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterface) {
+	e.downloaderMiddlewares = append(e.downloaderMiddlewares, middlewares)
+	sort.Sort(e.downloaderMiddlewares)
+}
+
+// startSpider 通过爬虫名启动爬虫
+func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
+	_spiderName := spiderName
+	return func() error {
+		spider, ok := e.spiders.SpidersModules[_spiderName]
+
+		if !ok {
+			panic(fmt.Sprintf("Spider %s not found", _spiderName))
+		}
+		// 对相关组件设置当前的spider
+		e.statistic.setCurrentSpider(spiderName)
+		e.cache.setCurrentSpider(spiderName)
+		if e.useDistributed {
+			// 分布式模式下非master组件不启动StartRequest
+			if e.isMaster {
+				spider.StartRequest(e.requestsChan)
+			} else {
+				live, err := e.checkMasterLive()
+				if !live || err != nil {
+					if err != nil {
+						engineLog.Errorf("check master nodes status error %s", err.Error())
+					}
+					// 没有在线的master节点
+					// 不能启动slove节点
+					panic("master nodes not live")
+				}
+			}
+		} else {
+			spider.StartRequest(e.requestsChan)
+		}
+
+		e.startSpiderFinish = true
+		return nil
+	}
+
+}
+
+// Execute 通过命令行启动spider
+func (e *CrawlEngine) Execute() {
+	ExecuteCmd(e)
+}
+
+// start spider 爬虫启动器
+func (e *CrawlEngine) start(spiderName string) StatisticInterface {
+	e.mutex.Lock()
+	defer func() {
+		if p := recover(); p != nil {
+			e.mutex.Unlock()
+			panic(p)
+		}
+		e.mutex.Unlock()
+	}()
+	// 引入引擎所有的组件，并通过协程执行
+	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
+	wg := &sync.WaitGroup{}
+	// 事件监听器，通过协程执行
+	hookTasks := []GoFunc{e.EventsWatcherRunner}
+	AddGo(wg, hookTasks...)
+	AddGo(e.waitGroup, tasks...)
+	e.eventsChan <- START
+	e.waitGroup.Wait()
+	e.eventsChan <- EXIT
+	engineLog.Infof("Wating engine to stop...")
+	wg.Wait()
+	stats := e.statistic.OutputStats()
+	s := Map2String(stats)
+	engineLog.Infof(s)
+	return e.statistic
+}
+
+// EventsWatcherRunner 事件监听器运行组件
+func (e *CrawlEngine) EventsWatcherRunner() error {
+	err := e.hooker.EventsWatcher(e.eventsChan)
+	if err != nil {
+		return fmt.Errorf("events watcher task execution error %s", err.Error())
+	}
+	return nil
+}
+
+// Scheduler 调度器
+func (e *CrawlEngine) Scheduler() error {
+	for {
+		if e.isStop {
+			return nil
+		}
+		// 从缓存队列中读取请求对象
+		req, err := e.cache.dequeue()
+		if err != nil {
+			runtime.Gosched()
+			continue
+		}
+		request := req.(*Context)
+		// 对request进行处理
+		f := []GoFunc{e.worker(request)}
+		AddGo(e.waitGroup, f...)
+
+	}
+}
+
+// worker request处理器，单个context生成周期都基于此
+// 该函数包含了整个request和context的处理过程
+func (e *CrawlEngine) worker(ctx *Context) GoFunc {
+	c := ctx
+	return func() error {
+		defer func() {
+			if err := recover(); err != nil {
+				c.setError(fmt.Sprintf("crawl error %s", err))
+			}
+			if c.Error != nil {
+				// 新增一个错误
+				e.statistic.IncrErrorCount()
+				// 提交一个错误事件
+				e.eventsChan <- ERROR
+				// 将错误交给自定义的spider错误处理函数
+				c.Spider.ErrorHandler(c, e.requestsChan)
+			}
+			// 处理结束回收context
+			c.Close()
+		}()
+		// 发起心跳检查
+		e.eventsChan <- HEARTBEAT
+		// 处理request的所有工作单元
+		units := []wokerUnit{e.doDownload, e.doHandleResponse, e.doParse, e.doPipelinesHandlers}
+		// 依次执行工作单元
+		for _, unit := range units {
+			err := unit(c)
+			if err != nil {
+				c.Error = NewError(c, err)
+				return nil
+			}
+		}
+		return nil
+	}
+}
+
+// recvRequest 从requestsChan读取context对象
+func (e *CrawlEngine) recvRequest() error {
+	for {
+		select {
+		case req := <-e.requestsChan:
+			e.writeCache(req)
+		// 每三秒钟检查一次所有的任务是否都已经结束
+		case <-time.After(time.Second * 3):
+			if e.checkReadyDone() {
+				e.isStop = true
+				return nil
+			}
+
+		}
+		runtime.Gosched()
+	}
+}
+
+// checkReadyDone 检查任务状态
+// 主要检查spider.StartRequest是否已经执行完成
+// 所有的context是否都已经关闭
+// 队列是否为空
+func (e *CrawlEngine) checkReadyDone() bool {
+	engineLog.Infof("start request 状态%v", e.startSpiderFinish)
+	return e.startSpiderFinish && ctxManager.isEmpty() && e.cache.isEmpty()
+}
+
+// writeCache 将Context 写入缓存
+func (e *CrawlEngine) writeCache(ctx *Context) error {
+	var isDuplicated bool = false
+	defer func() {
+		if err := recover(); err != nil {
+			ctx.setError(fmt.Sprintf("write cache error %s", err))
+		}
+		// 写入分布式组件后主动删除
+		if e.useDistributed || isDuplicated{
+			ctx.Close()
+		}
+	}()
+	var err error = nil
+	// 是否进入去重流程
+	if e.filterDuplicateReq {
+		var ret bool = false
+		ret, err = e.rfpDupeFilter.DoDupeFilter(ctx)
+		if err != nil {
+			isDuplicated = true
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("request unique error %s", err.Error())
+			return err
+		}
+		// request重复则直接返回
+		if ret {
+			isDuplicated = true
+			return nil
+		}
+	}
+	// ctx进入缓存队列
+	err = e.cache.enqueue(ctx)
+	if err != nil {
+		engineLog.WithField("request_id", ctx.CtxId).Warnf("Cache enqueue error %s", err.Error())
+		time.Sleep(time.Second)
+		e.cacheChan <- ctx
+	}
+	err = nil
+	ctx.Error = err
+	return nil
+
+}
+
+// doDownload 对context执行下载操作
+func (e *CrawlEngine) doDownload(ctx *Context) error {
+	var err error = nil
+	defer func() {
+		if p := recover(); p != nil {
+			ctx.setError(fmt.Sprintf("Download error %s", p))
+		}
+		if err != nil || ctx.Err() != nil {
+			e.statistic.IncrDownloadFail()
+		}
+	}()
+	// 通过下载中间件对request进行处理
+	// 按优先级调用ProcessRequest
+	for _, middleware := range e.downloaderMiddlewares {
+		err := middleware.ProcessRequest(ctx)
+		if err != nil {
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
+			return err
+		}
+	}
+	// 执行限速器，速率过高则等待
+	err = e.limiter.checkAndWaitLimiterPass()
+	if err != nil {
+		return err
+	}
+	// 增加请求发送量
+	e.statistic.IncrRequestSent()
+	var rsp *Response = nil
+	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request ready to download", ctx.CtxId)
+	rsp, err = e.downloader.Download(ctx)
+	if err != nil {
+		return err
+	}
+	ctx.setResponse(rsp)
+	return nil
+
+}
+
+// doHandleResponse 处理请求响应
+func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
+	defer func() {
+		if p := recover(); p != nil {
+			ctx.setError(fmt.Sprintf("handle response error %s", p))
+		}
+	}()
+	if ctx.Response == nil {
+		err := fmt.Errorf("response is nil")
+		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
+		return err
+	}
+	// 检查状态码是否合法
+	if !e.downloader.CheckStatus(uint64(ctx.Response.Status), ctx.Request.AllowStatusCode) {
+		err := fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), ctx.Response.Status)
+		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
+		return err
+	}
+
+	if len(e.downloaderMiddlewares) == 0 {
+		return nil
+	}
+	// 逆优先级调用ProcessResponse
+	for index := range e.downloaderMiddlewares {
+		middleware := e.downloaderMiddlewares[len(e.downloaderMiddlewares)-index-1]
+		err := middleware.ProcessResponse(ctx, e.requestsChan)
+		if err != nil {
+			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
+			return err
+		}
+	}
+	return nil
+
+}
+
+// doParse 调用解析逻辑
+func (e *CrawlEngine) doParse(ctx *Context) error {
+	defer func() {
+		if err := recover(); err != nil {
+			ctx.setError(fmt.Sprintf("parse error %s", err))
+		}
+		close(ctx.Items)
+	}()
+	if ctx.Response == nil {
+		return nil
+	}
+	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request response ready to parse", ctx.CtxId)
+
+	parserErr := ctx.Request.Parser(ctx, e.requestsChan)
+	if parserErr != nil {
+		engineLog.Errorf("%s", parserErr.Error())
+	}
+	return parserErr
+
+}
+
+// doPipelinesHandlers 通过pipeline 处理item
+func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
+	defer func() {
+		if err := recover(); err != nil {
+			ctx.setError(fmt.Sprintf("pipeline error %s", err))
+		}
+	}()
+	for item := range ctx.Items {
+		e.statistic.IncrItemScraped()
+		engineLog.WithField("request_id", ctx.CtxId).Infof("%s item is scraped", item.CtxId)
+		for _, pipeline := range e.pipelines {
+			err := pipeline.ProcessItem(ctx.Spider, item)
+			if err != nil {
+				engineLog.WithField("request_id", ctx.CtxId).Errorf("Pipeline %d handle item error %s", pipeline.GetPriority(), err.Error())
+				// ctx.Error = err
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// GetSpiders 获取所有的已经注册到引擎的spider实例
+func (e *CrawlEngine) GetSpiders() *Spiders {
+	return e.spiders
+}
+
+// Close 关闭引擎
+func (e *CrawlEngine) Close() {
+	close(e.requestsChan)
+	close(e.cacheChan)
+	err := e.statistic.Reset()
+	if err != nil {
+		engineLog.Errorf("reset statistic error %s", err.Error())
+
+	}
+}
+
+// 构建新的引擎
+func NewEngine(opts ...EngineOption) *CrawlEngine {
+	Engine := &CrawlEngine{
+		waitGroup:             &sync.WaitGroup{},
 		spiders:               NewSpiders(),
 		requestsChan:          make(chan *Context, 1024),
-		itemsChan:             make(chan *ItemMeta, 1024),
-		respChan:              make(chan *Context, 1024),
-		requestResultChan:     make(chan *Context, 1024),
-		errorChan:             make(chan *HandleError, 1024),
-		quitSignal:            make(chan os.Signal, 1),
-		startRequestFinish:    false,
 		pipelines:             make(ItemPipelines, 0),
 		downloaderMiddlewares: make(Middlewares, 0),
-
-		Ctx:                context.TODO(),
-		DownloadTimeout:    time.Second * 10,
-		requestDownloader:  NewDownloader(),
-		allowStatusCode:    []uint64{},
-		filterDuplicateReq: true,
-		RFPDupeFilter:      NewRFPDupeFilter(1024*4, 8),
-		engineStatus:       0,
-		waitGroup:          &sync.WaitGroup{},
-		mainWaitGroup:      &sync.WaitGroup{},
-		downloadLimit:      256,
-		currentDownload:    0,
-		isDone:             false,
-		isRunning:          false,
-		schedulerNum:       uint(numCPU),
-		Stats:              &SpiderStats{0, 0, 0.0, 0},
-		cache:              NewRequestCache(),
-		cacheReadNum:       uint(numCPU),
-		ErrorHandler:       DefaultErrorHandler,
+		cache:                 NewRequestCache(),
+		cacheChan:             make(chan *Context, 512),
+		eventsChan:            make(chan EventType, 16),
+		statistic:             NewStatistic(),
+		filterDuplicateReq:    true,
+		rfpDupeFilter:         NewRFPDupeFilter(0.001, 1024*4),
+		isStop:                false,
+		useDistributed:        false,
+		isMaster:              true,
+		checkMasterLive:       func() (bool, error) { return true, nil },
+		limiter:               NewDefaultLimiter(32),
+		downloader:            NewDownloader(),
+		hooker:                NewDefualtHooks(),
 	}
 	for _, o := range opts {
 		o(Engine)
 	}
 	return Engine
-}
-
-// SetDownloadTimeout set download timeout
-func (e *SpiderEngine) SetDownloadTimeout(timeout time.Duration) {
-	e.DownloadTimeout = timeout
-	e.requestDownloader.setTimeout(timeout)
-}
-
-// SetAllowedStatus set allowed response status codes
-func (e *SpiderEngine) SetAllowedStatus(allowedStatusCode []uint64) {
-	e.allowStatusCode = allowedStatusCode
 }

@@ -12,42 +12,48 @@
 package tegenaria
 
 import (
-	"runtime"
+	"errors"
+	"fmt"
 
 	queue "github.com/yireyun/go-queue"
 )
 
-// CacheInterface request cache interface
-// you can use redis to do cache
+// CacheInterface request缓存组件
 type CacheInterface interface {
-	enqueue(ctx *Context) error    // enqueue put request to cache
-	dequeue() (interface{}, error) // dequeue get request from cache
-	getSize() int64                // getSize get cache size
+	// enqueue ctx写入缓存
+	enqueue(ctx *Context) error    
+	// dequeue ctx 从缓存出队列
+	dequeue() (interface{}, error)
+	// isEmpty 缓存是否为空
+	isEmpty() bool                 
+	// getSize 缓存大小
+	getSize() uint64
+	// close 关闭缓存
+	close() error
+	// setCurrentSpider 设置当前的spider
+	setCurrentSpider(spider string)
 }
 
-// requestCache request cache
+// requestCache request缓存队列
 type requestCache struct {
-	queue *queue.EsQueue // A lock-free queue to use cache request
+	queue *queue.EsQueue
 }
 
-// enqueue put request to cache queue
+// enqueue request对象入队列
 func (c *requestCache) enqueue(ctx *Context) error {
 	// It will wait to put request until queue is not full
 	if ctx == nil || ctx.Request == nil {
-		return nil
+		return errors.New("context or request cannot be nil")
 	}
-	for {
-		ok, _ := c.queue.Put(ctx)
-		if ok {
-			return nil
-		} else {
-			runtime.Gosched()
-		}
+	ok, q := c.queue.Put(ctx)
+	if !ok {
+		return fmt.Errorf("enter queue error %d", q)
 	}
+	return nil
 
 }
 
-// dequeue get request object from cache queue
+// dequeue 从队列中获取request对象
 func (c *requestCache) dequeue() (interface{}, error) {
 	val, ok, _ := c.queue.Get()
 	if !ok {
@@ -57,12 +63,22 @@ func (c *requestCache) dequeue() (interface{}, error) {
 	}
 
 }
-
-// getSize get cache queue size
-func (c *requestCache) getSize() int64 {
-	return int64(c.queue.Quantity())
+// isEmpty 缓存是否为空
+func (c *requestCache) isEmpty() bool {
+	return int64(c.queue.Quantity()) == 0
 }
+// getSize 缓存大小
+func (c *requestCache) getSize() uint64 {
+	return uint64(c.queue.Quantity())
+}
+// close 关闭缓存
+func (c *requestCache) close() error {
+	return nil
+}
+// setCurrentSpider 设置当前的spider
+func (c *requestCache) setCurrentSpider(spider string) {
 
+}
 // NewRequestCache get a new requestCache
 func NewRequestCache() *requestCache {
 	return &requestCache{

@@ -11,21 +11,20 @@
 
 package tegenaria
 
-import "context"
-
-// Item as meta data process interface
+// ItemInterface item实例接口
 type ItemInterface interface {
 }
+// ItemMeta item元数据结构
 type ItemMeta struct {
+	// CtxId 对应的context id
 	CtxId string
+	// Item item对象
 	Item  ItemInterface
-	Ctx   context.Context
 }
-
+// NewItem 构建新的ItemMeta对象
 func NewItem(ctx *Context, item ItemInterface) *ItemMeta {
 	return &ItemMeta{
 		CtxId: ctx.CtxId,
 		Item:  item,
-		Ctx:   ctx.parent,
 	}
 }

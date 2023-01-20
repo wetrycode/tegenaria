@@ -23,26 +23,32 @@ import (
 	"github.com/spaolacci/murmur3"
 )
 
-// RFPDupeFilterInterface Request Fingerprint duplicates filter interface
+// RFPDupeFilterInterface request 对象指纹计算和布隆过滤器去重
 type RFPDupeFilterInterface interface {
-	// Fingerprint compute request fingerprint
-	Fingerprint(request *Request) ([]byte, error)
+	// Fingerprint request指纹计算
+	Fingerprint(ctx *Context) ([]byte, error)
 
-	// DoDupeFilter do request fingerprint duplicates filter
-	DoDupeFilter(request *Request) (bool, error)
+	// DoDupeFilter request去重
+	DoDupeFilter(ctx *Context) (bool, error)
 }
-
+// RFPDupeFilter 去重组件
 type RFPDupeFilter struct {
 	bloomFilter *bloom.BloomFilter
 }
-
-func NewRFPDupeFilter(bloomM uint, bloomK uint) *RFPDupeFilter {
+// NewRFPDupeFilter 新建去重组件
+// bloomP容错率
+// bloomN数据规模
+func NewRFPDupeFilter(bloomP float64, bloomN uint) *RFPDupeFilter {
+	// 计算最佳的bit set大小
+	bloomM := OptimalNumOfBits(int64(bloomN), bloomP)
+	// 计算最佳的哈希函数大小
+	bloomK := OptimalNumOfHashFunctions(int64(bloomN), bloomM)
 	return &RFPDupeFilter{
-		bloomFilter: bloom.New(bloomM, bloomK),
+		bloomFilter: bloom.New(uint(bloomM), uint(bloomK)),
 	}
 }
 
-// canonicalizeUrl canonical request url before calculate request fingerprint
+// canonicalizeUrl request 规整化处理
 func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool) url.URL {
 	u, _ := url.ParseRequestURI(request.Url)
 	u.RawQuery = u.Query().Encode()
@@ -53,7 +59,7 @@ func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool)
 	return *u
 }
 
-// encodeHeader encode request header before calculate request fingerprint
+// encodeHeader 请求头序列化
 func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 	h := request.Header
 	if h == nil {
@@ -72,11 +78,16 @@ func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 	}
 	return buf.String()
 }
-
-func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
+// Fingerprint 计算指纹
+func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
+	request:=ctx.Request
+	if request.Url == "" {
+		return nil, fmt.Errorf("request is nil,maybe it had been free")
+	}
 	// get sha128
 	sha := murmur3.New128()
-	_, err := io.WriteString(sha, request.Method)
+	method:=string(request.Method)
+	_, err := io.WriteString(sha, method)
 	if err != nil {
 		return nil, err
 	}
@@ -102,10 +113,10 @@ func (f *RFPDupeFilter) Fingerprint(request *Request) ([]byte, error) {
 	return res, nil
 }
 
-// DoDupeFilter deduplicate request filter by bloom
-func (f *RFPDupeFilter) DoDupeFilter(request *Request) (bool, error) {
+// DoDupeFilter 通过布隆过滤器对request对象进行去重处理
+func (f *RFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
 	// Use bloom filter to do fingerprint deduplication
-	data, err := f.Fingerprint(request)
+	data, err := f.Fingerprint(ctx)
 	if err != nil {
 		return false, err
 	}

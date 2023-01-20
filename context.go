@@ -13,8 +13,19 @@ package tegenaria
 
 import (
 	"context"
+	"fmt"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
+
+	cmap "github.com/orcaman/concurrent-map/v2"
+	"github.com/sirupsen/logrus"
 )
+
+type ContextInterface interface {
+	IsDone() bool
+}
 
 // Context spider crawl request schedule unit
 // it is used on all data flow
@@ -23,7 +34,7 @@ type Context struct {
 	Request *Request
 
 	// DownloadResult downloader handler result
-	DownloadResult *RequestResult
+	Response *Response
 
 	//parent parent context
 	parent context.Context
@@ -36,24 +47,152 @@ type Context struct {
 
 	//
 	Cancel context.CancelFunc
+	//
+	Ref int64
+
+	//
+	Items chan *ItemMeta
+
+	Spider SpiderInterface
 }
+
+// contextPool context 内存池
+var contextPool *sync.Pool = &sync.Pool{
+	New: func() interface{} {
+		return new(Context)
+	},
+}
+
+// 全局的context 管理接口
+type contextManager struct {
+	// ctxCount context对象的数量
+	ctxCount int64
+	// ctxMap context缓存
+	ctxMap cmap.ConcurrentMap[*Context]
+}
+
+var onceContextManager sync.Once
+
 type ContextOption func(c *Context)
 
-func NewContext(request *Request, opts ...ContextOption) *Context {
-	parent, cancel := context.WithCancel(context.TODO())
-	ctx := &Context{
-		Request:        request,
-		parent:         parent,
-		CtxId:          GetUUID(),
-		DownloadResult: NewDownloadResult(),
-		Cancel:         cancel,
+var ctxManager *contextManager
+
+// add 向context 管理组件添加新的context
+func (c *contextManager) add(ctx *Context) {
+	c.ctxMap.Set(ctx.CtxId, ctx)
+	atomic.AddInt64(&c.ctxCount, 1)
+
+}
+
+// remove 从contextManager中删除指定的ctx
+func (c *contextManager) remove(ctx *Context) {
+	c.ctxMap.Remove(ctx.CtxId)
+	atomic.AddInt64(&c.ctxCount, -1)
+
+}
+
+// isEmpty未处理的ctx是否为空
+func (c *contextManager) isEmpty() bool {
+	engineLog.Debugf("Number of remaining tasks:%d", atomic.LoadInt64(&c.ctxCount))
+	return atomic.LoadInt64(&c.ctxCount) == 0
+}
+
+// Clear 清空ctx
+func (c *contextManager) Clear() {
+	atomic.StoreInt64(&c.ctxCount, 0)
+	c.ctxMap.Clear()
+}
+
+// var ctxCount int64
+func newContextManager() {
+	onceContextManager.Do(func() {
+		ctxManager = &contextManager{
+			ctxCount: 0,
+			ctxMap:   cmap.New[*Context](),
+		}
+	})
+}
+
+// WithContextId 设置自定义的ctxId
+func WithContextId(ctxId string) ContextOption {
+	return func(c *Context) {
+		c.CtxId = ctxId
 	}
+}
+
+// NewContext 从内存池中构建context对象
+func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption) *Context {
+	ctx := contextPool.Get().(*Context)
+	parent, cancel := context.WithCancel(context.TODO())
+	ctx.Request = request
+	ctx.Spider = Spider
+	ctx.CtxId = GetUUID()
+	ctx.Cancel = cancel
+	ctx.Items = make(chan *ItemMeta, 16)
+	ctx.parent = parent
+	ctx.Error = nil
+	log.Debugf("Generate a new request%s %s", ctx.CtxId, request.Url)
+
 	for _, o := range opts {
 		o(ctx)
 	}
+	ctxManager.add(ctx)
 	return ctx
 
 }
+
+// freeContext 重置context并返回到内存池
+func freeContext(c *Context) {
+	c.parent = nil
+	c.Cancel = nil
+	c.Items = nil
+	c.CtxId = ""
+	c.Spider = nil
+	c.Error = nil
+	contextPool.Put(c)
+	c = nil
+}
+
+// setResponse 设置响应
+func (c *Context) setResponse(resp *Response) {
+	c.Response = resp
+}
+
+// setError 设置异常
+func (c *Context) setError(msg string) {
+	err := NewError(c, fmt.Errorf("%s", msg))
+	c.Error = err
+	// 取上一帧栈
+	pc, file, lineNo, _ := runtime.Caller(1)
+	f := runtime.FuncForPC(pc)
+	fields := logrus.Fields{
+		"request_id": c.CtxId,
+		"func":       f.Name(),
+		"file":       fmt.Sprintf("%s:%d", file, lineNo),
+	}
+	log := engineLog.WithFields(fields)
+	log.Logger.SetReportCaller(false)
+	log.Errorf("%s", err.Error())
+
+}
+
+// Close 关闭context
+func (c *Context) Close() {
+	if c.Request != nil {
+		// 释放request
+		freeRequest(c.Request)
+	}
+	if c.Response != nil {
+		// 释放response
+		freeResponse(c.Response)
+	}
+	ctxManager.remove(c)
+	c.CtxId = ""
+	freeContext(c)
+
+}
+
+// WithContext 设置父context
 func WithContext(ctx context.Context) ContextOption {
 	return func(c *Context) {
 		parent, cancel := context.WithCancel(ctx)
@@ -62,7 +201,7 @@ func WithContext(ctx context.Context) ContextOption {
 	}
 }
 
-// Deadline returns that there is no deadline (ok==false) when c has no Context.
+// Deadline
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	if c.Request == nil || c.parent == nil {
 		return time.Time{}, false
@@ -70,7 +209,6 @@ func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	return c.parent.Deadline()
 }
 
-// Done returns nil (chan which will wait forever) when c.Request has no Context.
 func (c *Context) Done() <-chan struct{} {
 	if c.Request == nil || c.parent == nil {
 		return nil
@@ -78,7 +216,6 @@ func (c *Context) Done() <-chan struct{} {
 	return c.parent.Done()
 }
 
-// Err returns nil when ct has no Context.
 func (c *Context) Err() error {
 	if c.Request == nil || c.parent == nil {
 		return nil
@@ -86,9 +223,6 @@ func (c *Context) Err() error {
 	return c.parent.Err()
 }
 
-// Value returns the value associated with this context for key, or nil
-// if no value is associated with key. Successive calls to Value with
-// the same key returns the same result.
 func (c *Context) Value(key interface{}) interface{} {
 	if key == 0 {
 		return c.Request

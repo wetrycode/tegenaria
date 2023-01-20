@@ -4,22 +4,24 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/go-kiss/monkey"
+	"github.com/agiledragon/gomonkey/v2"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/smartystreets/goconvey/convey"
 )
 
-func TestRequestBodyReadError(t *testing.T) {
-	defer func(){
-		if p:=recover();p!=nil{
-
-		}else{
-			t.Errorf("Reading request body except error creat request with read body")
+func TestRequestWithBodyError(t *testing.T) {
+	convey.Convey("request body read error,should be panic", t, func() {
+		body := map[string]interface{}{}
+		body["key"] = "value"
+		request := NewRequest("http://www.baidu.com", GET, testParser)
+		opt := RequestWithRequestBody(body)
+		patch := gomonkey.ApplyFunc(jsoniter.Marshal, func(_ interface{}) ([]byte, error) {
+			return nil, errors.New("marshal error")
+		})
+		defer patch.Reset()
+		f := func() {
+			opt(request)
 		}
-	}()
-	monkey.Patch(jsoniter.Marshal, func(v interface{}) ([]byte, error) {
-		return nil, errors.New("creat request with read body")
+		convey.So(f, convey.ShouldPanic)
 	})
-	body := make(map[string]interface{})
-	body["test"] = "test"
-	NewRequest("http://www.example.com", GET, testParser, RequestWithRequestBody(body))
 }

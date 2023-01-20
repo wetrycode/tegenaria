@@ -11,14 +11,13 @@
 
 package tegenaria
 
-// PipelinesInterface pipeline interface
-// pipeline is mainly used for processing item,
-// the engine schedules ProcessItem according to
-// the priority of pipelines from highest to lowest
+// PipelinesInterface pipeline 接口
+// pipeline 主要用于处理item,例如数据存储、数据清洗
+// 将多个pipeline注册到引擎可以实现责任链模式的数据处理
 type PipelinesInterface interface {
-	// GetPriority get pipeline Priority
+	// GetPriority 获取当前pipeline的优先级
 	GetPriority() int
-	// ProcessItem item handler
+	// ProcessItem item处理单元
 	ProcessItem(spider SpiderInterface, item *ItemMeta) error
 }
 type PipelinesBase struct {

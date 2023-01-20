@@ -13,51 +13,61 @@ package tegenaria
 
 import (
 	"os"
+	"path"
+	"runtime"
+	"sync"
 
 	"github.com/spf13/viper"
 )
 
 type Settings interface {
-	GetValue(key string) (error, string)
+	// GetValue 获取指定的参数值
+	GetValue(key string) (interface{},error)
 }
 
-type Logger struct {
-	Path  string `yaml:"path"`
-	Level string `yaml:"level"`
-}
 
 type Configuration struct {
-	Log *Logger `ymal:"log"`
+	// Log *Logger `ymal:"log"`
+	*viper.Viper
 }
 
-var Config *Configuration = &Configuration{
-	Log: &Logger{
-		Path:  "/var/log",
-		Level: "warn",
-	},
+var onceConfig sync.Once
+var Config *Configuration = nil
+
+func newTegenariaConfig() {
+	onceConfig.Do(func() {
+		Config = &Configuration{
+			viper.New(),
+		}
+	})
+
 }
-
-func load() bool {
-	str, _ := os.Getwd()
-	runtimeViper := viper.New()
-
-	runtimeViper.AddConfigPath(str)
-	runtimeViper.SetConfigName("settings")
-	runtimeViper.SetConfigType("yaml")
-	readErr := runtimeViper.ReadInConfig()
+func(c *Configuration)GetValue(key string) (interface{},error){
+	value:=c.Get(key)
+	return value,nil
+}
+func (c *Configuration) load(dir string) bool {
+	c.AddConfigPath(dir)
+	c.SetConfigName("settings")
+	c.SetConfigType("yaml")
+	readErr := c.ReadInConfig()
 	if readErr != nil {
 		return false
 	}
-	err := runtimeViper.Unmarshal(Config)
+	err := c.Unmarshal(c)
 	return err == nil
 }
 func initSettings() {
-	if !load() {
-		Config = &Configuration{
-			Log: &Logger{
-				Path:  "/var/log",
-				Level: "warn",
-			},
-		}
+	newTegenariaConfig()
+	wd, _ := os.Getwd()
+	var abPath string
+
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		abPath = path.Dir(filename)
+
 	}
+	Config.load(wd)
+	Config.load(abPath)
+
 }

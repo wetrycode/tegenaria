@@ -19,17 +19,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// Response the Request download response data
+// Response 请求响应体的结构
 type Response struct {
-	Status        int                 // Status request response status code
+	// Status状态码
+	Status        int                 
+	// Header 响应头
 	Header        map[string][]string // Header response header
+	// Delay 请求延迟
 	Delay         float64             // Delay the time of handle download request
-	ContentLength int                 // ContentLength response content length
+	// ContentLength 响应体大小
+	ContentLength uint64                 // ContentLength response content length
+	// URL 请求url
 	URL           string              // URL of request url
+	// Buffer 响应体缓存
 	Buffer        *bytes.Buffer       // buffer read response buffer
 }
 
-// responsePool a buffer poll of Response object
+// responsePool Response 对象内存池
 var responsePool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
 		return new(Response)
@@ -37,7 +43,7 @@ var responsePool *sync.Pool = &sync.Pool{
 }
 var respLog *logrus.Entry = GetLogger("response")
 
-// Json deserialize the response body to json
+// Json 将响应数据转为json
 func (r *Response) Json() (map[string]interface{},error) {
 	jsonResp := map[string]interface{}{}
 	err := json.Unmarshal(r.Buffer.Bytes(), &jsonResp)
@@ -49,12 +55,12 @@ func (r *Response) Json() (map[string]interface{},error) {
 	return jsonResp,nil
 }
 
-// String get response text from response body
+// String 将响应数据转为string
 func (r *Response) String() string {
 	return r.Buffer.String()
 }
 
-// NewResponse create a new Response from responsePool
+// NewResponse 从内存池中创建新的response对象
 func NewResponse() *Response {
 	response := responsePool.Get().(*Response)
 	response.Buffer = bufferPool.Get().(*bytes.Buffer)
@@ -63,7 +69,7 @@ func NewResponse() *Response {
 
 }
 
-// freeResponse reset Response and the put it into responsePool
+// freeResponse 重置response对象并放回对象池
 func freeResponse(r *Response) {
 	r.Status = -1
 	r.Header = nil
