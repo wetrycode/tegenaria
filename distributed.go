@@ -12,19 +12,29 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/spaolacci/murmur3"
 )
-
+// GetRDBKey 获取缓存rdb key和ttl
 type GetRDBKey func(params ...interface{}) (string, time.Duration)
+// DistributedWorkerInterface 分布式组件接口
 type DistributedWorkerInterface interface {
 	CacheInterface
 	RFPDupeFilterInterface
+	// AddNode 新增一个节点
 	AddNode() error
+	// DelNode 删除当前的节点
 	DelNode() error
+	// StopNode 停止当前的节点
 	StopNode() error
+	// Heartbeat 心跳
 	Heartbeat() error
+	// CheckAllNodesStop 检查所有的节点是否都已经停止
 	CheckAllNodesStop() (bool, error)
+	// GetLimter 获取限速器
 	GetLimter() LimitInterface
+	// CheckMasterLive 检测主节点是否还在线
 	CheckMasterLive() (bool, error)
+	// SetMaster 是否将当前的节点设置为主节点
 	SetMaster(flag bool)
+	// SetSpiders 设置已经注册的所有的spider
 	SetSpiders(spiders *Spiders)
 }
 
@@ -53,13 +63,21 @@ type DistributedWorker struct {
 	bloomN uint
 	// bloomM bitset 大小
 	bloomM uint
-	// 并发控制器
+	// limiter 并发控制器
 	limiter        LimitInterface
+	// nodeId 节点id
 	nodeId         string
+	// nodesSetPrefix 节点池的key前缀
+	// 默认为"tegenaria:v1:nodes"
 	nodesSetPrefix string
+	// masterNodesKey master节点池的key前缀
+	// 默认值为"tegenaria:v1:master"
 	masterNodesKey string
+	// nodePrefix 节点前缀
 	nodePrefix     string
+	// currentSpider 当前的spider
 	currentSpider  string
+	// isMaster 是否是master节点
 	isMaster       bool
 }
 
@@ -99,6 +117,7 @@ type DistributedWorkerConfig struct {
 	GetqueueKey GetRDBKey
 	// GetBFKey 布隆过滤器对应的生成key的函数，允许用户自定义
 	GetBFKey    GetRDBKey
+	// getLimitKey 获取限速器对应的redis key
 	getLimitKey GetRDBKey
 }
 
@@ -110,7 +129,7 @@ type WorkerConfigWithRdbCluster struct {
 	*DistributedWorkerConfig
 	RdbNodes
 }
-
+// NewDistributedWorkerConfig 新建分布式组件的配置
 func NewDistributedWorkerConfig(username string, passwd string, db uint32, opts ...DistributeOptions) *DistributedWorkerConfig {
 	config := &DistributedWorkerConfig{
 		RedisUsername:      username,
@@ -131,7 +150,7 @@ func NewDistributedWorkerConfig(username string, passwd string, db uint32, opts 
 	}
 	return config
 }
-
+// NewWorkerConfigWithRdbCluster redis cluster模式的分布式组件
 func NewWorkerConfigWithRdbCluster(config *DistributedWorkerConfig, nodes RdbNodes) *WorkerConfigWithRdbCluster {
 	newConfig := &WorkerConfigWithRdbCluster{
 		DistributedWorkerConfig: config,
@@ -167,6 +186,7 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 	}
 	return d
 }
+// setCurrentSpider 设置当前的spider
 func (w *DistributedWorker) setCurrentSpider(spider string) {
 	w.currentSpider = spider
 	funcs := []GetRDBKey{}
@@ -192,6 +212,7 @@ func NewWorkerWithRdbCluster(config *WorkerConfigWithRdbCluster) *DistributedWor
 	w.rdb = NewRdbClusterCLient(config)
 	return w
 }
+// getLimiterDefaultKey 限速器默认的key
 func getLimiterDefaultKey(params ...interface{}) (string, time.Duration) {
 	return "tegenaria:v1:limiter", 0 * time.Second
 }
@@ -206,12 +227,12 @@ func getQueueDefaultKey(params ...interface{}) (string, time.Duration) {
 	return "tegenaria:v1:request", 0 * time.Second
 
 }
-
+// GetLimter 获取限速器
 func (w *DistributedWorker) GetLimter() LimitInterface {
 	return w.limiter
 }
-
-func (w *DistributedWorker) SetMaster(flag bool){
+// SetMaster 设置当前的节点是否为master
+func (w *DistributedWorker) SetMaster(flag bool) {
 	w.isMaster = flag
 }
 
@@ -276,11 +297,13 @@ func unserialize(data []byte) (rdbCacheData, error) {
 	}
 	return s.val, nil
 }
+// newSerialize 获取序列化组件
 func newSerialize(r rdbCacheData) *serialize {
 	return &serialize{
 		val: r,
 	}
 }
+// SetSpiders 设置所有的已注册的spider
 func (w *DistributedWorker) SetSpiders(spiders *Spiders) {
 	w.spiders = spiders
 }
@@ -349,6 +372,7 @@ func (w *DistributedWorker) isEmpty() bool {
 	}
 	return int64(length) == 0 && stop
 }
+// getSize request 队列大小
 func (w *DistributedWorker) getSize() uint64 {
 	key, _ := w.queueKey()
 	length, _ := w.rdb.LLen(goContext.TODO(), key).Uint64()
@@ -457,17 +481,24 @@ func (w *DistributedWorker) isExists(fingerprint []byte) (bool, error) {
 	}
 	return true, nil
 }
+// getNodeKey 获取当前节点的缓存key 
+// 格式:{nodePrefix}:{spiderName}:{ip}:{nodeId}
 func (w *DistributedWorker) getNodeKey() string {
 	ip := GetMachineIp()
 
 	return fmt.Sprintf("%s:%s:%s:%s", w.nodePrefix, w.currentSpider, ip, w.nodeId)
 }
+// getNodesSetKey 节点池缓存key
+// 格式:{nodesSetPrefix}:{spiderName}
 func (w *DistributedWorker) getNodesSetKey() string {
 	return fmt.Sprintf("%s:%s", w.nodesSetPrefix, w.currentSpider)
 }
+// getMaterSetKey master 节点池缓存key
+// 格式:{masterNodesKey}:{spiderName}
 func (w *DistributedWorker) getMaterSetKey() string {
 	return fmt.Sprintf("%s:%s", w.masterNodesKey, w.currentSpider)
 }
+// AddNode 新增节点
 func (w *DistributedWorker) AddNode() error {
 	ip := GetMachineIp()
 	key := w.getNodeKey()
@@ -489,6 +520,7 @@ func (w *DistributedWorker) AddNode() error {
 	}
 	return err
 }
+// addMaster 新增master节点
 func (w *DistributedWorker) addMaster() error {
 	key := w.getMaterSetKey()
 	nodeKey := w.getNodeKey()
@@ -496,6 +528,7 @@ func (w *DistributedWorker) addMaster() error {
 	err := w.rdb.SAdd(goContext.TODO(), key, member...).Err()
 	return err
 }
+// delMaster 删除master节点
 func (w *DistributedWorker) delMaster() error {
 	key := w.getMaterSetKey()
 	nodeKey := w.getNodeKey()
@@ -503,6 +536,7 @@ func (w *DistributedWorker) delMaster() error {
 	err := w.rdb.SRem(goContext.TODO(), key, member...).Err()
 	return err
 }
+// CheckMasterLive 检查所有master 节点是否都在线
 func (w *DistributedWorker) CheckMasterLive() (bool, error) {
 	members := w.rdb.SMembers(goContext.TODO(), w.getMaterSetKey()).Val()
 	count := len(members)
@@ -512,10 +546,11 @@ func (w *DistributedWorker) CheckMasterLive() (bool, error) {
 	for _, member := range members {
 		result = append(result, pipe.Get(context.TODO(), member))
 	}
-	count,err:=w.executeCheck(pipe,result,count)
+	count, err := w.executeCheck(pipe, result, count)
 	return count != 0, err
 
 }
+// DelNode 删除当前节点
 func (w *DistributedWorker) DelNode() error {
 	ip := GetMachineIp()
 	key := w.getNodeKey()
@@ -530,6 +565,7 @@ func (w *DistributedWorker) DelNode() error {
 	}
 	return err
 }
+// StopNode 停止当前节点的活动
 func (w *DistributedWorker) StopNode() error {
 	key := w.getNodeKey()
 	err := w.rdb.SetEX(goContext.TODO(), key, 0, 1*time.Second).Err()
@@ -538,7 +574,7 @@ func (w *DistributedWorker) StopNode() error {
 	}
 	return nil
 }
-
+// Heartbeat 心跳包
 func (w *DistributedWorker) Heartbeat() error {
 	key := w.getNodeKey()
 	err := w.rdb.SetEX(goContext.TODO(), key, 1, 1*time.Second).Err()
@@ -547,7 +583,8 @@ func (w *DistributedWorker) Heartbeat() error {
 	}
 	return nil
 }
-func (w *DistributedWorker)executeCheck(pipe redis.Pipeliner, result []*redis.StringCmd, count int)(int, error){
+// executeCheck 检查所有的节点状态
+func (w *DistributedWorker) executeCheck(pipe redis.Pipeliner, result []*redis.StringCmd, count int) (int, error) {
 	_, err := pipe.Exec(goContext.TODO())
 	if err != nil {
 		if strings.Contains(err.Error(), "nil") {
@@ -561,7 +598,7 @@ func (w *DistributedWorker)executeCheck(pipe redis.Pipeliner, result []*redis.St
 	// 遍历所有的节点检查是否任务已经终止
 	for _, r := range result {
 		val, readErr := r.Int()
-		if readErr != nil&& !strings.Contains(readErr.Error(), "nil") {
+		if readErr != nil && !strings.Contains(readErr.Error(), "nil") {
 			err = readErr
 		}
 		if val < 1 {
@@ -572,6 +609,7 @@ func (w *DistributedWorker)executeCheck(pipe redis.Pipeliner, result []*redis.St
 	}
 	return count, err
 }
+// CheckAllNodesStop 检查所有的节点是否都已经停止
 func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
 	members := w.rdb.SMembers(goContext.TODO(), w.getNodesSetKey()).Val()
 	pipe := w.rdb.Pipeline()
@@ -581,7 +619,7 @@ func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
 		key := fmt.Sprintf("%s:%s:%s", w.nodePrefix, w.currentSpider, member)
 		result = append(result, pipe.Get(goContext.TODO(), key))
 	}
-	count,err:= w.executeCheck(pipe, result,count)
+	count, err := w.executeCheck(pipe, result, count)
 	return count == 0, err
 
 }

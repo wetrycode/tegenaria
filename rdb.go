@@ -5,13 +5,11 @@ import (
 
 	"github.com/go-redis/redis/v8"
 )
-
+// NewRdbConfig redis 配置构造函数
 func NewRdbConfig(config *DistributedWorkerConfig) *redis.Options {
 	return &redis.Options{
-		//连接信息
-		// Network:  "tcp", //网络类型，tcp or unix，默认tcp
-		Password: config.RedisPasswd,
-		Username: config.RedisUsername, //密码
+		Password: config.RedisPasswd, // 密码
+		Username: config.RedisUsername, //用户名
 		DB:       int(config.RedisDB),  // redis数据库index
 
 		//连接池容量及闲置连接数量

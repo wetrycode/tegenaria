@@ -24,46 +24,62 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/sirupsen/logrus"
 )
-
+// Proxy 代理数据结构
 type Proxy struct {
+	// ProxyUrl 代理链接
 	ProxyUrl string
 }
 
-// Request a spider request config
+// Request 请求对象的结构
 type Request struct {
-	Url             string                 `json:"url"`             // Set request URL
-	Header          map[string]string      `json:"header"`          // Set request header
-	Method          RequestMethod           `json:"method"`          // Set request Method
-	Body            []byte                 `json:"body"`            // Set request body
-	Params          map[string]string      `json:"params"`          // Set request query params
-	Proxy           *Proxy                 `json:"-"`               // Set request proxy addr
-	Cookies         map[string]string      `json:"cookies"`         // Set request cookie
-	Meta            map[string]interface{} `json:"meta"`            // Set other data
-	AllowRedirects  bool                   `json:"allowRedirects"`  // Set if allow redirects. default is true
-	MaxRedirects    int                    `json:"maxRedirects"`    // Set max allow redirects number
-	Parser          Parser                 `json:"-"`               // Set response parser funcation
-	MaxConnsPerHost int                    `json:"maxConnsPerHost"` // Set max connect number for per host
-	BodyReader      io.Reader              `json:"-"`               // Set request body reader
-	ResponseWriter  io.Writer              `json:"-"`               // Set request response body writer,like file
+	// Url 请求Url
+	Url             string                 `json:"url"`
+	// Header 请求头             
+	Header          map[string]string      `json:"header"`   
+	// Method 请求方式       
+	Method          RequestMethod           `json:"method"` 
+	// Body 请求body        
+	Body            []byte                 `json:"body"`      
+	// Params 请求url的参数      
+	Params          map[string]string      `json:"params"` 
+	// Proxy 代理实例         
+	Proxy           *Proxy                 `json:"-"`
+	// Cookies 请求携带的cookies               
+	Cookies         map[string]string      `json:"cookies"` 
+	// Meta 请求携带的额外的信息        
+	Meta            map[string]interface{} `json:"meta"`  
+	// AllowRedirects 是否允许跳转默认允许          
+	AllowRedirects  bool                   `json:"allowRedirects"` 
+	// MaxRedirects 最大的跳转次数 
+	MaxRedirects    int                    `json:"maxRedirects"`
+	// Parser 该请求绑定的响应解析函数，必须是一个spider实例    
+	Parser          Parser                 `json:"-"`   
+	// MaxConnsPerHost 单个域名最大的连接数             
+	MaxConnsPerHost int                    `json:"maxConnsPerHost"` 
+	// BodyReader 用于读取body
+	BodyReader      io.Reader              `json:"-"` 
+	// ResponseWriter 响应读取到本地的接口              
+	ResponseWriter  io.Writer              `json:"-"`     
+	// AllowStatusCode 允许的状态码          
 	AllowStatusCode []uint64               `json:"allowStatusCode"`
+	// Timeout 请求超时时间
 	Timeout time.Duration `json:"timeout"`
-	// RequestId       string                 // Set request uuid
 }
 
-// requestPool the Request obj pool
+// requestPool request对象内存池
 var requestPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
 		return new(Request)
 	},
 }
 
-// Option NewRequest options
+// Option NewRequest 可选参数
 type RequestOption func(r *Request)
 
-// Parser response parse handler
+// Parser 响应解析函数结构
 type Parser func(resp *Context, req chan<- *Context) error
 
-// bufferPool buffer object pool
+// bufferPool buffer 对象内存池
 var bufferPool *sync.Pool = &sync.Pool{
 	New: func() interface{} {
 		return bytes.NewBuffer(make([]byte, 8192))
@@ -73,7 +89,7 @@ var bufferPool *sync.Pool = &sync.Pool{
 
 // reqLog request logger
 var reqLog *logrus.Entry = GetLogger("request")
-
+// RequestWithRequestBody 传入请求体到request
 func RequestWithRequestBody(body map[string]interface{}) RequestOption {
 	return func(r *Request) {
 		var err error
@@ -86,37 +102,44 @@ func RequestWithRequestBody(body map[string]interface{}) RequestOption {
 		}
 	}
 }
+// RequestWithRequestBytesBody request绑定bytes body
 func RequestWithRequestBytesBody(body []byte) RequestOption {
 	return func(r *Request) {
 		r.Body = body
 	}
 }
+// RequestWithRequestParams 设置请求的url参数
 func RequestWithRequestParams(params map[string]string) RequestOption {
 	return func(r *Request) {
 		r.Params = params
 	}
 }
+// RequestWithRequestProxy 设置代理
 func RequestWithRequestProxy(proxy Proxy) RequestOption {
 	return func(r *Request) {
 		r.Proxy = &proxy
 	}
 }
+// RequestWithRequestHeader 设置请求头
 func RequestWithRequestHeader(header map[string]string) RequestOption {
 	return func(r *Request) {
 		r.Header = header
 	}
 }
+// RequestWithRequestCookies 设置cookie
 func RequestWithRequestCookies(cookies map[string]string) RequestOption {
 	return func(r *Request) {
 		r.Cookies = cookies
 	}
 }
-
+// RequestWithRequestMeta 设置 meta
 func RequestWithRequestMeta(meta map[string]interface{}) RequestOption {
 	return func(r *Request) {
 		r.Meta = meta
 	}
 }
+// RequestWithAllowRedirects 设置是否允许跳转
+// 如果不允许则MaxRedirects=0
 func RequestWithAllowRedirects(allowRedirects bool) RequestOption {
 	return func(r *Request) {
 		r.AllowRedirects = allowRedirects
@@ -125,6 +148,8 @@ func RequestWithAllowRedirects(allowRedirects bool) RequestOption {
 		}
 	}
 }
+// RequestWithMaxRedirects 设置最大的跳转次数
+// 若maxRedirects <= 0则认为不允许跳转AllowRedirects = false
 func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 	return func(r *Request) {
 		if maxRedirects <= 0 {
@@ -135,34 +160,38 @@ func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 		}
 	}
 }
+// RequestWithResponseWriter 设置ResponseWriter
 func RequestWithResponseWriter(write io.Writer) RequestOption {
 	return func(r *Request) {
 		r.ResponseWriter = write
 	}
 }
+// RequestWithMaxConnsPerHost 设置MaxConnsPerHost
 func RequestWithMaxConnsPerHost(maxConnsPerHost int) RequestOption {
 	return func(r *Request) {
 		r.MaxConnsPerHost = maxConnsPerHost
 	}
 }
-
+// RequestWithAllowedStatusCode 设置AllowStatusCode
 func RequestWithAllowedStatusCode(allowStatusCode []uint64) RequestOption {
 	return func(r *Request) {
 		r.AllowStatusCode = allowStatusCode
 	}
 }
-
+// RequestWithParser 设置Parser
 func RequestWithParser(parser Parser) RequestOption {
 	return func(r *Request) {
 		r.Parser = parser
 	}
 }
+// RequestWithTimeout 设置请求超时时间
+// 若timeout<=0则认为没有超时时间
 func RequestWithTimeout(timeout time.Duration) RequestOption {
 	return func(r *Request) {
 		r.Timeout = timeout
 	}
 }
-// updateQueryParams update url query  params
+// updateQueryParams 将Params配置到url
 func (r *Request) updateQueryParams() {
 	defer func() {
 		if p := recover(); p != nil {
@@ -183,8 +212,7 @@ func (r *Request) updateQueryParams() {
 	}
 }
 
-// NewRequest create a new Request.
-// It will get a nil request form requestPool and then init params
+// NewRequest 从Request对象内存池创建新的Request对象
 func NewRequest(url string, method RequestMethod, parser Parser, opts ...RequestOption) *Request {
 	request := requestPool.Get().(*Request)
 	request.Url = url
@@ -206,10 +234,9 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 
 }
 
-// freeRequest reset Request and the put it into requestPool
+// freeRequest 重置request对象并将对象放回内存池
 func freeRequest(r *Request) {
 	r.Parser = func(resp *Context, req chan<- *Context) error {
-		// default response parser
 		return nil
 	}
 	r.AllowRedirects = true
@@ -230,6 +257,7 @@ func freeRequest(r *Request) {
 	r = nil
 
 }
+// ToMap 将request对象转为map
 func (r *Request) ToMap() (map[string]interface{}, error) {
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -240,6 +268,7 @@ func (r *Request) ToMap() (map[string]interface{}, error) {
 	return m, err
 
 }
+// RequestFromMap 从map创建requests
 func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request {
 	request := requestPool.Get().(*Request)
 	mapstructure.Decode(src, request)

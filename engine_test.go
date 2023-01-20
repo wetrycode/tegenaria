@@ -103,7 +103,7 @@ func TestEngineOptions(t *testing.T) {
 		)
 		convey.So(engine.cache, convey.ShouldHaveSameTypeAs, NewRequestCache())
 		convey.So(engine.downloader, convey.ShouldHaveSameTypeAs, NewDownloader())
-		convey.So(engine.RFPDupeFilter, convey.ShouldHaveSameTypeAs, NewRFPDupeFilter(0.001, 1024*1024))
+		convey.So(engine.rfpDupeFilter, convey.ShouldHaveSameTypeAs, NewRFPDupeFilter(0.001, 1024*1024))
 		convey.So(engine.filterDuplicateReq, convey.ShouldBeTrue)
 		convey.So(engine.limiter, convey.ShouldHaveSameTypeAs, NewDefaultLimiter(32))
 	})
@@ -395,8 +395,10 @@ func TestParseError(t *testing.T) {
 }
 func wokerError(ctx *Context, url string, errMsg string, t *testing.T, patch *gomonkey.Patches, engine *CrawlEngine) {
 	convey.Convey(fmt.Sprintf("test %s", errMsg), t, func() {
+		ctxPatch:=gomonkey.ApplyFunc((*Context).Close,func(_ *Context){})
 		defer func() {
 			patch.Reset()
+			ctxPatch.Reset()
 			restContext(ctx, url)
 		}()
 		f := engine.worker(ctx)

@@ -20,18 +20,22 @@ import "sync"
 // this interface to achieve custom spider.
 
 type SpiderInterface interface {
-	// StartRequest make new request by feed urls
+	// StartRequest 通过GetFeedUrls()获取种子
+	// urls并构建初始请求
 	StartRequest(req chan<- *Context)
 
-	// Parser parse response ,it can generate ItemMeta and send to engine
-	// it also can generate new Request
+	// Parser 默认的请求响应解析函数
+	// 在解析过程中生成的新的请求可以推送到req channel
 	Parser(resp *Context, req chan<- *Context) error
 
-	// ErrorHandler it is used to handler all error recive from engine
+	// ErrorHandler 错误处理函数，允许在此过程中生成新的请求
+	// 并推送到req channel
 	ErrorHandler(err *Context, req chan<- *Context)
 
-	// GetName get spider name
+	// GetName 获取spider名称
 	GetName() string
+	// GetFeedUrls 获取种子urls
+	GetFeedUrls()[]string
 }
 
 // BaseSpider base spider
@@ -42,9 +46,13 @@ type BaseSpider struct {
 	// FeedUrls feed urls
 	FeedUrls []string
 }
-
+// Spiders 全局spiders管理器
+// 用于接收注册的SpiderInterface实例
 type Spiders struct {
+	// SpidersModules spider名称和spider实例的映射
 	SpidersModules map[string]SpiderInterface
+	// Parsers parser函数名和函数的映射
+	// 用于序列化和反序列化
 	Parsers        map[string]Parser
 }
 
@@ -70,6 +78,7 @@ func (s *BaseSpider) ErrorHandler(err *HandleError) {
 	// ErrorHandler error handler
 
 }
+// NewSpiders 构建Spiders实例
 func NewSpiders() *Spiders {
 	onceSpiders.Do(func() {
 		SpidersList = &Spiders{
@@ -79,10 +88,13 @@ func NewSpiders() *Spiders {
 	})
 	return SpidersList
 }
+// Register spider实例注册到Spiders.SpidersModules
 func (s *Spiders) Register(spider SpiderInterface) error {
+	// 爬虫名不能为空
 	if len(spider.GetName()) == 0 {
 		return ErrEmptySpiderName
 	}
+	// 爬虫名不允许重复
 	if _, ok := s.SpidersModules[spider.GetName()]; ok {
 		return ErrDuplicateSpiderName
 	} else {
@@ -90,6 +102,7 @@ func (s *Spiders) Register(spider SpiderInterface) error {
 		return nil
 	}
 }
+// GetSpider 通过爬虫名获取spider实例
 func (s *Spiders) GetSpider(name string) (SpiderInterface, error) {
 	if _, ok := s.SpidersModules[name]; !ok {
 		return nil, ErrSpiderNotExist

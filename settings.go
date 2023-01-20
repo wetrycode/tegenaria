@@ -21,13 +21,10 @@ import (
 )
 
 type Settings interface {
-	GetValue(key string) (error, string)
+	// GetValue 获取指定的参数值
+	GetValue(key string) (interface{},error)
 }
 
-type Logger struct {
-	Path  string `yaml:"path"`
-	Level string `yaml:"level"`
-}
 
 type Configuration struct {
 	// Log *Logger `ymal:"log"`
@@ -44,6 +41,10 @@ func newTegenariaConfig() {
 		}
 	})
 
+}
+func(c *Configuration)GetValue(key string) (interface{},error){
+	value:=c.Get(key)
+	return value,nil
 }
 func (c *Configuration) load(dir string) bool {
 	c.AddConfigPath(dir)

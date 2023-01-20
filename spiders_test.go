@@ -27,6 +27,9 @@ func (s *TestSpider) ErrorHandler(err *Context, req chan<- *Context){
 func (s *TestSpider) GetName() string {
 	return s.Name
 }
+func (s *TestSpider)GetFeedUrls()[]string{
+	return s.FeedUrls
+}
 
 func TestSpiders(t *testing.T) {
 	convey.Convey("test spiders",t,func(){

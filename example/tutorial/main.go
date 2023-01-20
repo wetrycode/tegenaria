@@ -1,4 +1,4 @@
-package quotes
+package main
 
 import (
 	"log"
@@ -11,10 +11,11 @@ import (
 )
 
 var exampleLog *logrus.Entry = tegenaria.GetLogger("example")
+
 // ExampleSpider 定义一个spider
 type ExampleSpider struct {
 	// Name 爬虫名
-	Name     string
+	Name string
 	// 种子urls
 	FeedUrls []string
 }
@@ -25,6 +26,7 @@ type QuotesbotItem struct {
 	Author string
 	Tags   string
 }
+
 // StartRequest 爬虫启动，请求种子urls
 func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
 	for i := 0; i < 512; i++ {
@@ -63,7 +65,7 @@ func (e *ExampleSpider) Parser(resp *tegenaria.Context, req chan<- *tegenaria.Co
 			Tags:   strings.Join(tags, ","),
 		}
 		exampleLog.Infof("text:%s,author:%s, tag: %s", qText, author, tags)
-		// 构建item发送到指定的channel 
+		// 构建item发送到指定的channel
 		itemCtx := tegenaria.NewItem(resp, &quoteItem)
 		resp.Items <- itemCtx
 	})
@@ -94,7 +96,27 @@ func (e *ExampleSpider) ErrorHandler(err *tegenaria.Context, req chan<- *tegenar
 func (e *ExampleSpider) GetName() string {
 	return e.Name
 }
+
 // GetFeedUrls 获取种子urls
-func(e *ExampleSpider)GetFeedUrls()[]string{
+func (e *ExampleSpider) GetFeedUrls() []string {
 	return e.FeedUrls
+}
+
+// NewQuotesEngine 创建引擎
+func NewQuotesEngine(opts ...tegenaria.EngineOption) *tegenaria.CrawlEngine {
+	ExampleSpiderInstance := &ExampleSpider{
+		Name:     "example",
+		FeedUrls: []string{"http://quotes.toscrape.com/"},
+	}
+
+	Engine := tegenaria.NewEngine(opts...)
+	// 注册spider
+	Engine.RegisterSpiders(ExampleSpiderInstance)
+	return Engine
+
+}
+func main() {
+	opts := []tegenaria.EngineOption{tegenaria.EngineWithUniqueReq(false), tegenaria.EngineWithLimiter(tegenaria.NewDefaultLimiter(64))}
+	engine := NewQuotesEngine(opts...)
+	engine.Execute()
 }

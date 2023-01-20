@@ -1,33 +1,46 @@
-# Tegenaria crawl framework  
+# Tegenaria crawl framework
+
 [![codecov](https://codecov.io/gh/wetrycode/tegenaria/branch/master/graph/badge.svg?token=XMW3K1JYPB)](https://codecov.io/gh/wetrycode/tegenaria)
 [![go workflow](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)
 [![CodeQL](https://github.com/wetrycode/tegenaria/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/codeql-analysis.yml)  
-Tegenaria is a crawler framework based on golang 
+tegenaria是一个基于golang开发的快速、高效率的网络爬虫框架
 
-## Installation
-To install Tegenaria package, you should install Go and set your Go workspace first.
+# 特性
 
-1. The first need [Go](https://golang.org/) installed (**version 1.13+ is required**), then you can use the below Go command to install Tegenaria.
+- 支持分布式  
+
+- 支持自定义分布式组件  
+
+- 支持自定义的事件监控
+
+- 支持命令行控制
+  
+  ## 安装
+1. go 版本要求>1.17  
 
 ```bash
 go get -u github.com/wetrycode/tegenaria
 ```
-2. Import it in your code:
+
+2. 在您的项目中导入
 
 ```go
 import "github.com/wetrycode/tegenaria"
 ```
-## Quick start
-See the [example](https://github.com/wetrycode/quotesbot) of tegenaria
 
-## Document
+# 快速开始
 
-- See the [English Document](docs/Tegenaria_EN.md) of tegenaria
-- See the [Chinese (Simplified)](docs/Tegenaria_ZH.md) of tegenaria
+查看实例demo [example](example) 
 
-## Contribution
+# 文档
+
+- [入门](docs/Tutorial.md)
+
+# Contribution
+
 Feel free to PR and raise issues.  
 Send me an email directly, vforfreedom96@gmail.com  
 
 ## License
+
 [Apache2.0](LICENSE) © geebytes  

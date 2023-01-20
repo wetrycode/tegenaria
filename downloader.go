@@ -28,41 +28,33 @@ import (
 	"golang.org/x/net/http/httpproxy"
 )
 
-// ctxKey WithValueContext key data type
+// ctxKey WithValueContext key
 type ctxKey string
 
-// Downloader interface
+// Downloader 下载器接口
 type Downloader interface {
-	// Download core funcation
+	// Download 下载函数
 	Download(ctx *Context) (*Response, error)
 
-	// CheckStatus check response status code if allow handle
+	// CheckStatus 检查响应状态码的合法性
 	CheckStatus(statusCode uint64, allowStatus []uint64) bool
 }
 
-// SpiderDownloader tegenaria spider downloader
+// SpiderDownloader tegenaria 爬虫下载器
 type SpiderDownloader struct {
-	// transport The transport used by the downloader,
-	// each request adopts a public network transmission configuration,
-	// and a connection pool is used globally
+	// transport http.Transport 用于设置连接和连接池
 	transport *http.Transport
-	// client network request client
+	// client http.Client 网络请求客户端
 	client *http.Client
-	// ProxyFunc update proxy for per request
+	// ProxyFunc 对单个请求进行代理设置
 	ProxyFunc func(req *http.Request) (*url.URL, error)
-	// RateLimiter ratelimit.Limiter
 }
 
-// RequestResult network request response result
-type RequestResult struct {
-	Error    *HandleError // Error error exception during request
-	Response *Response    // Response network request response object
-}
 
-// DownloaderOption optional parameters of the downloader
+// DownloaderOption 下载器可选参数函数
 type DownloaderOption func(d *SpiderDownloader)
 
-// Request method constant definition
+// Request 请求方式
 type RequestMethod string
 
 const (
@@ -77,19 +69,19 @@ const (
 // log logging of downloader modules
 var log *logrus.Entry = GetLogger("downloader")
 
-// globalClient global network request client
+// globalClient 全局网络请求客户端
 var globalClient *http.Client = nil
 
-// onceClient only one client init
+// onceClient 客户端单例
 var onceClient sync.Once
 
-// envProxyOnce System proxies load only one
+// envProxyOnce 系统代理环境变量加载单例
 var envProxyOnce sync.Once
 
-// envProxyFuncValue System proxies get funcation
+// envProxyFuncValue 代理环境变量获取逻辑
 var envProxyFuncValue func(*url.URL) (*url.URL, error)
 
-// newClient get http client
+// newClient 初始化客户端
 func newClient(client http.Client) {
 	onceClient.Do(func() {
 		if globalClient == nil {
@@ -98,11 +90,7 @@ func newClient(client http.Client) {
 	})
 }
 
-// func timeoutDialContext(ctx context.Context, network, addr string) (net.Conn, error){
-
-// }
-
-// proxyFunc http.Transport.Proxy return proxy
+// proxyFunc http.Transport.Proxy 自定义的代理提取函数
 func proxyFunc(req *http.Request) (*url.URL, error) {
 	// 从上下文管理器中获取代理配置，实现代理和请求的一对一配置关系
 	value := req.Context().Value(ctxKey("key")).(map[string]interface{})
@@ -129,7 +117,7 @@ func proxyFunc(req *http.Request) (*url.URL, error) {
 	return envProxyFuncValue(req.URL)
 }
 
-// redirectFunc redirect handle funcation
+// redirectFunc 网络跳转函数
 // limit max redirect times
 func redirectFunc(req *http.Request, via []*http.Request) error {
 	value := req.Context().Value(ctxKey("key")).(map[string]interface{})
@@ -144,7 +132,7 @@ func urlParse(URL string) (*url.URL, error) {
 	return url.Parse(URL)
 }
 
-// DownloaderWithtransport download transport configure http.Transport
+// DownloaderWithtransport 为下载器设置 http.Transport
 func DownloaderWithtransport(transport *http.Transport) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport = transport
@@ -152,21 +140,21 @@ func DownloaderWithtransport(transport *http.Transport) DownloaderOption {
 
 }
 
-// DownloadWithClient set http client for downloader
+// DownloadWithClient 设置下载器的http.Client客户端
 func DownloadWithClient(client http.Client) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.client = &client
 	}
 }
 
-// DownloadWithTimeout set request download timeout
+// DownloadWithTimeout 设置下载器的网络请求超时时间
 func DownloadWithTimeout(timeout time.Duration) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.client.Timeout = timeout
 	}
 }
 
-// DownloadWithTlsConfig set tls configure for downloader
+// DownloadWithTlsConfig 设置下载器的tls
 func DownloadWithTlsConfig(tls *tls.Config) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport.TLSClientConfig = tls
@@ -174,7 +162,7 @@ func DownloadWithTlsConfig(tls *tls.Config) DownloaderOption {
 	}
 }
 
-// DownloadWithTlsConfig set tls configure for downloader
+// DownloadWithTlsConfig 下载器是否开启http2
 func DownloadWithH2(h2 bool) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport.ForceAttemptHTTP2 = h2
@@ -182,7 +170,7 @@ func DownloadWithH2(h2 bool) DownloaderOption {
 	}
 }
 
-// SpiderDownloader get a new spider downloader
+// NewDownloader 构建新的下载器
 func NewDownloader(opts ...DownloaderOption) Downloader {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
@@ -215,14 +203,14 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 	return downloader
 }
 
-// checkUrlVaildate URL check validator
+// checkUrlVaildate 检查url是否合法
 func checkUrlVaildate(requestUrl string) error {
 	_, err := url.ParseRequestURI(requestUrl)
 	return err
 
 }
 
-// CheckStatus check response status
+// CheckStatus 检查状态码是否合法
 func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) bool {
 	if len(allowStatus) == 0 {
 		return true
@@ -233,28 +221,26 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 	return true
 }
 
-// Download network downloader
+// Download 处理request请求
 func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	downloadLog := log.WithField("request_id", ctx.CtxId)
 	defer func() {
-		// result <- ctx
 		if err := recover(); err != nil {
 			downloadLog.Fatalf("download panic: %v", err)
 		}
 
 	}()
-	// record request handle start time
+	// 记录网络请求处理开始时间
 	now := time.Now()
 
 	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
-		// request url is not vaildate
-		// downloadErr := NewError(ctx, err, ErrorWithRequest(ctx.Request))
+		// url不合法
 		downloadLog.Errorf(err.Error())
 		return nil, err
 	}
 
 	// ValueContext
-	// The value carried by the context, mainly the proxy and the maximum number of redirects
+	// 记录代理地址和最大的跳转次数
 	ctxValue := map[string]interface{}{}
 	if ctx.Request.Proxy != nil {
 
@@ -263,7 +249,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 	ctxValue["redirectNum"] = ctx.Request.MaxRedirects
 
-	// do set request params
+	// 动态更新url请求参数
 	u, _ := url.ParseRequestURI(ctx.Request.Url)
 
 	if ctx.Request.Params != nil {
@@ -274,7 +260,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 		u.RawQuery = data.Encode()
 
 	}
-	// Build the request here and pass in the context information
+	// 构建网络请求上下文
 	var asCtxKey ctxKey = "key"
 	var timeoutCtx context.Context = nil
 	var valCtx context.Context = nil
@@ -290,19 +276,19 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 		return nil, err
 	}
 
-	// Set request header
+	// 设置请求头
 	for k, v := range ctx.Request.Header {
 		req.Header.Set(k, v)
 	}
 
-	// Set request cookie
+	// 设置cookie
 	for k, v := range ctx.Request.Cookies {
 		req.AddCookie(&http.Cookie{
 			Name:  k,
 			Value: v,
 		})
 	}
-	// Start request
+	// 发起请求
 	downloadLog.Debugf("Downloader %s is downloading", ctx.Request.Url)
 	resp, err := d.client.Do(req)
 	defer func() {
@@ -318,7 +304,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 		return nil, downloadErr
 
 	}
-	// Construct response body structure
+	// 构建响应
 	response := NewResponse()
 	response.Header = resp.Header
 	response.Status = resp.StatusCode
@@ -327,14 +313,14 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	response.ContentLength = uint64(resp.ContentLength)
 
 	if ctx.Request.ResponseWriter != nil {
-		// The response data is written into a custom io.Writer interface,
-		// such as a file in the file download process
+		// 通过自定义的io.Writer接口读取响应数据
+		// 例如大文件下载
 		_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
 		if err == io.EOF {
 			err = nil
 		}
 	} else {
-		// Response data is buffered to memory by default
+		// 响应数据写入缓存
 		_, err = io.Copy(response.Buffer, resp.Body)
 		if err == io.EOF {
 			err = nil

@@ -11,28 +11,32 @@
 
 package tegenaria
 
-// MiddlewaresInterface Download middleware interface for Request and
-// Response processing, the smaller the priority number the higher the priority
+// MiddlewaresInterface 下载中间件的接口用于处理进入下载器之前的request对象
+// 和下载之后的response
 type MiddlewaresInterface interface {
-	// GetPriority get middlerware priority
+	// GetPriority 获取优先级，数字越小优先级越高
 	GetPriority() int
 
-	// ProcessRequest process request before request to do download
+    // ProcessRequest 处理request请求对象
+    // 此处用于增加请求头
+    // 按优先级执行
 	ProcessRequest(ctx *Context) error
 
-	// ProcessResponse process response before response to parse
+	// ProcessResponse 用于处理请求成功之后的response
+    // 执行顺序你优先级，及优先级越高执行顺序越晚
 	ProcessResponse(ctx *Context, req chan<- *Context) error
 
-	// GetName get middlerware name
+	// GetName 获取中间件的名称
 	GetName() string
 }
+// ProcessResponse 处理下载之后的response函数
 type ProcessResponse func(ctx *Context) error
 type MiddlewaresBase struct {
 	Priority int
 }
-
+// Middlewares 下载中间件队列
 type Middlewares []MiddlewaresInterface
-
+// 实现sort接口
 func (p Middlewares) Len() int           { return len(p) }
 func (p Middlewares) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 func (p Middlewares) Less(i, j int) bool { return p[i].GetPriority() < p[j].GetPriority() }

@@ -2,10 +2,8 @@ package quotes
 
 import "github.com/wetrycode/tegenaria"
 
-// QuotesbotItemPipeline an example of tegenaria.PipelinesInterface interface
-// You need to set priority of each piplines
-// These pipeline will handle all item order by priority
-// Priority is that the lower the number, the higher the priority
+// QuotesbotItemPipeline tegenaria.PipelinesInterface 接口示例
+// 用于item处理的pipeline
 type QuotesbotItemPipeline struct {
 	Priority int
 }
@@ -16,14 +14,15 @@ type QuotesbotItemPipeline3 struct {
 	Priority int
 }
 
-// ProcessItem funcation of tegenaria.PipelinesInterface,it is used to handle item
+// ProcessItem item处理函数
 func (p *QuotesbotItemPipeline) ProcessItem(spider tegenaria.SpiderInterface, item *tegenaria.ItemMeta) error {
-	exampleLog.Infof("QuotesbotItemPipeline is running!")
+	i:=item.Item.(*QuotesbotItem)
+	exampleLog.Infof("%s 抓取到数据:%s",item.CtxId, i.Text)
 	return nil
 
 }
 
-// GetPriority get priority of pipline
+// GetPriority 获取该pipeline的优先级
 func (p *QuotesbotItemPipeline) GetPriority() int {
 	return p.Priority
 }
