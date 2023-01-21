@@ -24,7 +24,6 @@ package tegenaria
 
 import (
 	"bytes"
-	"context"
 	goContext "context"
 	"encoding/gob"
 	"fmt"
@@ -585,7 +584,7 @@ func (w *DistributedWorker) CheckMasterLive() (bool, error) {
 	result := []*redis.StringCmd{}
 
 	for _, member := range members {
-		result = append(result, pipe.Get(context.TODO(), member))
+		result = append(result, pipe.Get(goContext.TODO(), member))
 	}
 	count, err := w.executeCheck(pipe, result, count)
 	return count != 0, err

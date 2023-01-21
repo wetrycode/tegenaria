@@ -41,6 +41,7 @@ func GetUUID() string {
 	return uuid
 
 }
+
 // GoFunc 协程函数
 type GoFunc func() error
 
@@ -53,8 +54,8 @@ func AddGo(wg *sync.WaitGroup, funcs ...GoFunc) <-chan error {
 		wg.Add(1)
 		go func() {
 			defer func() {
-				if p:=recover();p!=nil{
-					ch<-fmt.Errorf("call go funcs paninc %s", p)
+				if p := recover(); p != nil {
+					ch <- fmt.Errorf("call go funcs paninc %s", p)
 				}
 				wg.Done()
 			}()
@@ -64,6 +65,7 @@ func AddGo(wg *sync.WaitGroup, funcs ...GoFunc) <-chan error {
 	}
 	return ch
 }
+
 // GetFunctionName 提取解析函数名
 func GetFunctionName(fn Parser) string {
 	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
@@ -71,6 +73,7 @@ func GetFunctionName(fn Parser) string {
 	return strings.ReplaceAll(nodes[len(nodes)-1], "-fm", "")
 
 }
+
 // GetParserByName 通过函数名从spider实例中获取解析函数
 func GetParserByName(spider SpiderInterface, name string) Parser {
 	return func(resp *Context, req chan<- *Context) error {
@@ -84,6 +87,7 @@ func GetParserByName(spider SpiderInterface, name string) Parser {
 		return rets[0].Interface().(error)
 	}
 }
+
 // GetAllParserMethod 获取spider实例所有的解析函数
 func GetAllParserMethod(spider SpiderInterface) map[string]Parser {
 	val := reflect.ValueOf(spider)
@@ -102,6 +106,7 @@ func GetAllParserMethod(spider SpiderInterface) map[string]Parser {
 	}
 	return parsers
 }
+
 // OptimalNumOfHashFunctions计算最优的布隆过滤器哈希函数个数
 func OptimalNumOfHashFunctions(n int64, m int64) int64 {
 	// (m / n) * log(2), but avoid truncation due to division!
@@ -113,6 +118,7 @@ func OptimalNumOfHashFunctions(n int64, m int64) int64 {
 func OptimalNumOfBits(n int64, p float64) int64 {
 	return (int64)(-float64(n) * math.Log(p) / (math.Log(2) * math.Log(2)))
 }
+
 // Map2String 将map转为string
 func Map2String(m interface{}) string {
 	dataType, _ := json.Marshal(m)
@@ -120,6 +126,7 @@ func Map2String(m interface{}) string {
 	return dataString
 
 }
+
 // GetMachineIp 获取本机ip
 func GetMachineIp() string {
 	addrs, err := net.InterfaceAddrs()

@@ -42,10 +42,12 @@ type RFPDupeFilterInterface interface {
 	// DoDupeFilter request去重
 	DoDupeFilter(ctx *Context) (bool, error)
 }
+
 // RFPDupeFilter 去重组件
 type RFPDupeFilter struct {
 	bloomFilter *bloom.BloomFilter
 }
+
 // NewRFPDupeFilter 新建去重组件
 // bloomP容错率
 // bloomN数据规模
@@ -89,15 +91,16 @@ func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 	}
 	return buf.String()
 }
+
 // Fingerprint 计算指纹
 func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
-	request:=ctx.Request
+	request := ctx.Request
 	if request.Url == "" {
 		return nil, fmt.Errorf("request is nil,maybe it had been free")
 	}
 	// get sha128
 	sha := murmur3.New128()
-	method:=string(request.Method)
+	method := string(request.Method)
 	_, err := io.WriteString(sha, method)
 	if err != nil {
 		return nil, err

@@ -33,8 +33,10 @@ import (
 
 	"github.com/go-redis/redis/v8"
 )
+
 // StatsFieldType 统计指标的数据类型
 type StatsFieldType string
+
 const (
 	// RequestStats 发起的请求总数
 	RequestStats StatsFieldType = "requests"
@@ -45,6 +47,7 @@ const (
 	// ErrorStats 错误总数
 	ErrorStats StatsFieldType = "errors"
 )
+
 // StatisticInterface 数据统计组件接口
 type StatisticInterface interface {
 	// IncrItemScraped 累加一条item
@@ -70,40 +73,43 @@ type StatisticInterface interface {
 	// setCurrentSpider 设置当前正在运行的spider
 	setCurrentSpider(spider string)
 }
+
 // Statistic 数据统计指标
 type Statistic struct {
 	// ItemScraped items总数
-	ItemScraped  uint64 `json:"items"`
+	ItemScraped uint64 `json:"items"`
 	// RequestSent 请求总数
-	RequestSent  uint64 `json:"requets"`
+	RequestSent uint64 `json:"requets"`
 	// DownloadFail 下载失败总数
 	DownloadFail uint64 `json:"download_fail"`
 	// ErrorCount 错误总数
-	ErrorCount   uint64 `json:"errors"`
+	ErrorCount uint64 `json:"errors"`
 	// spider 当前正在运行的spider名
-	spider       string `json:"-"`
+	spider string `json:"-"`
 }
 
 // DistributeStatistic 分布式统计组件
 type DistributeStatistic struct {
 	// keyPrefix 缓存key前缀，默认tegenaria:v1:nodes
-	keyPrefix     string
+	keyPrefix string
 	// nodesKey 节点池的key
-	nodesKey      string
+	nodesKey string
 	// rdb redis客户端实例
-	rdb           redis.Cmdable
+	rdb redis.Cmdable
 	// 调度该组件的wg
-	wg            *sync.WaitGroup
+	wg *sync.WaitGroup
 	// afterResetTTL 重置数据之前缓存多久
 	// 默认不缓存这些统计数据
 	afterResetTTL time.Duration
 	// spider 当前在运行的spider名
-	spider        string
+	spider string
 	// fields 所有参与统计的指标
 	fields []StatsFieldType
 }
+
 // DistributeStatisticOption 分布式组件可选参数定义
 type DistributeStatisticOption func(d *DistributeStatistic)
+
 // NewStatistic 默认统计数据组件构造函数
 func NewStatistic() *Statistic {
 	return &Statistic{
@@ -113,14 +119,17 @@ func NewStatistic() *Statistic {
 		ErrorCount:   0,
 	}
 }
+
 // setCurrentSpider 设置当前的spider
 func (s *Statistic) setCurrentSpider(spider string) {
 	s.spider = spider
 }
+
 // IncrItemScraped 累加一条item
 func (s *Statistic) IncrItemScraped() {
 	atomic.AddUint64(&s.ItemScraped, 1)
 }
+
 // IncrRequestSent 累加一条request
 func (s *Statistic) IncrRequestSent() {
 	atomic.AddUint64(&s.RequestSent, 1)
@@ -130,6 +139,7 @@ func (s *Statistic) IncrRequestSent() {
 func (s *Statistic) IncrDownloadFail() {
 	atomic.AddUint64(&s.DownloadFail, 1)
 }
+
 // IncrErrorCount 累加捕获到的数量
 func (s *Statistic) IncrErrorCount() {
 	atomic.AddUint64(&s.ErrorCount, 1)
@@ -144,6 +154,7 @@ func (s *Statistic) GetItemScraped() uint64 {
 func (s *Statistic) GetRequestSent() uint64 {
 	return atomic.LoadUint64(&s.RequestSent)
 }
+
 // GetDownloadFail 获取下载失败的总数
 func (s *Statistic) GetDownloadFail() uint64 {
 	return atomic.LoadUint64(&s.DownloadFail)
@@ -161,6 +172,7 @@ func (s *Statistic) OutputStats() map[string]uint64 {
 	_ = json.Unmarshal(b, &result)
 	return result
 }
+
 // Reset 重置统计数据
 func (s *Statistic) Reset() error {
 	atomic.StoreUint64(&s.DownloadFail, 0)
@@ -169,10 +181,12 @@ func (s *Statistic) Reset() error {
 	atomic.StoreUint64(&s.ErrorCount, 0)
 	return nil
 }
+
 // setCurrentSpider 设置当前的spider名
 func (s *DistributeStatistic) setCurrentSpider(spider string) {
 	s.spider = spider
 }
+
 // NewDistributeStatistic 分布式数据统计组件构造函数
 func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.WaitGroup, opts ...DistributeStatisticOption) *DistributeStatistic {
 	d := &DistributeStatistic{
@@ -181,13 +195,14 @@ func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.W
 		rdb:           rdb,
 		wg:            wg,
 		afterResetTTL: -1 * time.Second,
-		fields: []StatsFieldType{ItemsStats,RequestStats,DownloadFailStats,ErrorStats},
+		fields:        []StatsFieldType{ItemsStats, RequestStats, DownloadFailStats, ErrorStats},
 	}
 	for _, o := range opts {
 		o(d)
 	}
 	return d
 }
+
 // IncrStats累加指定的统计指标
 func (s *DistributeStatistic) IncrStats(field StatsFieldType) {
 	f := func() error {
@@ -207,11 +222,13 @@ func (s *DistributeStatistic) IncrRequestSent() {
 	s.IncrStats(RequestStats)
 
 }
+
 // IncrErrorCount 累加一条错误
 func (s *DistributeStatistic) IncrErrorCount() {
 	s.IncrStats(ErrorStats)
 
 }
+
 // GetDownloadFail 累计获取下载失败的数量
 func (s *DistributeStatistic) IncrDownloadFail() {
 	s.IncrStats(DownloadFailStats)
@@ -227,23 +244,28 @@ func (s *DistributeStatistic) GetStatsField(field StatsFieldType) uint64 {
 	}
 	return uint64(val)
 }
+
 // GetItemScraped 获取items的值
 func (s *DistributeStatistic) GetItemScraped() uint64 {
 	return s.GetStatsField(ItemsStats)
 }
+
 // GetRequestSent 获取request 量
 func (s *DistributeStatistic) GetRequestSent() uint64 {
 	return s.GetStatsField(RequestStats)
 }
+
 // GetDownloadFail 获取下载失败数
 func (s *DistributeStatistic) GetDownloadFail() uint64 {
 	return s.GetStatsField(DownloadFailStats)
 
 }
+
 // GetErrorCount 获取错误数
 func (s *DistributeStatistic) GetErrorCount() uint64 {
 	return s.GetStatsField(ErrorStats)
 }
+
 // Reset 重置各项指标
 // 若afterResetTTL>0则为每一项指标设置ttl否则直接删除指标
 func (s *DistributeStatistic) Reset() error {
@@ -266,12 +288,14 @@ func (s *DistributeStatistic) Reset() error {
 	_, err := pipe.Exec(context.TODO())
 	return err
 }
+
 // DistributeStatisticAfterResetTTL 为分布式计数器设置重置之前的ttl
 func DistributeStatisticAfterResetTTL(ttl time.Duration) DistributeStatisticOption {
 	return func(d *DistributeStatistic) {
 		d.afterResetTTL = ttl
 	}
 }
+
 // OutputStats 格式化输出所有的数据指标
 func (s *DistributeStatistic) OutputStats() map[string]uint64 {
 
@@ -279,7 +303,7 @@ func (s *DistributeStatistic) OutputStats() map[string]uint64 {
 	pipe := s.rdb.Pipeline()
 	result := []*redis.StringCmd{}
 	for _, field := range s.fields {
-		key:=fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
+		key := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
 		result = append(result, pipe.Get(context.TODO(), key))
 	}
 	_, err := pipe.Exec(context.TODO())

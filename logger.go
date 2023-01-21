@@ -68,7 +68,7 @@ func initLog() {
 		logLevel = "error"
 	}
 	logLevel = strings.TrimSpace(logLevel)
-	if logLevel == ""{
+	if logLevel == "" {
 		logLevel = "info"
 	}
 	level, err := logrus.ParseLevel(logLevel)
