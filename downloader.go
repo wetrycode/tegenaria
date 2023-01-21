@@ -272,7 +272,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 	// 构建网络请求上下文
 	var asCtxKey ctxKey = "key"
-	valCtx:=context.WithValue(ctx, asCtxKey, ctxValue)
+	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
 	if ctx.Request.Timeout > 0 {
 		timeoutCtx, cancel := context.WithTimeout(ctx, ctx.Request.Timeout)
 		defer cancel()

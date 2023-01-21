@@ -486,7 +486,7 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		checkMasterLive:       func() (bool, error) { return true, nil },
 		limiter:               NewDefaultLimiter(32),
 		downloader:            NewDownloader(),
-		hooker:                NewDefualtHooks(),
+		hooker:                NewDefaultHooks(),
 	}
 	for _, o := range opts {
 		o(Engine)

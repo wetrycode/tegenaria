@@ -50,6 +50,6 @@ func ExecuteCmd(engine *CrawlEngine) {
 	}
 	rootCmd.AddCommand(crawlCmd)
 
-	crawlCmd.Flags().BoolVarP(&engine.isMaster, "master", "m", false, "Whether to set the current node as the master node,defualt false")
+	crawlCmd.Flags().BoolVarP(&engine.isMaster, "master", "m", false, "Whether to set the current node as the master node,default false")
 	rootCmd.Execute()
 }

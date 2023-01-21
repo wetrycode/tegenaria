@@ -60,7 +60,7 @@ type EventHooksInterface interface {
 	// EventsWatcher 事件监听器
 	EventsWatcher(ch chan EventType) error
 }
-type DefualtHooks struct {
+type DefaultHooks struct {
 }
 
 // DistributedHooks 分布式事件监听器
@@ -76,39 +76,39 @@ func NewDistributedHooks(worker DistributedWorkerInterface) *DistributedHooks {
 
 }
 
-// NewDefualtHooks 构建新的默认事件监听器
-func NewDefualtHooks() *DefualtHooks {
-	return &DefualtHooks{}
+// NewDefaultHooks 构建新的默认事件监听器
+func NewDefaultHooks() *DefaultHooks {
+	return &DefaultHooks{}
 }
 
 // Start 处理START事件
-func (d *DefualtHooks) Start(params ...interface{}) error {
+func (d *DefaultHooks) Start(params ...interface{}) error {
 	return nil
 }
 
 // Stop 处理STOP事件
-func (d *DefualtHooks) Stop(params ...interface{}) error {
+func (d *DefaultHooks) Stop(params ...interface{}) error {
 	return nil
 }
 
 // Error 处理ERROR事件
-func (d *DefualtHooks) Error(params ...interface{}) error {
+func (d *DefaultHooks) Error(params ...interface{}) error {
 	return nil
 }
 
 // Exit 处理EXIT事件
-func (d *DefualtHooks) Exit(params ...interface{}) error {
+func (d *DefaultHooks) Exit(params ...interface{}) error {
 	return nil
 }
 
 // Heartbeat 处理HEARTBEAT事件
-func (d *DefualtHooks) Heartbeat(params ...interface{}) error {
+func (d *DefaultHooks) Heartbeat(params ...interface{}) error {
 	return nil
 }
 
 // DefaultventsWatcher 默认的事件监听器
 // ch 用于接收事件
-// hooker 事件处理实例化接口，比如DefualtHooks
+// hooker 事件处理实例化接口，比如DefaultHooks
 func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 	for {
 		select {
@@ -152,8 +152,8 @@ func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 
 }
 
-// EventsWatcher DefualtHooks 的事件监听器
-func (d *DefualtHooks) EventsWatcher(ch chan EventType) error {
+// EventsWatcher DefaultHooks 的事件监听器
+func (d *DefaultHooks) EventsWatcher(ch chan EventType) error {
 	return DefaultventsWatcher(ch, d)
 
 }
