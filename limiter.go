@@ -30,6 +30,7 @@ import (
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/ratelimit"
 )
+
 // LimitInterface 限速器接口
 type LimitInterface interface {
 	// checkAndWaitLimiterPass 检查当前并发量
@@ -38,6 +39,7 @@ type LimitInterface interface {
 	// setCurrrentSpider 设置当前正在的运行的spider
 	setCurrrentSpider(spider string)
 }
+
 // leakyBucketLuaScript 漏桶算法lua脚本
 const leakyBucketLuaScript string = `-- 最高水位
 local safetyLevel = tonumber(ARGV[1])
@@ -82,20 +84,21 @@ return 1`
 // leakyBucketLimiterWithRdb单机redis下的漏桶限速器
 type leakyBucketLimiterWithRdb struct {
 	// safetyLevel 最高水位
-	safetyLevel   int 
+	safetyLevel int
 	// currentLevel 当前水位
-	currentLevel  int 
+	currentLevel int
 	// waterVelocity 水流速度/秒
-	waterVelocity int 
+	waterVelocity int
 	// currentSpider 当前正在运行的爬虫名
 	currentSpider string
 	// rdb redis客户端实例
-	rdb           redis.Cmdable // redis 客户端
+	rdb redis.Cmdable // redis 客户端
 	// script redis lua脚本
-	script        *redis.Script // lua脚本
+	script *redis.Script // lua脚本
 	// keyFunc 限速器使用的缓存key函数
-	keyFunc       GetRDBKey
+	keyFunc GetRDBKey
 }
+
 // defaultLimiter 默认的限速器
 type defaultLimiter struct {
 	limiter ratelimit.Limiter
@@ -108,16 +111,19 @@ func NewDefaultLimiter(limitRate int) *defaultLimiter {
 		limiter: ratelimit.New(limitRate, ratelimit.WithoutSlack),
 	}
 }
+
 // checkAndWaitLimiterPass 检查当前并发量
 // 如果并发量达到上限则等待
 func (d *defaultLimiter) checkAndWaitLimiterPass() error {
 	d.limiter.Take()
 	return nil
 }
+
 // setCurrrentSpider 设置当前的spider名
 func (d *defaultLimiter) setCurrrentSpider(spider string) {
 
 }
+
 // NewLeakyBucketLimiterWithRdb leakyBucketLimiterWithRdb 构造函数
 func NewLeakyBucketLimiterWithRdb(safetyLevel int, rdb redis.Cmdable, keyFunc GetRDBKey) *leakyBucketLimiterWithRdb {
 	script := readLuaScript()
@@ -131,6 +137,7 @@ func NewLeakyBucketLimiterWithRdb(safetyLevel int, rdb redis.Cmdable, keyFunc Ge
 	}
 
 }
+
 // tryPassLimiter 尝试通过限速器
 func (l *leakyBucketLimiterWithRdb) tryPassLimiter() (bool, error) {
 	now := time.Now().Unix()
@@ -149,7 +156,7 @@ func (l *leakyBucketLimiterWithRdb) setCurrrentSpider(spider string) {
 	l.currentSpider = spider
 	key, ttl := l.keyFunc()
 	key = fmt.Sprintf("%s:%s", key, l.currentSpider)
-	if ttl>0{
+	if ttl > 0 {
 		l.rdb.Expire(context.TODO(), key, ttl)
 	}
 

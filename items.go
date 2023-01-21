@@ -25,13 +25,15 @@ package tegenaria
 // ItemInterface item实例接口
 type ItemInterface interface {
 }
+
 // ItemMeta item元数据结构
 type ItemMeta struct {
 	// CtxId 对应的context id
 	CtxId string
 	// Item item对象
-	Item  ItemInterface
+	Item ItemInterface
 }
+
 // NewItem 构建新的ItemMeta对象
 func NewItem(ctx *Context, item ItemInterface) *ItemMeta {
 	return &ItemMeta{

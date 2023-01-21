@@ -129,12 +129,12 @@ func TestAddNodeError(t *testing.T) {
 		convey.So(err.Error(), convey.ShouldContainSubstring, "sadd add node error")
 		patch.Reset()
 
-		patch = gomonkey.ApplyFunc((*DistributedWorker).addMaster,func (_ *DistributedWorker)error  {
+		patch = gomonkey.ApplyFunc((*DistributedWorker).addMaster, func(_ *DistributedWorker) error {
 			return errors.New("add master error")
-			
+
 		})
 		err = worker.AddNode()
-		convey.So(err.Error(), convey.ShouldContainSubstring,"add master error")
+		convey.So(err.Error(), convey.ShouldContainSubstring, "add master error")
 		patch.Reset()
 
 	})

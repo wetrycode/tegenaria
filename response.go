@@ -33,17 +33,17 @@ import (
 // Response 请求响应体的结构
 type Response struct {
 	// Status状态码
-	Status        int                 
+	Status int
 	// Header 响应头
-	Header        map[string][]string // Header response header
+	Header map[string][]string // Header response header
 	// Delay 请求延迟
-	Delay         float64             // Delay the time of handle download request
+	Delay float64 // Delay the time of handle download request
 	// ContentLength 响应体大小
-	ContentLength uint64                 // ContentLength response content length
+	ContentLength uint64 // ContentLength response content length
 	// URL 请求url
-	URL           string              // URL of request url
+	URL string // URL of request url
 	// Buffer 响应体缓存
-	Buffer        *bytes.Buffer       // buffer read response buffer
+	Buffer *bytes.Buffer // buffer read response buffer
 }
 
 // responsePool Response 对象内存池
@@ -55,15 +55,15 @@ var responsePool *sync.Pool = &sync.Pool{
 var respLog *logrus.Entry = GetLogger("response")
 
 // Json 将响应数据转为json
-func (r *Response) Json() (map[string]interface{},error) {
+func (r *Response) Json() (map[string]interface{}, error) {
 	jsonResp := map[string]interface{}{}
 	err := json.Unmarshal(r.Buffer.Bytes(), &jsonResp)
 	if err != nil {
 		respLog.Errorf("Get json response error %s", err.Error())
-		
+
 		return nil, err
 	}
-	return jsonResp,nil
+	return jsonResp, nil
 }
 
 // String 将响应数据转为string

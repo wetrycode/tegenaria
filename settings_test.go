@@ -48,7 +48,7 @@ func TestSetting(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		config.SetFs(fs)
 		ret := config.load("/etc/viper")
-		value,_:=config.GetValue("log.level")
+		value, _ := config.GetValue("log.level")
 		convey.So(ret, convey.ShouldBeTrue)
 		convey.So(config.GetString("redis.addr"), convey.ShouldContainSubstring, "127.0.0.1")
 		convey.So(config.GetString("log.level"), convey.ShouldContainSubstring, "error")

@@ -275,14 +275,14 @@ func TestEngineStartPanic(t *testing.T) {
 			ctxManager.Clear()
 		}
 		engine := newTestEngine("testStartPanicSpider")
-		patch:=gomonkey.ApplyFunc((*Statistic).OutputStats,func (_ *Statistic)map[string]uint64  {
+		patch := gomonkey.ApplyFunc((*Statistic).OutputStats, func(_ *Statistic) map[string]uint64 {
 			panic("output panic")
-			
+
 		})
 		defer patch.Reset()
-		f := func(){engine.start("testStartPanicSpider")}
+		f := func() { engine.start("testStartPanicSpider") }
 		convey.So(f, convey.ShouldPanic)
-		convey.So(engine.mutex.TryLock(),convey.ShouldBeTrue)
+		convey.So(engine.mutex.TryLock(), convey.ShouldBeTrue)
 		engine.Close()
 	})
 
@@ -412,7 +412,7 @@ func TestParseError(t *testing.T) {
 		ctx := NewContext(request, spider)
 		err = engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
-		
+
 		err = engine.doParse(ctx)
 		convey.So(err, convey.ShouldNotBeNil)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "parse response error")
@@ -421,7 +421,7 @@ func TestParseError(t *testing.T) {
 }
 func wokerError(ctx *Context, url string, errMsg string, t *testing.T, patch *gomonkey.Patches, engine *CrawlEngine) {
 	convey.Convey(fmt.Sprintf("test %s", errMsg), t, func() {
-		ctxPatch:=gomonkey.ApplyFunc((*Context).Close,func(_ *Context){})
+		ctxPatch := gomonkey.ApplyFunc((*Context).Close, func(_ *Context) {})
 		defer func() {
 			patch.Reset()
 			ctxPatch.Reset()

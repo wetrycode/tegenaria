@@ -46,7 +46,7 @@ type SpiderInterface interface {
 	// GetName 获取spider名称
 	GetName() string
 	// GetFeedUrls 获取种子urls
-	GetFeedUrls()[]string
+	GetFeedUrls() []string
 }
 
 // BaseSpider base spider
@@ -57,6 +57,7 @@ type BaseSpider struct {
 	// FeedUrls feed urls
 	FeedUrls []string
 }
+
 // Spiders 全局spiders管理器
 // 用于接收注册的SpiderInterface实例
 type Spiders struct {
@@ -64,7 +65,7 @@ type Spiders struct {
 	SpidersModules map[string]SpiderInterface
 	// Parsers parser函数名和函数的映射
 	// 用于序列化和反序列化
-	Parsers        map[string]Parser
+	Parsers map[string]Parser
 }
 
 var SpidersList *Spiders
@@ -80,7 +81,7 @@ func (s *BaseSpider) StartRequest(req chan<- *Context) {
 	// StartRequest start feed urls request
 }
 
-// Parser parse request respone
+// Parser parse request response
 // it will send item or new request to engine
 func (s *BaseSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
 	return nil
@@ -89,6 +90,7 @@ func (s *BaseSpider) ErrorHandler(err *HandleError) {
 	// ErrorHandler error handler
 
 }
+
 // NewSpiders 构建Spiders实例
 func NewSpiders() *Spiders {
 	onceSpiders.Do(func() {
@@ -99,6 +101,7 @@ func NewSpiders() *Spiders {
 	})
 	return SpidersList
 }
+
 // Register spider实例注册到Spiders.SpidersModules
 func (s *Spiders) Register(spider SpiderInterface) error {
 	// 爬虫名不能为空
@@ -113,6 +116,7 @@ func (s *Spiders) Register(spider SpiderInterface) error {
 		return nil
 	}
 }
+
 // GetSpider 通过爬虫名获取spider实例
 func (s *Spiders) GetSpider(name string) (SpiderInterface, error) {
 	if _, ok := s.SpidersModules[name]; !ok {

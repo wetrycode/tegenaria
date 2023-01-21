@@ -311,8 +311,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 	var err error = nil
 	// 是否进入去重流程
 	if e.filterDuplicateReq {
-		var ret bool = false
-		ret, err = e.rfpDupeFilter.DoDupeFilter(ctx)
+		ret, err := e.rfpDupeFilter.DoDupeFilter(ctx)
 		if err != nil {
 			isDuplicated = true
 			engineLog.WithField("request_id", ctx.CtxId).Errorf("request unique error %s", err.Error())
@@ -364,9 +363,8 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 	}
 	// 增加请求发送量
 	e.statistic.IncrRequestSent()
-	var rsp *Response = nil
 	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request ready to download", ctx.CtxId)
-	rsp, err = e.downloader.Download(ctx)
+	rsp, err := e.downloader.Download(ctx)
 	if err != nil {
 		return err
 	}

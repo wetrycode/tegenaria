@@ -16,8 +16,8 @@ type QuotesbotItemPipeline3 struct {
 
 // ProcessItem item处理函数
 func (p *QuotesbotItemPipeline) ProcessItem(spider tegenaria.SpiderInterface, item *tegenaria.ItemMeta) error {
-	i:=item.Item.(*QuotesbotItem)
-	exampleLog.Infof("%s 抓取到数据:%s",item.CtxId, i.Text)
+	i := item.Item.(*QuotesbotItem)
+	exampleLog.Infof("%s 抓取到数据:%s", item.CtxId, i.Text)
 	return nil
 
 }
@@ -44,4 +44,3 @@ func (p *QuotesbotItemPipeline3) ProcessItem(spider tegenaria.SpiderInterface, i
 func (p *QuotesbotItemPipeline3) GetPriority() int {
 	return p.Priority
 }
-
