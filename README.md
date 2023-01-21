@@ -48,4 +48,4 @@ Send me an email directly, vforfreedom96@gmail.com
 
 ## License
 
-[Apache2.0](LICENSE) © geebytes  
+[MIT](LICENSE) © geebytes  
