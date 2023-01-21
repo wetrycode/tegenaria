@@ -32,7 +32,7 @@ import (
 // NewRdbConfig redis 配置构造函数
 func NewRdbConfig(config *DistributedWorkerConfig) *redis.Options {
 	return &redis.Options{
-		Password: config.RedisPasswd, // 密码
+		Password: config.RedisPasswd,   // 密码
 		Username: config.RedisUsername, //用户名
 		DB:       int(config.RedisDB),  // redis数据库index
 
@@ -62,22 +62,22 @@ func NewRdbClient(config *DistributedWorkerConfig) *redis.Client {
 	options := NewRdbConfig(config)
 	options.Addr = config.RedisAddr
 	rdb := redis.NewClient(options)
-	err:=rdb.Ping(context.TODO()).Err()
+	err := rdb.Ping(context.TODO()).Err()
 	// RedisAddr 为空说明处于集群模式
-	if err!=nil && config.RedisAddr !=""{
+	if err != nil && config.RedisAddr != "" {
 		panic(err)
 	}
 	return rdb
 }
 
 func NewRdbClusterCLient(config *WorkerConfigWithRdbCluster) *redis.ClusterClient {
-	client:=redis.NewClusterClient(&redis.ClusterOptions{
+	client := redis.NewClusterClient(&redis.ClusterOptions{
 		Addrs: config.RdbNodes,
 		// MaxRetries: config.DistributedWorkerConfig.RdbMaxRetry,
 
 		//连接池容量及闲置连接数量
 		NewClient: func(opt *redis.Options) *redis.Client {
-			addr :=opt.Addr
+			addr := opt.Addr
 			opt = NewRdbConfig(config.DistributedWorkerConfig)
 			opt.Addr = addr
 			return redis.NewClient(opt)
@@ -86,8 +86,8 @@ func NewRdbClusterCLient(config *WorkerConfigWithRdbCluster) *redis.ClusterClien
 		RouteByLatency: true,
 		RouteRandomly:  true,
 	})
-	err:=client.Ping(context.TODO()).Err()
-	if err!=nil{
+	err := client.Ping(context.TODO()).Err()
+	if err != nil {
 		panic(err)
 	}
 	return client

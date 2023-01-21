@@ -1,5 +1,6 @@
 # Tegenaria crawl framework
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/wetrycode/tegenaria)](https://goreportcard.com/report/github.com/wetrycode/tegenaria)
 [![codecov](https://codecov.io/gh/wetrycode/tegenaria/branch/master/graph/badge.svg?token=XMW3K1JYPB)](https://codecov.io/gh/wetrycode/tegenaria)
 [![go workflow](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/go.yml/badge.svg)
 [![CodeQL](https://github.com/wetrycode/tegenaria/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/wetrycode/tegenaria/actions/workflows/codeql-analysis.yml)  

@@ -224,7 +224,7 @@ func TestRequestProxyWithTimeOut(t *testing.T) {
 			ProxyUrl: proxyServer.URL,
 		}
 		defer proxyServer.Close()
-		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy),RequestWithTimeout(10 * time.Second))
+		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy), RequestWithTimeout(10*time.Second))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
 		convey.So(resp.String(), convey.ShouldContainSubstring, "This is proxy Server.")
@@ -236,7 +236,7 @@ func TestRequestProxyWithTimeOut(t *testing.T) {
 			ProxyUrl: proxyServer.URL,
 		}
 		defer proxyServer.Close()
-		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy),RequestWithTimeout(1 * time.Second))
+		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy), RequestWithTimeout(1*time.Second))
 		convey.So(err, convey.ShouldNotBeNil)
 		convey.So(resp, convey.ShouldBeNil)
 	})
@@ -252,7 +252,7 @@ func TestRequestHeaders(t *testing.T) {
 		resp, err := newRequestDownloadCase("/testHeader", GET, RequestWithRequestHeader(headers))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		content:=resp.String()
+		content := resp.String()
 		convey.So(content, convey.ShouldContainSubstring, "value")
 
 	})
@@ -260,7 +260,7 @@ func TestRequestHeaders(t *testing.T) {
 
 func TestTimeout(t *testing.T) {
 	convey.Convey("test request timeout", t, func() {
-		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithTimeout(1 * time.Second))
+		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithTimeout(1*time.Second))
 		convey.So(err, convey.ShouldNotBeNil)
 		convey.So(resp, convey.ShouldBeNil)
 

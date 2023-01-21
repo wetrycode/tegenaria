@@ -129,11 +129,12 @@ func WithContextId(ctxId string) ContextOption {
 		c.CtxId = ctxId
 	}
 }
-func WithItemChannelSize(size int) ContextOption{
+func WithItemChannelSize(size int) ContextOption {
 	return func(c *Context) {
 		c.Items = make(chan *ItemMeta, size)
 	}
 }
+
 // NewContext 从内存池中构建context对象
 func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption) *Context {
 	ctx := contextPool.Get().(*Context)

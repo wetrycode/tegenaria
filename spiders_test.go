@@ -11,7 +11,7 @@ type TestSpider struct {
 }
 
 func (s *TestSpider) StartRequest(req chan<- *Context) {
-	
+
 	for _, url := range s.FeedUrls {
 		request := NewRequest(url, GET, s.Parser)
 		ctx := NewContext(request, s)
@@ -21,18 +21,18 @@ func (s *TestSpider) StartRequest(req chan<- *Context) {
 func (s *TestSpider) Parser(resp *Context, req chan<- *Context) error {
 	return testParser(resp, req)
 }
-func (s *TestSpider) ErrorHandler(err *Context, req chan<- *Context){
+func (s *TestSpider) ErrorHandler(err *Context, req chan<- *Context) {
 
 }
 func (s *TestSpider) GetName() string {
 	return s.Name
 }
-func (s *TestSpider)GetFeedUrls()[]string{
+func (s *TestSpider) GetFeedUrls() []string {
 	return s.FeedUrls
 }
 
 func TestSpiders(t *testing.T) {
-	convey.Convey("test spiders",t,func(){
+	convey.Convey("test spiders", t, func() {
 		spiders := NewSpiders()
 		spider1 := &TestSpider{
 			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
@@ -49,15 +49,15 @@ func TestSpiders(t *testing.T) {
 		spider5 := &TestSpider{
 			NewBaseSpider("", []string{"https://www.baidu.com"}),
 		}
-		err:=spiders.Register(spider1)
+		err := spiders.Register(spider1)
 		convey.So(err, convey.ShouldBeNil)
-	
+
 		err = spiders.Register(spider2)
-		convey.So(err, convey.ShouldBeError,ErrDuplicateSpiderName)
+		convey.So(err, convey.ShouldBeError, ErrDuplicateSpiderName)
 
 		err = spiders.Register(spider3)
 		convey.So(err, convey.ShouldBeNil)
-		err =spiders.Register(spider4)
+		err = spiders.Register(spider4)
 		convey.So(err, convey.ShouldBeNil)
 		spiderNames := []string{"testspider", "testspider1", "testspider2"}
 		for _, spider := range spiderNames {

@@ -13,7 +13,7 @@ func TestCmdStart(t *testing.T) {
 		buf := new(bytes.Buffer)
 		rootCmd.SetOut(buf)
 		rootCmd.SetErr(buf)
-		rootCmd.SetArgs([]string{"crawl","testCmdSpider"})
+		rootCmd.SetArgs([]string{"crawl", "testCmdSpider"})
 		convey.So(engine.Execute, convey.ShouldNotPanic)
 	})
 }

@@ -61,7 +61,6 @@ type SpiderDownloader struct {
 	ProxyFunc func(req *http.Request) (*url.URL, error)
 }
 
-
 // DownloaderOption 下载器可选参数函数
 type DownloaderOption func(d *SpiderDownloader)
 
@@ -273,13 +272,11 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 	// 构建网络请求上下文
 	var asCtxKey ctxKey = "key"
-	var timeoutCtx context.Context = nil
-	var valCtx context.Context = nil
+	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
 	if ctx.Request.Timeout > 0 {
-		timeoutCtx, _ = context.WithTimeout(ctx, ctx.Request.Timeout)
+		timeoutCtx, cancel := context.WithTimeout(ctx, ctx.Request.Timeout)
+		defer cancel()
 		valCtx = context.WithValue(timeoutCtx, asCtxKey, ctxValue)
-	} else {
-		valCtx = context.WithValue(ctx, asCtxKey, ctxValue)
 	}
 	req, err := http.NewRequestWithContext(valCtx, string(ctx.Request.Method), u.String(), ctx.Request.BodyReader)
 	if err != nil {

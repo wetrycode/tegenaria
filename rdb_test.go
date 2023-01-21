@@ -40,10 +40,10 @@ func TestRdbClusterCLient(t *testing.T) {
 	})
 	convey.Convey("test rdb connect error", t, func() {
 		mockRedis := miniredis.RunT(t)
-		addr:=mockRedis.Addr()
+		addr := mockRedis.Addr()
 		mockRedis.Close()
 		f := func() {
-			NewDistributedWorker(addr, NewDistributedWorkerConfig("","",0))
+			NewDistributedWorker(addr, NewDistributedWorkerConfig("", "", 0))
 		}
 		convey.So(f, convey.ShouldPanic)
 	})

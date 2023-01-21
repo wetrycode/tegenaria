@@ -41,8 +41,10 @@ const (
 	// EXIT 退出
 	EXIT
 )
+
 // Hook 事件处理函数类型
 type Hook func(params ...interface{}) error
+
 // EventHooksInterface 事件处理函数接口
 type EventHooksInterface interface {
 	// Start 处理引擎启动事件
@@ -58,12 +60,14 @@ type EventHooksInterface interface {
 	// EventsWatcher 事件监听器
 	EventsWatcher(ch chan EventType) error
 }
-type DefualtHooks struct {
+type DefaultHooks struct {
 }
+
 // DistributedHooks 分布式事件监听器
 type DistributedHooks struct {
 	worker DistributedWorkerInterface
 }
+
 // DistributedHooks 构建新的分布式监听器组件对象
 func NewDistributedHooks(worker DistributedWorkerInterface) *DistributedHooks {
 	return &DistributedHooks{
@@ -71,33 +75,40 @@ func NewDistributedHooks(worker DistributedWorkerInterface) *DistributedHooks {
 	}
 
 }
-// NewDefualtHooks 构建新的默认事件监听器
-func NewDefualtHooks() *DefualtHooks {
-	return &DefualtHooks{}
+
+// NewDefaultHooks 构建新的默认事件监听器
+func NewDefaultHooks() *DefaultHooks {
+	return &DefaultHooks{}
 }
+
 // Start 处理START事件
-func (d *DefualtHooks) Start(params ...interface{}) error {
+func (d *DefaultHooks) Start(params ...interface{}) error {
 	return nil
 }
+
 // Stop 处理STOP事件
-func (d *DefualtHooks) Stop(params ...interface{}) error {
+func (d *DefaultHooks) Stop(params ...interface{}) error {
 	return nil
 }
+
 // Error 处理ERROR事件
-func (d *DefualtHooks) Error(params ...interface{}) error {
+func (d *DefaultHooks) Error(params ...interface{}) error {
 	return nil
 }
+
 // Exit 处理EXIT事件
-func (d *DefualtHooks) Exit(params ...interface{}) error {
+func (d *DefaultHooks) Exit(params ...interface{}) error {
 	return nil
 }
+
 // Heartbeat 处理HEARTBEAT事件
-func (d *DefualtHooks) Heartbeat(params ...interface{}) error {
+func (d *DefaultHooks) Heartbeat(params ...interface{}) error {
 	return nil
 }
+
 // DefaultventsWatcher 默认的事件监听器
 // ch 用于接收事件
-// hooker 事件处理实例化接口，比如DefualtHooks
+// hooker 事件处理实例化接口，比如DefaultHooks
 func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 	for {
 		select {
@@ -140,34 +151,41 @@ func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 	}
 
 }
-// EventsWatcher DefualtHooks 的事件监听器
-func (d *DefualtHooks) EventsWatcher(ch chan EventType) error {
+
+// EventsWatcher DefaultHooks 的事件监听器
+func (d *DefaultHooks) EventsWatcher(ch chan EventType) error {
 	return DefaultventsWatcher(ch, d)
 
 }
+
 // Start 用于处理分布式模式下的START事件
 func (d *DistributedHooks) Start(params ...interface{}) error {
 	return d.worker.AddNode()
 
 }
+
 // Stop 用于处理分布式模式下的STOP事件
 func (d *DistributedHooks) Stop(params ...interface{}) error {
 	return d.worker.StopNode()
 
 }
+
 // Error 用于处理分布式模式下的ERROR事件
 func (d *DistributedHooks) Error(params ...interface{}) error {
 	return nil
 }
+
 // Exit 用于处理分布式模式下的Exit事件
 func (d *DistributedHooks) Exit(params ...interface{}) error {
 	return d.worker.DelNode()
 }
+
 // EventsWatcher 分布式模式下的事件监听器
 func (d *DistributedHooks) EventsWatcher(ch chan EventType) error {
 	return DefaultventsWatcher(ch, d)
 
 }
+
 // Exit 用于处理分布式模式下的HEARTBEAT事件
 func (d *DistributedHooks) Heartbeat(params ...interface{}) error {
 	return d.worker.Heartbeat()
