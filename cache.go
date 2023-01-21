@@ -1,13 +1,24 @@
-// Copyright 2022 geebytes
-// Licensed under the Apache License, Version 2.0 (the 'License');
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//    http://www.apache.org/licenses/LICENSE-2.0
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an 'AS IS' BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// MIT License
+
+// Copyright (c) 2023 wetrycode
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 package tegenaria
 
@@ -21,11 +32,11 @@ import (
 // CacheInterface request缓存组件
 type CacheInterface interface {
 	// enqueue ctx写入缓存
-	enqueue(ctx *Context) error    
+	enqueue(ctx *Context) error
 	// dequeue ctx 从缓存出队列
 	dequeue() (interface{}, error)
 	// isEmpty 缓存是否为空
-	isEmpty() bool                 
+	isEmpty() bool
 	// getSize 缓存大小
 	getSize() uint64
 	// close 关闭缓存
@@ -63,22 +74,27 @@ func (c *requestCache) dequeue() (interface{}, error) {
 	}
 
 }
+
 // isEmpty 缓存是否为空
 func (c *requestCache) isEmpty() bool {
 	return int64(c.queue.Quantity()) == 0
 }
+
 // getSize 缓存大小
 func (c *requestCache) getSize() uint64 {
 	return uint64(c.queue.Quantity())
 }
+
 // close 关闭缓存
 func (c *requestCache) close() error {
 	return nil
 }
+
 // setCurrentSpider 设置当前的spider
 func (c *requestCache) setCurrentSpider(spider string) {
 
 }
+
 // NewRequestCache get a new requestCache
 func NewRequestCache() *requestCache {
 	return &requestCache{
