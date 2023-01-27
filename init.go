@@ -24,6 +24,7 @@ package tegenaria
 
 import (
 	"encoding/gob"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -39,6 +40,7 @@ func init() {
 		gob.Register([]interface{}{})
 		gob.Register(GET)
 		gob.Register(1 * time.Second)
+		debug.SetTraceback("crash")
 	})
 
 }

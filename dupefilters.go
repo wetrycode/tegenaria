@@ -130,6 +130,9 @@ func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 // DoDupeFilter 通过布隆过滤器对request对象进行去重处理
 func (f *RFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
 	// Use bloom filter to do fingerprint deduplication
+	if ctx.Request.DoNotFilter {
+		return false, nil
+	}
 	data, err := f.Fingerprint(ctx)
 	if err != nil {
 		return false, err

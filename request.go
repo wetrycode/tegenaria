@@ -76,6 +76,8 @@ type Request struct {
 	AllowStatusCode []uint64 `json:"allowStatusCode"`
 	// Timeout 请求超时时间
 	Timeout time.Duration `json:"timeout"`
+	// DoNotFilter
+	DoNotFilter bool
 }
 
 // requestPool request对象内存池
@@ -210,6 +212,13 @@ func RequestWithParser(parser Parser) RequestOption {
 	}
 }
 
+// RequestWithDoNotFilter 设置当前请求是否进行过滤处理
+func RequestWithDoNotFilter(doNotFilter bool) RequestOption {
+	return func(r *Request) {
+		r.DoNotFilter = doNotFilter
+	}
+}
+
 // RequestWithTimeout 设置请求超时时间
 // 若timeout<=0则认为没有超时时间
 func RequestWithTimeout(timeout time.Duration) RequestOption {
@@ -252,6 +261,7 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 	request.MaxRedirects = 3
 	request.AllowRedirects = true
 	request.Proxy = nil
+	request.DoNotFilter = false
 	request.AllowStatusCode = make([]uint64, 0)
 	request.Timeout = -1 * time.Second
 	for _, o := range opts {
@@ -273,6 +283,7 @@ func freeRequest(r *Request) {
 	r.Url = ""
 	r.Header = nil
 	r.Method = ""
+	r.DoNotFilter = false
 	r.Body = r.Body[:0]
 	r.Params = nil
 	r.Proxy = nil

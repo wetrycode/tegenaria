@@ -275,7 +275,7 @@ func TestEngineStartPanic(t *testing.T) {
 			ctxManager.Clear()
 		}
 		engine := newTestEngine("testStartPanicSpider")
-		patch := gomonkey.ApplyFunc((*Statistic).OutputStats, func(_ *Statistic) map[string]uint64 {
+		patch := gomonkey.ApplyFunc((*CrawlEngine).start, func(_ *CrawlEngine, _ string) StatisticInterface {
 			panic("output panic")
 
 		})
@@ -459,9 +459,28 @@ func TestWorkerErr(t *testing.T) {
 		return fmt.Errorf("call PipelinesHandlers error")
 	})
 	wokerError(ctx, url, "call PipelinesHandlers error", t, patch, engine)
-	patch = gomonkey.ApplyFunc((*CrawlEngine).doDownload, func(_ *CrawlEngine, _ *Context) error {
-		panic("call doDownload panic")
+	patch = gomonkey.ApplyFunc((*SpiderDownloader).Download, func(_ *SpiderDownloader, _ *Context) (*Response, error) {
+		panic("call download panic")
 	})
-	wokerError(ctx, url, "call doDownload panic", t, patch, engine)
+	wokerError(ctx, url, "call download panic", t, patch, engine)
 
+}
+
+func TestTicker(t *testing.T) {
+	convey.Convey("engine ticker start", t, func() {
+		if ctxManager != nil {
+			ctxManager.Clear()
+		}
+		engine := newTestEngine("testTickerSpider", EngineWithInterval(4*time.Second), EngineWithUniqueReq(false))
+		go func() {
+			engine.startWithTicker("testTickerSpider")
+		}()
+		time.Sleep(8 * time.Second)
+		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
+		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 2)
+		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 2)
+		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
+
+		// engine.Close()
+	})
 }

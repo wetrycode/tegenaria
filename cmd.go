@@ -23,6 +23,8 @@
 package tegenaria
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 )
 
@@ -38,18 +40,36 @@ var rootCmd = &cobra.Command{
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func ExecuteCmd(engine *CrawlEngine) {
+	var isTicker bool = false
+	var timer = 0
+
 	var crawlCmd = &cobra.Command{
 		Use:   "crawl",
 		Short: "Start spider by name",
 		// Uncomment the following line if your bare application
 		// has an action associated with it:
+
 		Run: func(_ *cobra.Command, args []string) {
 			engineLog.Infof("准备启动%s爬虫", args[0])
-			engine.start(args[0])
+
+			if isTicker {
+				if timer > 0 {
+					engine.interval = time.Duration(timer * int(time.Second))
+				}
+				engineLog.Infof("以定时任务方式启动,时间间隔为:%d", engine.interval/time.Second)
+
+				engine.startWithTicker(args[0])
+				timer = 0
+			} else {
+				engine.start(args[0])
+
+			}
 		},
 	}
 	rootCmd.AddCommand(crawlCmd)
+	crawlCmd.Flags().BoolVarP(&isTicker, "interval", "i", false, "Whether to start tasks at regular intervals,default false")
+	crawlCmd.Flags().IntVarP(&timer, "timer", "t", 0, "Timed task interval,default 0")
 
-	crawlCmd.Flags().BoolVarP(&engine.isMaster, "master", "m", false, "Whether to set the current node as the master node,defualt false")
+	crawlCmd.Flags().BoolVarP(&engine.isMaster, "master", "m", false, "Whether to set the current node as the master node,default false")
 	rootCmd.Execute()
 }

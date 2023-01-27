@@ -235,9 +235,6 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	downloadLog := log.WithField("request_id", ctx.CtxId)
 	defer func() {
-		if err := recover(); err != nil {
-			downloadLog.Fatalf("download panic: %v", err)
-		}
 
 	}()
 	// 记录网络请求处理开始时间
@@ -272,7 +269,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 	// 构建网络请求上下文
 	var asCtxKey ctxKey = "key"
-	valCtx:=context.WithValue(ctx, asCtxKey, ctxValue)
+	valCtx := context.WithValue(ctx, asCtxKey, ctxValue)
 	if ctx.Request.Timeout > 0 {
 		timeoutCtx, cancel := context.WithTimeout(ctx, ctx.Request.Timeout)
 		defer cancel()
