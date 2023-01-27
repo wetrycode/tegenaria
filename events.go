@@ -152,7 +152,7 @@ func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 
 }
 
-// EventsWatcher DefaultHooks 的事件监听器
+// EventsWatcher DefualtHooks 的事件监听器
 func (d *DefaultHooks) EventsWatcher(ch chan EventType) error {
 	return DefaultventsWatcher(ch, d)
 
