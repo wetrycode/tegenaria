@@ -25,6 +25,7 @@ package tegenaria
 import (
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -97,6 +98,8 @@ type CrawlEngine struct {
 	// mutex spider 启动锁
 	// 同一进程下只能启动一个spider
 	mutex sync.Mutex
+	// interval 定时任务执行时间间隔
+	interval time.Duration
 }
 
 // RegisterSpider 将spider实例注册到引擎的 spiders
@@ -162,6 +165,8 @@ func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 // Execute 通过命令行启动spider
 func (e *CrawlEngine) Execute() {
 	ExecuteCmd(e)
+	defer rootCmd.ResetCommands()
+
 }
 
 // start spider 爬虫启动器
@@ -189,7 +194,20 @@ func (e *CrawlEngine) start(spiderName string) StatisticInterface {
 	stats := e.statistic.OutputStats()
 	s := Map2String(stats)
 	engineLog.Infof(s)
+	e.startSpiderFinish = false
+	e.isStop = false
 	return e.statistic
+}
+func (e *CrawlEngine) startWithTicker(spiderName string) {
+	ticker := time.NewTicker(e.interval)
+	defer ticker.Stop()
+	for {
+		engineLog.Infof("进入下一轮")
+		e.start(spiderName)
+		engineLog.Infof("完成一轮抓取")
+		<-ticker.C
+	}
+
 }
 
 // EventsWatcherRunner 事件监听器运行组件
@@ -227,9 +245,6 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 	c := ctx
 	return func() error {
 		defer func() {
-			if err := recover(); err != nil {
-				c.setError(fmt.Sprintf("crawl error %s", err))
-			}
 			if c.Error != nil {
 				// 新增一个错误
 				e.statistic.IncrErrorCount()
@@ -259,8 +274,10 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 		// 依次执行工作单元
 		for _, unit := range units {
 			err := unit(c)
-			if err != nil {
-				c.Error = NewError(c, err)
+			if err != nil || c.Error != nil {
+				if c.Error == nil {
+					c.Error = NewError(c, err)
+				}
 				break
 			}
 		}
@@ -301,7 +318,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 	var isDuplicated bool = false
 	defer func() {
 		if err := recover(); err != nil {
-			ctx.setError(fmt.Sprintf("write cache error %s", err))
+			ctx.setError(fmt.Sprintf("write cache error %s", err), string(debug.Stack()))
 		}
 		// 写入分布式组件后主动删除
 		if e.useDistributed || isDuplicated {
@@ -310,7 +327,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 	}()
 	var err error = nil
 	// 是否进入去重流程
-	if e.filterDuplicateReq {
+	if e.filterDuplicateReq && !ctx.Request.DoNotFilter {
 		ret, err := e.rfpDupeFilter.DoDupeFilter(ctx)
 		if err != nil {
 			isDuplicated = true
@@ -341,7 +358,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 	var err error = nil
 	defer func() {
 		if p := recover(); p != nil {
-			ctx.setError(fmt.Sprintf("Download error %s", p))
+			ctx.setError(fmt.Sprintf("Download error %s", p), string(debug.Stack()))
 		}
 		if err != nil || ctx.Err() != nil {
 			e.statistic.IncrDownloadFail()
@@ -377,7 +394,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 	defer func() {
 		if p := recover(); p != nil {
-			ctx.setError(fmt.Sprintf("handle response error %s", p))
+			ctx.setError(fmt.Sprintf("handle response error %s", p), string(debug.Stack()))
 		}
 	}()
 	if ctx.Response == nil {
@@ -412,7 +429,7 @@ func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 func (e *CrawlEngine) doParse(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			ctx.setError(fmt.Sprintf("parse error %s", err))
+			ctx.setError(fmt.Sprintf("parse error %s", err), string(debug.Stack()))
 		}
 	}()
 	if ctx.Response == nil {
@@ -432,7 +449,7 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 	defer func() {
 		if err := recover(); err != nil {
-			ctx.setError(fmt.Sprintf("pipeline error %s", err))
+			ctx.setError(fmt.Sprintf("pipeline error %s", err), string(debug.Stack()))
 		}
 	}()
 	for item := range ctx.Items {
@@ -487,6 +504,7 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		limiter:               NewDefaultLimiter(32),
 		downloader:            NewDownloader(),
 		hooker:                NewDefaultHooks(),
+		interval:              -1 * time.Second,
 	}
 	for _, o := range opts {
 		o(Engine)

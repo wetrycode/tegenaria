@@ -58,6 +58,13 @@ func EngineWithUniqueReq(uniqueReq bool) EngineOption {
 	}
 }
 
+// EngineWithInterval 定时执行时间
+func EngineWithInterval(interval time.Duration) EngineOption {
+	return func(r *CrawlEngine) {
+		r.interval = interval
+	}
+}
+
 // EngineWithLimiter 引擎使用的限速器
 func EngineWithLimiter(limiter LimitInterface) EngineOption {
 	return func(r *CrawlEngine) {

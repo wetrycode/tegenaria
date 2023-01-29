@@ -235,9 +235,6 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	downloadLog := log.WithField("request_id", ctx.CtxId)
 	defer func() {
-		if err := recover(); err != nil {
-			downloadLog.Fatalf("download panic: %v", err)
-		}
 
 	}()
 	// 记录网络请求处理开始时间

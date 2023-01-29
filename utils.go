@@ -54,9 +54,6 @@ func AddGo(wg *sync.WaitGroup, funcs ...GoFunc) <-chan error {
 		wg.Add(1)
 		go func() {
 			defer func() {
-				if p := recover(); p != nil {
-					ch <- fmt.Errorf("call go funcs paninc %s", p)
-				}
 				wg.Done()
 			}()
 			ch <- _func()
