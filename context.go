@@ -26,6 +26,8 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"runtime/debug"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -175,6 +177,15 @@ func (c *Context) setResponse(resp *Response) {
 
 // setError 设置异常
 func (c *Context) setError(msg string, stack string) {
+	DebugStack := stack
+	// logger.Errorf(DebugStack)
+	for _, v := range strings.Split(DebugStack, "\n") {
+		DebugStack += v
+	}
+	for _, v := range strings.Split(string(debug.Stack()), "\n") {
+		DebugStack += v + "<br>"
+	}
+
 	err := NewError(c, fmt.Errorf("%s", msg))
 	c.Error = err
 	// 取上一帧栈
@@ -184,7 +195,7 @@ func (c *Context) setError(msg string, stack string) {
 		"request_id": c.CtxId,
 		"func":       f.Name(),
 		"file":       fmt.Sprintf("%s:%d", file, lineNo),
-		"stack":      stack,
+		"stack":      DebugStack,
 	}
 	log := engineLog.WithFields(fields)
 	log.Logger.SetReportCaller(false)
