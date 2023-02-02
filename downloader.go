@@ -222,8 +222,8 @@ func checkUrlVaildate(requestUrl string) error {
 
 // CheckStatus 检查状态码是否合法
 func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) bool {
-	if len(allowStatus) == 0 {
-		return true
+	if len(allowStatus) == 0 && statusCode >= 400 {
+		return false
 	}
 	if statusCode >= 400 && arrays.ContainsUint(allowStatus, statusCode) == -1 {
 		return false
