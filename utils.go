@@ -77,7 +77,18 @@ func GetParserByName(spider SpiderInterface, name string) Parser {
 		args := make([]reflect.Value, 2)
 		args[0] = reflect.ValueOf(resp)
 		args[1] = reflect.ValueOf(req)
-		rets := reflect.ValueOf(spider).MethodByName(name).Call(args)
+		if spider == nil {
+			engineLog.Errorf("传入空spider")
+			return nil
+		}
+		f := reflect.ValueOf(spider).MethodByName(name)
+		// engineLog.Errorf("无法获取到%s的解析函数%s", spider.GetName(), name)
+
+		if f.IsZero() || f.IsNil() {
+			engineLog.Errorf("无法获取到%s的解析函数%s", spider.GetName(), name)
+			return nil
+		}
+		rets := f.Call(args)
 		if rets[0].IsNil() {
 			return nil
 		}

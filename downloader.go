@@ -184,7 +184,7 @@ func DownloadWithH2(h2 bool) DownloaderOption {
 func NewDownloader(opts ...DownloaderOption) Downloader {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false,
+			InsecureSkipVerify: true,
 		},
 		Proxy: proxyFunc,
 		DialContext: (&net.Dialer{
@@ -275,7 +275,11 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 		defer cancel()
 		valCtx = context.WithValue(timeoutCtx, asCtxKey, ctxValue)
 	}
+	// if ctx.Request.PostForm != nil {
+	// 	ctx.Request.BodyReader = strings.NewReader(ctx.Request.PostForm.Encode())
+	// }
 	req, err := http.NewRequestWithContext(valCtx, string(ctx.Request.Method), u.String(), ctx.Request.BodyReader)
+
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
 		return nil, err

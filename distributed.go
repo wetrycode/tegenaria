@@ -25,6 +25,7 @@ package tegenaria
 import (
 	"bytes"
 	goContext "context"
+	"encoding/base64"
 	"encoding/gob"
 	"fmt"
 	"strings"
@@ -376,6 +377,10 @@ func (w *DistributedWorker) dequeue() (interface{}, error) {
 	opts = append(opts, RequestWithParser(GetParserByName(spider, req["parser"].(string))))
 	if val, ok := req["proxyUrl"]; ok {
 		opts = append(opts, RequestWithRequestProxy(Proxy{ProxyUrl: val.(string)}))
+	}
+	if val, ok := req["body"]; ok && val != nil {
+		decodeBytes, _ := base64.StdEncoding.DecodeString(val.(string))
+		opts = append(opts, RequestWithBodyReader(strings.NewReader(string(decodeBytes))))
 	}
 	request := RequestFromMap(req, opts...)
 	return NewContext(request, spider, WithContextId(req["ctxId"].(string))), nil

@@ -6,9 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"os"
 	"sync"
@@ -48,27 +48,20 @@ func newTestProxyServer() *httptest.Server {
 	onceProxyServer.Do(func() {
 		gin.SetMode(gin.ReleaseMode)
 		router := gin.New()
-		router.GET("/:a", func(c *gin.Context) {
-			reqUrl := c.Request.URL.String() // Get request url
-			req, err := http.NewRequest(c.Request.Method, reqUrl, nil)
-			if err != nil {
-				c.AbortWithStatus(404)
-				return
+		f := func(c *gin.Context) {
+			host := c.Request.URL.Host // Get request url
+			director := func(req *http.Request) {
+				req.URL.Scheme = "http"
+				req.URL.Host = host
+				req.Host = host
 			}
+			proxy := &httputil.ReverseProxy{Director: director}
+			proxy.ServeHTTP(c.Writer, c.Request)
 
-			// Forwarding requests from client.
-			cli := &http.Client{}
-			resp, err := cli.Do(req)
-			if err != nil {
-				c.AbortWithStatus(404)
-				return
-			}
-			defer resp.Body.Close()
+		}
+		router.POST("/:t", f)
+		router.GET("/:t", f)
 
-			body, _ := ioutil.ReadAll(resp.Body)
-			c.Data(200, "text/plain", body)        // write response body to response.
-			c.String(200, "This is proxy Server.") // add proxy info.
-		})
 		proxyServer = httptest.NewServer(router)
 	})
 	return proxyServer
@@ -84,7 +77,7 @@ func newTestServer() *httptest.Server {
 			dataType, _ := json.Marshal(map[string]string{"key": "value"})
 			data, err := c.GetRawData()
 			if err != nil {
-				c.AbortWithStatus(404)
+				c.AbortWithStatus(500)
 				return
 			}
 			if string(data) == string(dataType) {
@@ -227,7 +220,7 @@ func TestRequestProxyWithTimeOut(t *testing.T) {
 		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy), RequestWithTimeout(10*time.Second))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		convey.So(resp.String(), convey.ShouldContainSubstring, "This is proxy Server.")
+		convey.So(resp.String(), convey.ShouldContainSubstring, "timeout")
 	})
 
 	convey.Convey("test request with timeout", t, func() {

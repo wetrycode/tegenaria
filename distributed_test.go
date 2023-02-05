@@ -43,6 +43,8 @@ func TestSerialize(t *testing.T) {
 func TestDistributedWorker(t *testing.T) {
 	convey.Convey("test distribute worker", t, func() {
 		mockRedis, err := miniredis.Run()
+		pServer := newTestProxyServer()
+		tServer := newTestServer()
 		if err != nil {
 			panic(err)
 		}
@@ -60,7 +62,7 @@ func TestDistributedWorker(t *testing.T) {
 			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
 		proxy := Proxy{
-			ProxyUrl: "http://127.0.0.1",
+			ProxyUrl: pServer.URL,
 		}
 		spiders[spider1.GetName()] = spider1
 		worker := NewDistributedWorker(mockRedis.Addr(), config)
@@ -79,7 +81,8 @@ func TestDistributedWorker(t *testing.T) {
 		requestOptions = append(requestOptions, RequestWithRequestMeta(meta))
 		requestOptions = append(requestOptions, RequestWithMaxConnsPerHost(16))
 		requestOptions = append(requestOptions, RequestWithMaxRedirects(-1))
-		request := NewRequest("http://www.example.com", GET, spider1.Parser, requestOptions...)
+		urlReq := fmt.Sprintf("%s/testPOST", tServer.URL)
+		request := NewRequest(urlReq, POST, spider1.Parser, requestOptions...)
 		ctx := NewContext(request, spider1)
 		ctxId := ctx.CtxId
 		err = worker.enqueue(ctx)
@@ -88,12 +91,17 @@ func TestDistributedWorker(t *testing.T) {
 		c, err = worker.dequeue()
 		convey.So(err, convey.ShouldBeNil)
 		newCtx := c.(*Context)
+		downloader := NewDownloader()
+		resp, err := downloader.Download(newCtx)
+		content := resp.String()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(content, convey.ShouldContainSubstring, "test")
 		convey.So(newCtx.GetCtxId(), convey.ShouldContainSubstring, ctxId)
 		convey.So(newCtx.Request.Meta, convey.ShouldContainKey, "key")
 		convey.So(newCtx.Request.MaxConnsPerHost, convey.ShouldAlmostEqual, 16)
 		convey.So(newCtx.Request.AllowRedirects, convey.ShouldBeFalse)
 		convey.So(newCtx.Request.MaxRedirects, convey.ShouldAlmostEqual, 3)
-		convey.So(newCtx.Request.Proxy.ProxyUrl, convey.ShouldContainSubstring, "127.0.0.1")
+		convey.So(newCtx.Request.Proxy.ProxyUrl, convey.ShouldContainSubstring, pServer.URL)
 
 	})
 }

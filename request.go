@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -226,6 +227,16 @@ func RequestWithTimeout(timeout time.Duration) RequestOption {
 		r.Timeout = timeout
 	}
 }
+func RequestWithPostForm(payload url.Values) RequestOption {
+	return func(r *Request) {
+		r.BodyReader = strings.NewReader(payload.Encode())
+	}
+}
+func RequestWithBodyReader(body io.Reader) RequestOption {
+	return func(r *Request) {
+		r.BodyReader = body
+	}
+}
 
 // updateQueryParams 将Params配置到url
 func (r *Request) updateQueryParams() {
@@ -291,6 +302,7 @@ func freeRequest(r *Request) {
 	r.MaxConnsPerHost = 512
 	r.ResponseWriter = nil
 	r.BodyReader = nil
+
 	r.Timeout = -1 * time.Second
 	requestPool.Put(r)
 	r = nil
@@ -299,11 +311,19 @@ func freeRequest(r *Request) {
 
 // ToMap 将request对象转为map
 func (r *Request) ToMap() (map[string]interface{}, error) {
+	if r.BodyReader != nil {
+		body, err := io.ReadAll(r.BodyReader)
+		if err != nil {
+			return nil, err
+		}
+		r.Body = body
+	}
 	b, err := json.Marshal(r)
 	if err != nil {
 		return nil, err
 	}
 	var m map[string]interface{}
+
 	err = json.Unmarshal(b, &m)
 	return m, err
 

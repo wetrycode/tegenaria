@@ -168,6 +168,7 @@ func (l *leakyBucketLimiterWithRdb) checkAndWaitLimiterPass() error {
 	for {
 		pass, err := l.tryPassLimiter()
 		if err != nil {
+			engineLog.Errorf("限速器检查错误:%s", err.Error())
 			return err
 		}
 		if pass {
