@@ -20,7 +20,7 @@ func TestLeakyBucketLimiterWithRdb(t *testing.T) {
 		rdb := redis.NewClient(&redis.Options{
 			Addr: mockRedis.Addr(),
 		})
-		f := func(params ...interface{}) (string, time.Duration) {
+		f := func() (string, time.Duration) {
 			return "tegenaria:v1:limiter", 5 * time.Second
 		}
 		limit := NewLeakyBucketLimiterWithRdb(16, rdb, f)

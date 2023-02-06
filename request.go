@@ -52,7 +52,7 @@ type Request struct {
 	// Method 请求方式
 	Method RequestMethod `json:"method"`
 	// Body 请求body
-	Body []byte `json:"body"`
+	body []byte `json:"-"`
 	// Params 请求url的参数
 	Params map[string]string `json:"params"`
 	// Proxy 代理实例
@@ -70,22 +70,13 @@ type Request struct {
 	// MaxConnsPerHost 单个域名最大的连接数
 	MaxConnsPerHost int `json:"maxConnsPerHost"`
 	// BodyReader 用于读取body
-	BodyReader io.Reader `json:"-"`
-	// ResponseWriter 响应读取到本地的接口
-	// ResponseWriter io.Writer `json:"-"`
+	bodyReader io.Reader `json:"-"`
 	// AllowStatusCode 允许的状态码
 	AllowStatusCode []uint64 `json:"allowStatusCode"`
 	// Timeout 请求超时时间
 	Timeout time.Duration `json:"timeout"`
 	// DoNotFilter
 	DoNotFilter bool
-}
-
-// requestPool request对象内存池
-var requestPool *sync.Pool = &sync.Pool{
-	New: func() interface{} {
-		return new(Request)
-	},
 }
 
 // Option NewRequest 可选参数
@@ -109,9 +100,8 @@ var reqLog *logrus.Entry = GetLogger("request")
 func RequestWithRequestBody(body map[string]interface{}) RequestOption {
 	return func(r *Request) {
 		var err error
-
-		r.Body, err = jsoniter.Marshal(body)
-		r.BodyReader = bytes.NewBuffer(r.Body)
+		buf, err := jsoniter.Marshal(body)
+		r.bodyReader = bytes.NewBuffer(buf)
 		if err != nil {
 			reqLog.Errorf("set request body err %s", err.Error())
 			panic(fmt.Sprintf("set request body err %s", err.Error()))
@@ -122,7 +112,7 @@ func RequestWithRequestBody(body map[string]interface{}) RequestOption {
 // RequestWithRequestBytesBody request绑定bytes body
 func RequestWithRequestBytesBody(body []byte) RequestOption {
 	return func(r *Request) {
-		r.Body = body
+		r.bodyReader = bytes.NewReader(body)
 	}
 }
 
@@ -185,13 +175,6 @@ func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 	}
 }
 
-// RequestWithResponseWriter 设置ResponseWriter
-// func RequestWithResponseWriter(write io.Writer) RequestOption {
-// 	return func(r *Request) {
-// 		r.ResponseWriter = write
-// 	}
-// }
-
 // RequestWithMaxConnsPerHost 设置MaxConnsPerHost
 func RequestWithMaxConnsPerHost(maxConnsPerHost int) RequestOption {
 	return func(r *Request) {
@@ -227,24 +210,24 @@ func RequestWithTimeout(timeout time.Duration) RequestOption {
 		r.Timeout = timeout
 	}
 }
+
+// RequestWithPostForm set application/x-www-form-urlencoded
+// request body reader
 func RequestWithPostForm(payload url.Values) RequestOption {
 	return func(r *Request) {
-		r.BodyReader = strings.NewReader(payload.Encode())
+		r.bodyReader = strings.NewReader(payload.Encode())
 	}
 }
+
+// RequestWithBodyReader set request body io.Reader
 func RequestWithBodyReader(body io.Reader) RequestOption {
 	return func(r *Request) {
-		r.BodyReader = body
+		r.bodyReader = body
 	}
 }
 
 // updateQueryParams 将Params配置到url
 func (r *Request) updateQueryParams() {
-	defer func() {
-		if p := recover(); p != nil {
-			reqLog.Errorf("panic recover! p: %v", p)
-		}
-	}()
 	if len(r.Params) != 0 {
 		u, err := url.Parse(r.Url)
 		if err != nil {
@@ -273,20 +256,8 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 		MaxRedirects:    3,
 		AllowStatusCode: make([]uint64, 0),
 		Timeout:         -1 * time.Second,
+		bodyReader:      nil,
 	}
-	// request.Url = url
-	// request.Method = method
-	// request.Parser = parser
-	// request.ResponseWriter = nil
-	// request.BodyReader = nil
-	// request.Meta = nil
-	// request.Header = make(map[string]string)
-	// request.MaxRedirects = 3
-	// request.AllowRedirects = true
-	// request.Proxy = nil
-	// request.DoNotFilter = false
-	// request.AllowStatusCode = make([]uint64, 0)
-	// request.Timeout = -1 * time.Second
 	for _, o := range opts {
 		o(request)
 	}
@@ -295,40 +266,14 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 
 }
 
-// freeRequest 重置request对象并将对象放回内存池
-// func freeRequest(r *Request) {
-// 	r.Parser = func(resp *Context, req chan<- *Context) error {
-// 		return nil
-// 	}
-// 	r.AllowRedirects = true
-// 	r.Meta = nil
-// 	r.MaxRedirects = 3
-// 	r.Url = ""
-// 	r.Header = nil
-// 	r.Method = ""
-// 	r.DoNotFilter = false
-// 	r.Body = r.Body[:0]
-// 	r.Params = nil
-// 	r.Proxy = nil
-// 	r.Cookies = nil
-// 	r.MaxConnsPerHost = 512
-// 	r.ResponseWriter = nil
-// 	r.BodyReader = nil
-
-// 	r.Timeout = -1 * time.Second
-// 	requestPool.Put(r)
-// 	r = nil
-
-// }
-
 // ToMap 将request对象转为map
 func (r *Request) ToMap() (map[string]interface{}, error) {
-	if r.BodyReader != nil {
-		body, err := io.ReadAll(r.BodyReader)
+	if r.bodyReader != nil {
+		body, err := io.ReadAll(r.bodyReader)
 		if err != nil {
 			return nil, err
 		}
-		r.Body = body
+		r.body = body
 	}
 	b, err := json.Marshal(r)
 	if err != nil {
@@ -337,13 +282,27 @@ func (r *Request) ToMap() (map[string]interface{}, error) {
 	var m map[string]interface{}
 
 	err = json.Unmarshal(b, &m)
+	m["body"] = r.body
 	return m, err
 
 }
 
 // RequestFromMap 从map创建requests
 func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request {
-	request := requestPool.Get().(*Request)
+	request := &Request{
+		Url:             "",
+		Method:          "",
+		Parser:          nil,
+		Header:          make(map[string]string),
+		Meta:            make(map[string]interface{}),
+		DoNotFilter:     false,
+		AllowRedirects:  true,
+		MaxRedirects:    3,
+		AllowStatusCode: make([]uint64, 0),
+		Timeout:         -1 * time.Second,
+		bodyReader:      nil,
+		body:            nil,
+	}
 	mapstructure.Decode(src, request)
 	for _, o := range opts {
 		o(request)

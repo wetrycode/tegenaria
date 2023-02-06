@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
@@ -104,6 +105,38 @@ func TestDistributedWorker(t *testing.T) {
 		convey.So(newCtx.Request.Proxy.ProxyUrl, convey.ShouldContainSubstring, pServer.URL)
 
 	})
+	convey.Convey("test RequestWithPostForm", t, func() {
+		tServer := newTestServer()
+		mockRedis := miniredis.RunT(t)
+		defer mockRedis.Close()
+		config := NewDistributedWorkerConfig("", "", 0)
+		spiders := map[string]SpiderInterface{}
+		spider1 := &TestSpider{
+			NewBaseSpider("testspider2", []string{"https://www.baidu.com"}),
+		}
+		worker := NewDistributedWorker(mockRedis.Addr(), config)
+		worker.SetSpiders(&Spiders{
+			SpidersModules: spiders,
+		})
+		urlReq := fmt.Sprintf("%s/testForm", tServer.URL)
+		form := url.Values{}
+		form.Set("key", "form data")
+		header := make(map[string]string)
+		header["Content-Type"] = "application/x-www-form-urlencoded"
+		request := NewRequest(urlReq, POST, spider1.Parser, RequestWithPostForm(form), RequestWithRequestHeader(header))
+		ctx := NewContext(request, spider1)
+		err := worker.enqueue(ctx)
+		convey.So(err, convey.ShouldBeNil)
+		var c interface{}
+		c, err = worker.dequeue()
+		convey.So(err, convey.ShouldBeNil)
+		newCtx := c.(*Context)
+		downloader := NewDownloader()
+		resp, err := downloader.Download(newCtx)
+		content, _ := resp.String()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(content, convey.ShouldContainSubstring, "form data")
+	})
 }
 func TestAddNodeError(t *testing.T) {
 	convey.Convey("test add node with error", t, func() {
@@ -182,7 +215,8 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		r, err = worker.CheckMasterLive()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r, convey.ShouldBeFalse)
-		ip := GetMachineIp()
+		ip, err := GetMachineIp()
+		convey.So(err, convey.ShouldBeNil)
 		member := fmt.Sprintf("%s:%s", ip, worker.nodeId)
 		key := fmt.Sprintf("%s:%s:%s", worker.nodePrefix, worker.currentSpider, member)
 		worker.rdb.Del(context.TODO(), key)

@@ -75,7 +75,7 @@ func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool)
 // encodeHeader 请求头序列化
 func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 	h := request.Header
-	if h == nil {
+	if h == nil || len(request.Header) == 0 {
 		return ""
 	}
 	var buf bytes.Buffer
@@ -99,26 +99,23 @@ func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 	sha := murmur3.New128()
 	method := string(request.Method)
 	_, err := io.WriteString(sha, method)
-	if err != nil {
-		return nil, err
-	}
 	// canonical request url
-	u := f.canonicalizetionUrl(request, false)
-	_, err = io.WriteString(sha, u.String())
-	if err != nil {
-		return nil, err
+	if err == nil {
+		u := f.canonicalizetionUrl(request, false)
+		_, err = io.WriteString(sha, u.String())
 	}
-	// read request body
-	if request.Body != nil {
 
-		sha.Write(request.Body)
+	if err == nil && request.bodyReader != nil {
+		buffer := bytes.Buffer{}
+		io.Copy(&buffer, request.bodyReader)
+		sha.Write(buffer.Bytes())
 	}
 	// to handle request header
-	if len(request.Header) != 0 {
-		_, err := io.WriteString(sha, f.encodeHeader(request))
-		if err != nil {
-			return nil, err
-		}
+	if err == nil && len(request.Header) != 0 {
+		_, err = io.WriteString(sha, f.encodeHeader(request))
+	}
+	if err != nil {
+		return nil, err
 	}
 	res := sha.Sum(nil)
 	return res, nil

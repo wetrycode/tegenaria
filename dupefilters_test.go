@@ -1,8 +1,11 @@
 package tegenaria
 
 import (
+	"errors"
+	"io"
 	"testing"
 
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -42,7 +45,33 @@ func TestDoDupeFilter(t *testing.T) {
 		convey.So(r4, convey.ShouldBeFalse)
 	})
 }
+func TestDoDupeFilterErr(t *testing.T) {
+	convey.Convey("test dupefilter error", t, func() {
+		patch := gomonkey.ApplyFunc(io.WriteString, func(_ io.Writer, _ string) (int, error) {
+			return 0, errors.New("write string error")
+		})
+		defer patch.Reset()
+		server := newTestServer()
+		// downloader := NewDownloader()
+		headers := map[string]string{
+			"Params1":    "params1",
+			"Intparams":  "1",
+			"Boolparams": "false",
+		}
+		body := make(map[string]interface{})
+		body["test"] = "tegenaria"
+		request1 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers), RequestWithRequestBody(body))
+		spider1 := &TestSpider{
+			NewBaseSpider("DoDupeFilterErrTestSpider", []string{"https://www.baidu.com"}),
+		}
+		ctx1 := NewContext(request1, spider1)
+		duplicates := NewRFPDupeFilter(0.001, 1024*1024)
+		ret, err := duplicates.DoDupeFilter(ctx1)
+		convey.So(ret, convey.ShouldBeFalse)
+		convey.So(err, convey.ShouldBeError, errors.New("write string error"))
 
+	})
+}
 func TestDoBodyDupeFilter(t *testing.T) {
 	convey.Convey("test body dupefilter", t, func() {
 		server := newTestServer()

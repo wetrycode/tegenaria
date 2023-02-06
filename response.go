@@ -59,16 +59,16 @@ var responsePool *sync.Pool = &sync.Pool{
 }
 var respLog *logrus.Entry = GetLogger("response")
 
-func (r *Response) WriteTo(writer io.Writer) error {
+func (r *Response) WriteTo(writer io.Writer) (int64, error) {
 	r.readLock.Lock()
 	defer func() {
 		r.readLock.Unlock()
 	}()
-	_, err := io.Copy(writer, r.Body)
+	size, err := io.Copy(writer, r.Body)
 	if err == io.EOF {
 		err = nil
 	}
-	return err
+	return size, err
 }
 func (r *Response) readToBuffer() error {
 	r.readLock.Lock()

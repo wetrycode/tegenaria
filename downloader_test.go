@@ -1,6 +1,7 @@
 package tegenaria
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -115,6 +116,10 @@ func newTestServer() *httptest.Server {
 		})
 		router.GET("/testParams", func(c *gin.Context) {
 			value := c.Query("key")
+			c.String(200, value)
+		})
+		router.POST("/testForm", func(c *gin.Context) {
+			value := c.PostForm("key")
 			c.String(200, value)
 		})
 		router.GET("/testRedirect1", func(c *gin.Context) {
@@ -349,6 +354,20 @@ func TestProxyUrlError(t *testing.T) {
 	})
 }
 
+func TestRequestBodyReader(t *testing.T) {
+	convey.Convey("test request body reader", t, func() {
+		body := map[string]string{
+			"key": "value",
+		}
+		buff := new(bytes.Buffer)
+		json.NewEncoder(buff).Encode(body)
+		resp, err := newRequestDownloadCase("/testPOST", POST, RequestWithBodyReader(buff))
+		convey.So(err, convey.ShouldBeNil)
+		str, err := resp.String()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(str, convey.ShouldContainSubstring, "value")
+	})
+}
 func TestDownloaderRequestConextError(t *testing.T) {
 	convey.Convey("test downloader request conext error", t, func() {
 		patch := gomonkey.ApplyFunc(http.NewRequestWithContext, func(ctx context.Context, method, url string, body io.Reader) (*http.Request, error) {

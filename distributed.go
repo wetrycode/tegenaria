@@ -25,7 +25,6 @@ package tegenaria
 import (
 	"bytes"
 	goContext "context"
-	"encoding/base64"
 	"encoding/gob"
 	"fmt"
 	"strings"
@@ -36,7 +35,7 @@ import (
 )
 
 // GetRDBKey 获取缓存rdb key和ttl
-type GetRDBKey func(params ...interface{}) (string, time.Duration)
+type GetRDBKey func() (string, time.Duration)
 
 // DistributedWorkerInterface 分布式组件接口
 type DistributedWorkerInterface interface {
@@ -103,6 +102,9 @@ type DistributedWorker struct {
 	currentSpider string
 	// isMaster 是否是master节点
 	isMaster bool
+
+	// ip 本机地址
+	ip string
 }
 
 // serialize 序列化组件
@@ -193,7 +195,10 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 	k := OptimalNumOfHashFunctions(int64(config.BloomN), m)
 	config.RedisAddr = addr
 	rdb := NewRdbClient(config)
-
+	ip, err := GetMachineIp()
+	if err != nil {
+		panic(fmt.Sprintf("get machine ip error %s", err.Error()))
+	}
 	d := &DistributedWorker{
 		rdb:               rdb,
 		getQueueKey:       config.GetqueueKey,
@@ -204,6 +209,7 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 		bloomN:            config.BloomN,
 		bloomM:            uint(m),
 		nodeId:            GetUUID(),
+		ip:                ip,
 		nodesSetPrefix:    "tegenaria:v1:nodes",
 		nodePrefix:        "tegenaria:v1:node",
 		masterNodesKey:    "tegenaria:v1:master",
@@ -217,12 +223,8 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 func (w *DistributedWorker) setCurrentSpider(spider string) {
 	w.currentSpider = spider
 	funcs := []GetRDBKey{}
-	funcs = append(funcs, func(params ...interface{}) (string, time.Duration) {
-		return w.queueKey()
-	})
-	funcs = append(funcs, func(params ...interface{}) (string, time.Duration) {
-		return w.bfKey()
-	})
+	funcs = append(funcs, w.queueKey)
+	funcs = append(funcs, w.bfKey)
 	for _, f := range funcs {
 		key, ttl := f()
 		if ttl > 0 {
@@ -241,17 +243,17 @@ func NewWorkerWithRdbCluster(config *WorkerConfigWithRdbCluster) *DistributedWor
 }
 
 // getLimiterDefaultKey 限速器默认的key
-func getLimiterDefaultKey(params ...interface{}) (string, time.Duration) {
+func getLimiterDefaultKey() (string, time.Duration) {
 	return "tegenaria:v1:limiter", 0 * time.Second
 }
 
 // getBloomFilterDefaultKey 自定义的布隆过滤器key生成函数
-func getBloomFilterDefaultKey(params ...interface{}) (string, time.Duration) {
+func getBloomFilterDefaultKey() (string, time.Duration) {
 	return "tegenaria:v1:bf", 0 * time.Second
 }
 
 // getQueueDefaultKey 自定义的request缓存队列key生成函数
-func getQueueDefaultKey(params ...interface{}) (string, time.Duration) {
+func getQueueDefaultKey() (string, time.Duration) {
 	return "tegenaria:v1:request", 0 * time.Second
 
 }
@@ -308,10 +310,7 @@ func doSerialize(ctx *Context) ([]byte, error) {
 		val: data,
 	}
 	err = s.dumps()
-	if err != nil {
-		return nil, err
-	}
-	return s.buf.Bytes(), nil
+	return s.buf.Bytes(), err
 }
 
 // unserialize 对从rdb中读取到的二进制数据进行反序列化
@@ -322,10 +321,7 @@ func unserialize(data []byte) (rdbCacheData, error) {
 		val: make(rdbCacheData),
 	}
 	err := s.loads(data)
-	if err != nil {
-		return nil, err
-	}
-	return s.val, nil
+	return s.val, err
 }
 
 // newSerialize 获取序列化组件
@@ -343,10 +339,6 @@ func (w *DistributedWorker) SetSpiders(spiders *Spiders) {
 // enqueue request对象缓存入rdb队列
 // 先将request 对象进行序列化再push入指定的队列
 func (w *DistributedWorker) enqueue(ctx *Context) error {
-	// It will wait to put request until queue is not full
-	if ctx == nil || ctx.Request == nil {
-		return nil
-	}
 	key, _ := w.queueKey()
 
 	bytes, err := doSerialize(ctx)
@@ -379,8 +371,7 @@ func (w *DistributedWorker) dequeue() (interface{}, error) {
 		opts = append(opts, RequestWithRequestProxy(Proxy{ProxyUrl: val.(string)}))
 	}
 	if val, ok := req["body"]; ok && val != nil {
-		decodeBytes, _ := base64.StdEncoding.DecodeString(val.(string))
-		opts = append(opts, RequestWithBodyReader(strings.NewReader(string(decodeBytes))))
+		opts = append(opts, RequestWithRequestBytesBody(val.([]byte)))
 	}
 	request := RequestFromMap(req, opts...)
 	return NewContext(request, spider, WithContextId(req["ctxId"].(string))), nil
@@ -418,11 +409,7 @@ func (w *DistributedWorker) getSize() uint64 {
 
 // Fingerprint 生成request 对象的指纹
 func (w *DistributedWorker) Fingerprint(ctx *Context) ([]byte, error) {
-	fp, err := w.dupeFilter.Fingerprint(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return fp, nil
+	return w.dupeFilter.Fingerprint(ctx)
 }
 
 // baseHashes 生成hash值
@@ -522,9 +509,7 @@ func (w *DistributedWorker) isExists(fingerprint []byte) (bool, error) {
 // getNodeKey 获取当前节点的缓存key
 // 格式:{nodePrefix}:{spiderName}:{ip}:{nodeId}
 func (w *DistributedWorker) getNodeKey() string {
-	ip := GetMachineIp()
-
-	return fmt.Sprintf("%s:%s:%s:%s", w.nodePrefix, w.currentSpider, ip, w.nodeId)
+	return fmt.Sprintf("%s:%s:%s:%s", w.nodePrefix, w.currentSpider, w.ip, w.nodeId)
 }
 
 // getNodesSetKey 节点池缓存key
@@ -541,14 +526,13 @@ func (w *DistributedWorker) getMaterSetKey() string {
 
 // AddNode 新增节点
 func (w *DistributedWorker) AddNode() error {
-	ip := GetMachineIp()
 	key := w.getNodeKey()
 	status := w.rdb.SetEX(goContext.TODO(), key, 1, 10*time.Second)
 	err := status.Err()
 	if err != nil {
 		return err
 	}
-	member := []interface{}{fmt.Sprintf("%s:%s", ip, w.nodeId)}
+	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeId)}
 	nodesKey := w.getNodesSetKey()
 	err = w.rdb.SAdd(goContext.TODO(), nodesKey, member...).Err()
 	if err != nil {
@@ -598,13 +582,12 @@ func (w *DistributedWorker) CheckMasterLive() (bool, error) {
 
 // DelNode 删除当前节点
 func (w *DistributedWorker) DelNode() error {
-	ip := GetMachineIp()
 	key := w.getNodeKey()
 	err := w.rdb.Del(goContext.TODO(), key).Err()
 	if err != nil {
 		return err
 	}
-	member := []interface{}{fmt.Sprintf("%s:%s", ip, w.nodeId)}
+	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeId)}
 	err = w.rdb.SRem(goContext.TODO(), w.getNodesSetKey(), member...).Err()
 	if w.isMaster {
 		w.delMaster()
@@ -616,20 +599,14 @@ func (w *DistributedWorker) DelNode() error {
 func (w *DistributedWorker) StopNode() error {
 	key := w.getNodeKey()
 	err := w.rdb.SetEX(goContext.TODO(), key, 0, 1*time.Second).Err()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Heartbeat 心跳包
 func (w *DistributedWorker) Heartbeat() error {
 	key := w.getNodeKey()
 	err := w.rdb.SetEX(goContext.TODO(), key, 1, 1*time.Second).Err()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // executeCheck 检查所有的节点状态

@@ -274,10 +274,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 		defer cancel()
 		valCtx = context.WithValue(timeoutCtx, asCtxKey, ctxValue)
 	}
-	// if ctx.Request.PostForm != nil {
-	// 	ctx.Request.BodyReader = strings.NewReader(ctx.Request.PostForm.Encode())
-	// }
-	req, err := http.NewRequestWithContext(valCtx, string(ctx.Request.Method), u.String(), ctx.Request.BodyReader)
+	req, err := http.NewRequestWithContext(valCtx, string(ctx.Request.Method), u.String(), ctx.Request.bodyReader)
 
 	if err != nil {
 		downloadLog.Errorf(fmt.Sprintf("Create request error %s", err.Error()))
@@ -315,27 +312,5 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	response.Delay = time.Since(now).Seconds()
 	response.ContentLength = uint64(resp.ContentLength)
 	response.Body = resp.Body
-
-	// if ctx.Request.ResponseWriter != nil {
-	// 	// 通过自定义的io.Writer接口读取响应数据
-	// 	// 例如大文件下载
-	// 	_, err = io.Copy(ctx.Request.ResponseWriter, resp.Body)
-	// 	if err == io.EOF {
-	// 		err = nil
-	// 	}
-	// } else {
-	// 	// 响应数据写入缓存
-	// 	_, err = io.Copy(response.Buffer, resp.Body)
-	// 	if err == io.EOF {
-	// 		err = nil
-	// 	}
-
-	// }
-	// if err != nil {
-	// 	msg := fmt.Sprintf("%s %s", ErrResponseRead.Error(), err.Error())
-	// 	downloadLog.Errorf("%s\n", msg)
-
-	// 	return nil, err
-	// }
 	return response, nil
 }

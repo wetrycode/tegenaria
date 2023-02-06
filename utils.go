@@ -77,17 +77,8 @@ func GetParserByName(spider SpiderInterface, name string) Parser {
 		args := make([]reflect.Value, 2)
 		args[0] = reflect.ValueOf(resp)
 		args[1] = reflect.ValueOf(req)
-		if spider == nil {
-			engineLog.Errorf("传入空spider")
-			return nil
-		}
 		f := reflect.ValueOf(spider).MethodByName(name)
 		// engineLog.Errorf("无法获取到%s的解析函数%s", spider.GetName(), name)
-
-		if f.IsZero() || f.IsNil() {
-			engineLog.Errorf("无法获取到%s的解析函数%s", spider.GetName(), name)
-			return nil
-		}
 		rets := f.Call(args)
 		if rets[0].IsNil() {
 			return nil
@@ -136,19 +127,16 @@ func Map2String(m interface{}) string {
 }
 
 // GetMachineIp 获取本机ip
-func GetMachineIp() string {
+func GetMachineIp() (string, error) {
 	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return ""
-	}
 	for _, address := range addrs {
 		// 检查ip地址判断是否回环地址
 		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
 			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
+				return ipnet.IP.String(), nil
 			}
 		}
 	}
-	return ""
+	return "", err
 
 }

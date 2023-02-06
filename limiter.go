@@ -25,6 +25,7 @@ package tegenaria
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -144,10 +145,7 @@ func (l *leakyBucketLimiterWithRdb) tryPassLimiter() (bool, error) {
 	key, _ := l.keyFunc()
 	key = fmt.Sprintf("%s:%s", key, l.currentSpider)
 	pass, err := l.script.Run(context.TODO(), l.rdb, []string{key}, l.safetyLevel, l.waterVelocity, now).Int()
-	if err != nil {
-		return false, err
-	}
-	return pass == 1, nil
+	return pass == 1, err
 
 }
 
@@ -167,14 +165,10 @@ func (l *leakyBucketLimiterWithRdb) setCurrrentSpider(spider string) {
 func (l *leakyBucketLimiterWithRdb) checkAndWaitLimiterPass() error {
 	for {
 		pass, err := l.tryPassLimiter()
-		if err != nil {
-			engineLog.Errorf("限速器检查错误:%s", err.Error())
+		if pass || err != nil {
 			return err
 		}
-		if pass {
-			return nil
-		}
-		time.Sleep(1 * time.Millisecond)
+		runtime.Gosched()
 	}
 }
 func readLuaScript() *redis.Script {
