@@ -72,7 +72,7 @@ type Request struct {
 	// BodyReader 用于读取body
 	BodyReader io.Reader `json:"-"`
 	// ResponseWriter 响应读取到本地的接口
-	ResponseWriter io.Writer `json:"-"`
+	// ResponseWriter io.Writer `json:"-"`
 	// AllowStatusCode 允许的状态码
 	AllowStatusCode []uint64 `json:"allowStatusCode"`
 	// Timeout 请求超时时间
@@ -186,11 +186,11 @@ func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 }
 
 // RequestWithResponseWriter 设置ResponseWriter
-func RequestWithResponseWriter(write io.Writer) RequestOption {
-	return func(r *Request) {
-		r.ResponseWriter = write
-	}
-}
+// func RequestWithResponseWriter(write io.Writer) RequestOption {
+// 	return func(r *Request) {
+// 		r.ResponseWriter = write
+// 	}
+// }
 
 // RequestWithMaxConnsPerHost 设置MaxConnsPerHost
 func RequestWithMaxConnsPerHost(maxConnsPerHost int) RequestOption {
@@ -261,20 +261,32 @@ func (r *Request) updateQueryParams() {
 
 // NewRequest 从Request对象内存池创建新的Request对象
 func NewRequest(url string, method RequestMethod, parser Parser, opts ...RequestOption) *Request {
-	request := requestPool.Get().(*Request)
-	request.Url = url
-	request.Method = method
-	request.Parser = parser
-	request.ResponseWriter = nil
-	request.BodyReader = nil
-	request.Meta = nil
-	request.Header = make(map[string]string)
-	request.MaxRedirects = 3
-	request.AllowRedirects = true
-	request.Proxy = nil
-	request.DoNotFilter = false
-	request.AllowStatusCode = make([]uint64, 0)
-	request.Timeout = -1 * time.Second
+	// request := requestPool.Get().(*Request)
+	request := &Request{
+		Url:             url,
+		Method:          method,
+		Parser:          parser,
+		Header:          make(map[string]string),
+		Meta:            make(map[string]interface{}),
+		DoNotFilter:     false,
+		AllowRedirects:  true,
+		MaxRedirects:    3,
+		AllowStatusCode: make([]uint64, 0),
+		Timeout:         -1 * time.Second,
+	}
+	// request.Url = url
+	// request.Method = method
+	// request.Parser = parser
+	// request.ResponseWriter = nil
+	// request.BodyReader = nil
+	// request.Meta = nil
+	// request.Header = make(map[string]string)
+	// request.MaxRedirects = 3
+	// request.AllowRedirects = true
+	// request.Proxy = nil
+	// request.DoNotFilter = false
+	// request.AllowStatusCode = make([]uint64, 0)
+	// request.Timeout = -1 * time.Second
 	for _, o := range opts {
 		o(request)
 	}
@@ -284,30 +296,30 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 }
 
 // freeRequest 重置request对象并将对象放回内存池
-func freeRequest(r *Request) {
-	r.Parser = func(resp *Context, req chan<- *Context) error {
-		return nil
-	}
-	r.AllowRedirects = true
-	r.Meta = nil
-	r.MaxRedirects = 3
-	r.Url = ""
-	r.Header = nil
-	r.Method = ""
-	r.DoNotFilter = false
-	r.Body = r.Body[:0]
-	r.Params = nil
-	r.Proxy = nil
-	r.Cookies = nil
-	r.MaxConnsPerHost = 512
-	r.ResponseWriter = nil
-	r.BodyReader = nil
+// func freeRequest(r *Request) {
+// 	r.Parser = func(resp *Context, req chan<- *Context) error {
+// 		return nil
+// 	}
+// 	r.AllowRedirects = true
+// 	r.Meta = nil
+// 	r.MaxRedirects = 3
+// 	r.Url = ""
+// 	r.Header = nil
+// 	r.Method = ""
+// 	r.DoNotFilter = false
+// 	r.Body = r.Body[:0]
+// 	r.Params = nil
+// 	r.Proxy = nil
+// 	r.Cookies = nil
+// 	r.MaxConnsPerHost = 512
+// 	r.ResponseWriter = nil
+// 	r.BodyReader = nil
 
-	r.Timeout = -1 * time.Second
-	requestPool.Put(r)
-	r = nil
+// 	r.Timeout = -1 * time.Second
+// 	requestPool.Put(r)
+// 	r = nil
 
-}
+// }
 
 // ToMap 将request对象转为map
 func (r *Request) ToMap() (map[string]interface{}, error) {

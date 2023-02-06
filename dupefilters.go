@@ -95,9 +95,6 @@ func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 // Fingerprint 计算指纹
 func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 	request := ctx.Request
-	if request.Url == "" {
-		return nil, fmt.Errorf("request is nil,maybe it had been free")
-	}
 	// get sha128
 	sha := murmur3.New128()
 	method := string(request.Method)

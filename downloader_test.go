@@ -165,7 +165,8 @@ func TestRequestGet(t *testing.T) {
 		resp, errHandle := newRequestDownloadCase("/testGET", GET)
 		convey.So(errHandle, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		convey.So(resp.String(), convey.ShouldContainSubstring, "GET")
+		str, _ := resp.String()
+		convey.So(str, convey.ShouldContainSubstring, "GET")
 	})
 
 }
@@ -205,7 +206,8 @@ func TestRequestQueryParams(t *testing.T) {
 		resp, err := newRequestDownloadCase("/testParams", GET, RequestWithRequestParams(params))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		convey.So(resp.String(), convey.ShouldContainSubstring, "value")
+		str, _ := resp.String()
+		convey.So(str, convey.ShouldContainSubstring, "value")
 	})
 
 }
@@ -220,7 +222,8 @@ func TestRequestProxyWithTimeOut(t *testing.T) {
 		resp, err := newRequestDownloadCase("/testTimeout", GET, RequestWithRequestProxy(proxy), RequestWithTimeout(10*time.Second))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		convey.So(resp.String(), convey.ShouldContainSubstring, "timeout")
+		str, _ := resp.String()
+		convey.So(str, convey.ShouldContainSubstring, "timeout")
 	})
 
 	convey.Convey("test request with timeout", t, func() {
@@ -245,7 +248,7 @@ func TestRequestHeaders(t *testing.T) {
 		resp, err := newRequestDownloadCase("/testHeader", GET, RequestWithRequestHeader(headers))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		content := resp.String()
+		content, _ := resp.String()
 		convey.So(content, convey.ShouldContainSubstring, "value")
 
 	})
@@ -264,7 +267,8 @@ func TestLargeFile(t *testing.T) {
 		file, _ := os.Create("test.file")
 		defer os.Remove("test.file")
 		defer file.Close()
-		resp, err := newRequestDownloadCase("/testFile", GET, RequestWithResponseWriter(file))
+		resp, err := newRequestDownloadCase("/testFile", GET)
+		resp.WriteTo(file)
 		fi, statErr := os.Stat("test.file")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp, convey.ShouldNotBeNil)
@@ -322,7 +326,8 @@ func TestResponseReadError(t *testing.T) {
 			return 0, errors.New("read response to buffer error")
 		})
 		defer patch.Reset()
-		_, err := newRequestDownloadCase("/testGET", GET)
+		resp, _ := newRequestDownloadCase("/testGET", GET)
+		_, err := resp.String()
 		msg := err.Error()
 		convey.So(msg, convey.ShouldContainSubstring, "read response to buffer error")
 	})

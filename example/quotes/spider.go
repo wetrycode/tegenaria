@@ -44,7 +44,7 @@ func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
 
 // Parser 默认的解析函数
 func (e *ExampleSpider) Parser(resp *tegenaria.Context, req chan<- *tegenaria.Context) error {
-	text := resp.Response.String()
+	text, _ := resp.Response.String()
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(text))
 
 	if err != nil {

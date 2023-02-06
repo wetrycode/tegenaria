@@ -93,7 +93,7 @@ func TestDistributedWorker(t *testing.T) {
 		newCtx := c.(*Context)
 		downloader := NewDownloader()
 		resp, err := downloader.Download(newCtx)
-		content := resp.String()
+		content, _ := resp.String()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(content, convey.ShouldContainSubstring, "test")
 		convey.So(newCtx.GetCtxId(), convey.ShouldContainSubstring, ctxId)

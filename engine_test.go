@@ -141,7 +141,7 @@ func TestCache(t *testing.T) {
 		engine.writeCache(ctx1)
 		engine.writeCache(ctx)
 		err := engine.writeCache(ctx)
-		convey.So(err.Error(), convey.ShouldContainSubstring, "request is nil,maybe it had been free")
+		convey.So(err, convey.ShouldBeNil)
 		convey.So(engine.cache.getSize(), convey.ShouldAlmostEqual, 2)
 	})
 }

@@ -26,7 +26,6 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -148,7 +147,7 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 	ctx.Items = make(chan *ItemMeta, 32)
 	ctx.parent = parent
 	ctx.Error = nil
-	log.Debugf("Generate a new request%s %s", ctx.CtxId, request.Url)
+	log.Infof("Generate a new request%s %s", ctx.CtxId, request.Url)
 
 	for _, o := range opts {
 		o(ctx)
@@ -182,9 +181,6 @@ func (c *Context) setError(msg string, stack string) {
 	for _, v := range strings.Split(DebugStack, "\n") {
 		DebugStack += v
 	}
-	for _, v := range strings.Split(string(debug.Stack()), "\n") {
-		DebugStack += v + "<br>"
-	}
 
 	err := NewError(c, fmt.Errorf("%s", msg))
 	c.Error = err
@@ -205,10 +201,10 @@ func (c *Context) setError(msg string, stack string) {
 
 // Close 关闭context
 func (c *Context) Close() {
-	if c.Request != nil {
-		// 释放request
-		freeRequest(c.Request)
-	}
+	// if c.Request != nil {
+	// 	// 释放request
+	// 	// freeRequest(c.Request)
+	// }
 	if c.Response != nil {
 		// 释放response
 		freeResponse(c.Response)

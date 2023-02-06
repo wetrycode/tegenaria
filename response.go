@@ -25,6 +25,7 @@ package tegenaria
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -44,6 +45,10 @@ type Response struct {
 	URL string // URL of request url
 	// Buffer 响应体缓存
 	Buffer *bytes.Buffer // buffer read response buffer
+
+	Body io.ReadCloser
+
+	readLock sync.Mutex
 }
 
 // responsePool Response 对象内存池
@@ -54,21 +59,57 @@ var responsePool *sync.Pool = &sync.Pool{
 }
 var respLog *logrus.Entry = GetLogger("response")
 
+func (r *Response) WriteTo(writer io.Writer) error {
+	r.readLock.Lock()
+	defer func() {
+		r.readLock.Unlock()
+	}()
+	_, err := io.Copy(writer, r.Body)
+	if err == io.EOF {
+		err = nil
+	}
+	return err
+}
+func (r *Response) readToBuffer() error {
+	r.readLock.Lock()
+	defer func() {
+		r.readLock.Unlock()
+	}()
+	if r.Buffer.Len() > 0 {
+		return nil
+	}
+	_, err := io.Copy(r.Buffer, r.Body)
+	if err == io.EOF {
+		err = nil
+	}
+	return err
+}
+
 // Json 将响应数据转为json
 func (r *Response) Json() (map[string]interface{}, error) {
-	jsonResp := map[string]interface{}{}
-	err := json.Unmarshal(r.Buffer.Bytes(), &jsonResp)
-	if err != nil {
-		respLog.Errorf("Get json response error %s", err.Error())
+	if err := r.readToBuffer(); err == nil {
+		jsonResp := map[string]interface{}{}
+		err := json.Unmarshal(r.Buffer.Bytes(), &jsonResp)
+		if err != nil {
+			respLog.Errorf("Get json response error %s", err.Error())
 
+			return nil, err
+		}
+		return jsonResp, nil
+	} else {
 		return nil, err
 	}
-	return jsonResp, nil
+
 }
 
 // String 将响应数据转为string
-func (r *Response) String() string {
-	return r.Buffer.String()
+func (r *Response) String() (string, error) {
+	if err := r.readToBuffer(); err == nil {
+		return r.Buffer.String(), nil
+	} else {
+		return "", err
+	}
+
 }
 
 // NewResponse 从内存池中创建新的response对象
@@ -85,6 +126,7 @@ func freeResponse(r *Response) {
 	r.Status = -1
 	r.Header = nil
 	r.Delay = 0
+	r.Body.Close()
 	responsePool.Put(r)
 	r = nil
 }
