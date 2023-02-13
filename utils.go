@@ -61,11 +61,8 @@ func GoRunner(ctx context.Context, wg *conc.WaitGroup, funcs ...GoFunc) <-chan e
 
 // GetFunctionName 提取解析函数名
 func GetFunctionName(fn Parser) string {
-	entry := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Entry()
-	file, no := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(entry)
 	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 	nodes := strings.Split(name, ".")
-	engineLog.Infof("提取到的函数:%s,%s,%d", nodes[len(nodes)-1], file, no)
 	return strings.ReplaceAll(nodes[len(nodes)-1], "-fm", "")
 
 }
