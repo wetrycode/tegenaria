@@ -2,7 +2,7 @@
 
 ## 1.1.编写第一个爬虫
 
-Tegenaria的所有爬虫都是[SpiderInterface](SpiderInterface)的实例，包含如下几个部分：
+Tegenaria 的所有爬虫都是[SpiderInterface](SpiderInterface)的实例，包含如下几个部分：
 
 - 必须有一个爬虫启动的入口`StartRequest(req chan<- *Context)`用于发起初始请求；
 
@@ -12,7 +12,7 @@ Tegenaria的所有爬虫都是[SpiderInterface](SpiderInterface)的实例，包�
 
 - 爬虫名获取接口`GetName() string`
 
-- 爬虫种子url获取接口`GetFeedUrls()[]string`
+- 爬虫种子 url 获取接口`GetFeedUrls()[]string`
 
 ```go
 package main
@@ -154,52 +154,50 @@ go run main.go crawl example
 
 ## 1.4.如何构造新的请求?
 
-- 在`StartRequest`中请求通过`req chan<- *tegenaria.Context`将请求提交到引擎进行调度处理，其中`*tegenaria.Context``是单条数抓取过程的数据流通单元，贯穿单条数据抓取的整个生命周期，其数据结构参加代码[Context](context.go) 
+- 在`StartRequest`中请求通过`req chan<- *tegenaria.Context`将请求提交到引擎进行调度处理，其中`\*tegenaria.Context``是单条数抓取过程的数据流通单元，贯穿单条数据抓取的整个生命周期，其数据结构参加代码[Context](context.go)
 
-- Request对象是组成Context对象的成员之一，通过`tegenaria.NewRequest`进行构造，其核心参数为url,对应的绑定到爬虫实例并与之相关的解析函数及请求方法
+- Request 对象是组成 Context 对象的成员之一，通过`tegenaria.NewRequest`进行构造，其核心参数为 url,对应的绑定到爬虫实例并与之相关的解析函数及请求方法
 
 - 构造新的请求步骤如下:
-  
-  - 创建新的request对象
-    
+
+  - 创建新的 request 对象
+
     ```go
     // 依次传入url、请求方式和爬虫实例对应的解析函数
     request := tegenaria.NewRequest(url, tegenaria.GET, e.Parser)
     ```
-  
-  - 构造新的Context并传入request
-    
+
+  - 构造新的 Context 并传入 request
+
     ```go
     ctx := tegenaria.NewContext(request, e)
     ```
-  
-  - 通过channel发送到引擎
-    
+
+  - 通过 channel 发送到引擎
+
     ```go
-    req <- ctx 
+    req <- ctx
     ```
 
-## 1.5.如何构造新的item
+## 1.5.如何构造新的 item
 
-- 在解析函数`Parser(resp *tegenaria.Context, req chan<- *tegenaria.Context) error`中item通过resp.Items channel将item专递到引擎，resp实际上是Context对象其内置了当前请求实例所需的items channel
+- 在解析函数`Parser(resp *tegenaria.Context, req chan<- *tegenaria.Context) error`中 item 通过 resp.Items channel 将 item 专递到引擎，resp 实际上是 Context 对象其内置了当前请求实例所需的 items channel
 
-- items channel传递的是[ItemMeta](items.go)对象，包含两个属性CtxId即请求id以及ItemInterface实例是实际上的item数据
+- items channel 传递的是[ItemMeta](items.go)对象，包含两个属性 CtxID 即请求 id 以及 ItemInterface 实例是实际上的 item 数据
 
-- 构造一条item的流程如下:
-  
-  - 调用`tegenaria.NewItem`生成新的ItemMeta对象
-    
+- 构造一条 item 的流程如下:
+
+  - 调用`tegenaria.NewItem`生成新的 ItemMeta 对象
+
     ```go
     itemCtx := tegenaria.NewItem(resp, &quoteItem)
     ```
-  
-  - 将item发送到引擎
-    
+
+  - 将 item 发送到引擎
+
     ```go
     resp.Items <- itemCtx
     ```
-    
-    
 
 # 2.爬虫组件
 
@@ -213,7 +211,7 @@ go run main.go crawl example
 
 - `ProcessResponse(ctx *tegenaria.Context, req chan<- *tegenaria.Context) error`在解析之前对响应体进行处理
 
-一个spider引擎实例可以注册多个下载中间件，并按照优先级执行，引擎会通过`GetPriority() int`获取优先级，中间件调用规则如下:
+一个 spider 引擎实例可以注册多个下载中间件，并按照优先级执行，引擎会通过`GetPriority() int`获取优先级，中间件调用规则如下:
 
 - 数字越小优先级越高，`ProcessRequest`高优先级先执行
 
@@ -282,13 +280,13 @@ Engine.RegisterDownloadMiddlewares(middleware)
 
 ## 2.2.Items Pipeline
 
-item pipelines用于对item进行处理，例如持久化存储到数据库、数据去重等操作，所有的pipeline都应实现`PipelinesInterface`接口其中包含的两个函数如下:
+item pipelines 用于对 item 进行处理，例如持久化存储到数据库、数据去重等操作，所有的 pipeline 都应实现`PipelinesInterface`接口其中包含的两个函数如下:
 
-- `GetPriority() int`给引擎提供当前pipeline的优先级，请注意数字越低优先级越高越早调用
+- `GetPriority() int`给引擎提供当前 pipeline 的优先级，请注意数字越低优先级越高越早调用
 
-- `ProcessItem(spider SpiderInterface, item *ItemMeta) error` 处理item的核心逻辑
+- `ProcessItem(spider SpiderInterface, item *ItemMeta) error` 处理 item 的核心逻辑
 
-### 2.2.1.定义item pipeline
+### 2.2.1.定义 item pipeline
 
 ```go
 // QuotesbotItemPipeline tegenaria.PipelinesInterface 接口示例
@@ -299,7 +297,7 @@ type QuotesbotItemPipeline struct {
 // ProcessItem item处理函数
 func (p *QuotesbotItemPipeline) ProcessItem(spider tegenaria.SpiderInterface, item *tegenaria.ItemMeta) error {
     i:=item.Item.(*QuotesbotItem)
-    exampleLog.Infof("%s 抓取到数据:%s",item.CtxId, i.Text)
+    exampleLog.Infof("%s 抓取到数据:%s",item.CtxID, i.Text)
     return nil
 
 }
@@ -310,7 +308,7 @@ func (p *QuotesbotItemPipeline) GetPriority() int {
 }
 ```
 
-### 2.2.2.响应引擎注册piplines
+### 2.2.2.响应引擎注册 piplines
 
 ```go
 pipe := QuotesbotItemPipeline{Priority: 1}

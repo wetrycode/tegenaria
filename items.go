@@ -28,8 +28,8 @@ type ItemInterface interface {
 
 // ItemMeta item元数据结构
 type ItemMeta struct {
-	// CtxId 对应的context id
-	CtxId string
+	// CtxID 对应的context id
+	CtxID string
 	// Item item对象
 	Item ItemInterface
 }
@@ -37,7 +37,7 @@ type ItemMeta struct {
 // NewItem 构建新的ItemMeta对象
 func NewItem(ctx *Context, item ItemInterface) *ItemMeta {
 	return &ItemMeta{
-		CtxId: ctx.CtxId,
+		CtxID: ctx.CtxID,
 		Item:  item,
 	}
 }

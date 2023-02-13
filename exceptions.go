@@ -62,8 +62,8 @@ type RedirectError struct {
 
 // HandleError 错误处理接口
 type HandleError struct {
-	// CtxId 上下文id
-	CtxId string
+	// CtxID 上下文id
+	CtxID string
 	// Err 处理过程的错误
 	Err error
 	// Extras 携带的额外信息
@@ -83,7 +83,7 @@ func ErrorWithExtras(extras map[string]interface{}) ErrorOption {
 // NewError 构建新的HandleError实例
 func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 	h := &HandleError{
-		CtxId: ctx.CtxId,
+		CtxID: ctx.CtxID,
 		Err:   err,
 	}
 	for _, o := range opts {
@@ -94,7 +94,7 @@ func NewError(ctx *Context, err error, opts ...ErrorOption) *HandleError {
 
 // Error 获取HandleError错误信息
 func (e *HandleError) Error() string {
-	return fmt.Sprintf("%s with context id %s", e.Err.Error(), e.CtxId)
+	return fmt.Sprintf("%s with context id %s", e.Err.Error(), e.CtxID)
 }
 
 // Error获取RedirectError错误

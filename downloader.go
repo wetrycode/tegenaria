@@ -63,16 +63,22 @@ type SpiderDownloader struct {
 // DownloaderOption 下载器可选参数函数
 type DownloaderOption func(d *SpiderDownloader)
 
-// Request 请求方式
+// RequestMethod 请求方式
 type RequestMethod string
 
 const (
-	GET     RequestMethod = "GET"
-	POST    RequestMethod = "POST"
-	PUT     RequestMethod = "PUT"
-	DELETE  RequestMethod = "DELETE"
+	// GET 请求
+	GET RequestMethod = "GET"
+	// POST 请求
+	POST RequestMethod = "POST"
+	// PUT 请求
+	PUT RequestMethod = "PUT"
+	// DELETE 请求
+	DELETE RequestMethod = "DELETE"
+	// OPTIONS 请求
 	OPTIONS RequestMethod = "OPTIONS"
-	HEAD    RequestMethod = "HEAD"
+	// HEAD 请求
+	HEAD RequestMethod = "HEAD"
 )
 
 // log logging of downloader modules
@@ -163,15 +169,15 @@ func DownloadWithTimeout(timeout time.Duration) DownloaderOption {
 	}
 }
 
-// DownloadWithTlsConfig 设置下载器的tls
-func DownloadWithTlsConfig(tls *tls.Config) DownloaderOption {
+// DownloadWithTLSConfig 设置下载器的tls
+func DownloadWithTLSConfig(tls *tls.Config) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport.TLSClientConfig = tls
 
 	}
 }
 
-// DownloadWithTlsConfig 下载器是否开启http2
+// DownloadWithH2 下载器是否开启http2
 func DownloadWithH2(h2 bool) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport.ForceAttemptHTTP2 = h2
@@ -212,9 +218,9 @@ func NewDownloader(opts ...DownloaderOption) Downloader {
 	return downloader
 }
 
-// checkUrlVaildate 检查url是否合法
-func checkUrlVaildate(requestUrl string) error {
-	_, err := url.ParseRequestURI(requestUrl)
+// checkURLValidate 检查url是否合法
+func checkURLValidate(requestURL string) error {
+	_, err := url.ParseRequestURI(requestURL)
 	return err
 
 }
@@ -232,14 +238,14 @@ func (d *SpiderDownloader) CheckStatus(statusCode uint64, allowStatus []uint64) 
 
 // Download 处理request请求
 func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
-	downloadLog := log.WithField("request_id", ctx.CtxId)
+	downloadLog := log.WithField("request_id", ctx.CtxID)
 	defer func() {
 
 	}()
 	// 记录网络请求处理开始时间
 	now := time.Now()
 
-	if err := checkUrlVaildate(ctx.Request.Url); err != nil {
+	if err := checkURLValidate(ctx.Request.Url); err != nil {
 		// url不合法
 		downloadLog.Errorf(err.Error())
 		return nil, err

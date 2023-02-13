@@ -1,6 +1,9 @@
 package tegenaria
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestGetParserByName(t *testing.T) {
 	server := newTestServer()
@@ -9,7 +12,11 @@ func TestGetParserByName(t *testing.T) {
 	ctx := NewContext(request, spider)
 	ch := make(chan *Context, 1)
 	f := GetParserByName(spider, "Parser")
-	f(ctx, ch)
+	// f(ctx, ch)
+	args := make([]reflect.Value, 2)
+	args[0] = reflect.ValueOf(ctx)
+	args[1] = reflect.ValueOf(ch)
+	f.Call(args)
 	item := <-ctx.Items
 	it := item.Item.(*testItem)
 	if it.test != "test" {

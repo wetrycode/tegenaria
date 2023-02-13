@@ -27,7 +27,7 @@ func TestSerialize(t *testing.T) {
 		request := NewRequest("http://www.example.com", GET, spider1.Parser, RequestWithMaxRedirects(3), RequestWithRequestBody(body), RequestWithRequestProxy(proxy))
 		convey.So(request.AllowRedirects, convey.ShouldBeTrue)
 		convey.So(request.MaxRedirects, convey.ShouldAlmostEqual, 3)
-		GetAllParserMethod(spider1)
+		// GetAllParserMethod(spider1)
 		spiderName := spider1.GetName()
 		rd, err := newRdbCache(request, "xxxxxxx", spiderName)
 		convey.So(err, convey.ShouldBeNil)
@@ -85,7 +85,7 @@ func TestDistributedWorker(t *testing.T) {
 		urlReq := fmt.Sprintf("%s/testPOST", tServer.URL)
 		request := NewRequest(urlReq, POST, spider1.Parser, requestOptions...)
 		ctx := NewContext(request, spider1)
-		ctxId := ctx.CtxId
+		ctxId := ctx.CtxID
 		err = worker.enqueue(ctx)
 		convey.So(err, convey.ShouldBeNil)
 		var c interface{}
@@ -97,7 +97,7 @@ func TestDistributedWorker(t *testing.T) {
 		content, _ := resp.String()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(content, convey.ShouldContainSubstring, "test")
-		convey.So(newCtx.GetCtxId(), convey.ShouldContainSubstring, ctxId)
+		convey.So(newCtx.GetCtxID(), convey.ShouldContainSubstring, ctxId)
 		convey.So(newCtx.Request.Meta, convey.ShouldContainKey, "key")
 		convey.So(newCtx.Request.MaxConnsPerHost, convey.ShouldAlmostEqual, 16)
 		convey.So(newCtx.Request.AllowRedirects, convey.ShouldBeFalse)
@@ -217,7 +217,7 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		convey.So(r, convey.ShouldBeFalse)
 		ip, err := GetMachineIp()
 		convey.So(err, convey.ShouldBeNil)
-		member := fmt.Sprintf("%s:%s", ip, worker.nodeId)
+		member := fmt.Sprintf("%s:%s", ip, worker.nodeID)
 		key := fmt.Sprintf("%s:%s:%s", worker.nodePrefix, worker.currentSpider, member)
 		worker.rdb.Del(context.TODO(), key)
 		r, err = worker.CheckAllNodesStop()

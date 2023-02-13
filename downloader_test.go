@@ -161,7 +161,7 @@ func newRequestDownloadCase(uri string, method RequestMethod, opts ...RequestOpt
 	newTestSpider()
 	request := NewRequest(server.URL+uri, method, testParser, opts...)
 	ctx := NewContext(request, testSpider)
-	downloader := NewDownloader(DownloadWithTlsConfig(&tls.Config{InsecureSkipVerify: true}), DownloadWithH2((true)))
+	downloader := NewDownloader(DownloadWithTLSConfig(&tls.Config{InsecureSkipVerify: true}), DownloadWithH2((true)))
 
 	return downloader.Download(ctx)
 }

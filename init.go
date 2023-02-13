@@ -31,6 +31,7 @@ import (
 )
 
 var onceInit sync.Once
+var engineID string
 
 func init() {
 	onceInit.Do(func() {
@@ -42,6 +43,7 @@ func init() {
 		gob.Register(GET)
 		gob.Register(1 * time.Second)
 		gob.Register(url.Values{})
+		engineID = GetUUID()
 		debug.SetTraceback("crash")
 	})
 

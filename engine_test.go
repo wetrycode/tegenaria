@@ -163,9 +163,9 @@ func TestCacheError(t *testing.T) {
 		convey.So(size, convey.ShouldAlmostEqual, 1)
 		engine.filterDuplicateReq = true
 		engine.writeCache(ctx)
-		convey.So(ctx.CtxId, convey.ShouldNotBeEmpty)
+		convey.So(ctx.CtxID, convey.ShouldNotBeEmpty)
 		engine.writeCache(ctx)
-		convey.So(ctx.CtxId, convey.ShouldBeEmpty)
+		convey.So(ctx.CtxID, convey.ShouldBeEmpty)
 
 		engine.cache.close()
 
@@ -259,7 +259,7 @@ func TestEngineStart(t *testing.T) {
 			ctxManager.Clear()
 		}
 		engine := newTestEngine("testSpider9")
-		stats := engine.start("testSpider9")
+		stats := engine.Start("testSpider9")
 		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
@@ -275,12 +275,12 @@ func TestEngineStartPanic(t *testing.T) {
 			ctxManager.Clear()
 		}
 		engine := newTestEngine("testStartPanicSpider")
-		patch := gomonkey.ApplyFunc((*CrawlEngine).start, func(_ *CrawlEngine, _ string) StatisticInterface {
+		patch := gomonkey.ApplyFunc((*CrawlEngine).Start, func(_ *CrawlEngine, _ string) StatisticInterface {
 			panic("output panic")
 
 		})
 		defer patch.Reset()
-		f := func() { engine.start("testStartPanicSpider") }
+		f := func() { engine.Start("testStartPanicSpider") }
 		convey.So(f, convey.ShouldPanic)
 		convey.So(engine.mutex.TryLock(), convey.ShouldBeTrue)
 		engine.Close()
@@ -306,7 +306,7 @@ func TestEngineStartWithDistributed(t *testing.T) {
 				mockRedis.FastForward(1 * time.Second)
 			}
 		}()
-		engine.start("testDistributedSpider9")
+		engine.Start("testDistributedSpider9")
 		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 1)
@@ -326,7 +326,7 @@ func TestEngineStartWithDistributedSlove(t *testing.T) {
 		worker := NewDistributedWorker(mockRedis.Addr(), config)
 		worker.setCurrentSpider("testDistributedSloveSpider")
 		engine := newTestEngine("testDistributedSloveSpider", EngineWithDistributedWorker(worker))
-		engine.isMaster = false
+		engine.SetMaster(false)
 		worker.isMaster = false
 		go func() {
 			for range time.Tick(1 * time.Second) {
@@ -342,7 +342,7 @@ func TestEngineErrorHandler(t *testing.T) {
 	convey.Convey("test error handler", t, func() {
 		engine := newTestEngine("testErrorHandlerSpider")
 		engine.spiders.SpidersModules["testErrorHandlerSpider"].(*TestSpider).FeedUrls = []string{"http://127.0.0.1:12345"}
-		engine.start("testErrorHandlerSpider")
+		engine.Start("testErrorHandlerSpider")
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 1)
 		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 1)
 
@@ -405,10 +405,12 @@ func TestParseError(t *testing.T) {
 		server := newTestServer()
 		spider, err := engine.spiders.GetSpider("testSpiderParseError")
 		convey.So(err, convey.ShouldBeNil)
-
-		request := NewRequest(server.URL+"/testGET", GET, func(resp *Context, req chan<- *Context) error {
+		patch := gomonkey.ApplyFunc((*TestSpider).Parser, func(_ *TestSpider, _ *Context, _ chan<- *Context) error {
 			return errors.New("parse response error")
+
 		})
+		defer patch.Reset()
+		request := NewRequest(server.URL+"/testGET", GET, testSpider.Parser)
 		ctx := NewContext(request, spider)
 		err = engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
@@ -473,13 +475,22 @@ func TestTicker(t *testing.T) {
 		}
 		engine := newTestEngine("testTickerSpider", EngineWithInterval(4*time.Second), EngineWithUniqueReq(false))
 		go func() {
-			engine.startWithTicker("testTickerSpider")
+			engine.StartWithTicker("testTickerSpider")
 		}()
-		time.Sleep(8 * time.Second)
-		convey.So(engine.statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
-		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 2)
-		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 2)
-		convey.So(engine.statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
+
+		time.Sleep(5 * time.Second)
+		statistic := engine.GetStatic()
+		convey.So(statistic.GetDownloadFail(), convey.ShouldAlmostEqual, 0)
+		convey.So(statistic.GetRequestSent(), convey.ShouldAlmostEqual, 2)
+		convey.So(statistic.GetItemScraped(), convey.ShouldAlmostEqual, 2)
+		convey.So(statistic.GetErrorCount(), convey.ShouldAlmostEqual, 0)
+		convey.So(engine.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_START.GetTypeName())
+		engine.SetStatus(ON_PAUSE)
+		convey.So(engine.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_PAUSE.GetTypeName())
+		engine.SetStatus(ON_STOP)
+		convey.So(engine.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_STOP.GetTypeName())
+		onUnknown := StatusType(4)
+		convey.So(onUnknown.GetTypeName(), convey.ShouldBeEmpty)
 
 		// engine.Close()
 	})

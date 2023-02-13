@@ -45,13 +45,13 @@ type CacheInterface interface {
 	setCurrentSpider(spider string)
 }
 
-// requestCache request缓存队列
-type requestCache struct {
+// RequestCache request缓存队列
+type RequestCache struct {
 	queue *queue.EsQueue
 }
 
 // enqueue request对象入队列
-func (c *requestCache) enqueue(ctx *Context) error {
+func (c *RequestCache) enqueue(ctx *Context) error {
 	// It will wait to put request until queue is not full
 	if ctx == nil || ctx.Request == nil {
 		return errors.New("context or request cannot be nil")
@@ -65,39 +65,38 @@ func (c *requestCache) enqueue(ctx *Context) error {
 }
 
 // dequeue 从队列中获取request对象
-func (c *requestCache) dequeue() (interface{}, error) {
+func (c *RequestCache) dequeue() (interface{}, error) {
 	val, ok, _ := c.queue.Get()
 	if !ok {
 		return nil, ErrGetCacheItem
-	} else {
-		return val, nil
 	}
+	return val, nil
 
 }
 
 // isEmpty 缓存是否为空
-func (c *requestCache) isEmpty() bool {
+func (c *RequestCache) isEmpty() bool {
 	return int64(c.queue.Quantity()) == 0
 }
 
 // getSize 缓存大小
-func (c *requestCache) getSize() uint64 {
+func (c *RequestCache) getSize() uint64 {
 	return uint64(c.queue.Quantity())
 }
 
 // close 关闭缓存
-func (c *requestCache) close() error {
+func (c *RequestCache) close() error {
 	return nil
 }
 
 // setCurrentSpider 设置当前的spider
-func (c *requestCache) setCurrentSpider(spider string) {
+func (c *RequestCache) setCurrentSpider(spider string) {
 
 }
 
-// NewRequestCache get a new requestCache
-func NewRequestCache() *requestCache {
-	return &requestCache{
+// NewRequestCache get a new RequestCache
+func NewRequestCache() *RequestCache {
+	return &RequestCache{
 		queue: queue.NewQueue(1024 * 1024),
 	}
 }

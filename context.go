@@ -35,10 +35,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type ContextInterface interface {
-	IsDone() bool
-}
-
 // Context 在引擎中的数据流通载体，负责单个抓取任务的生命周期维护
 type Context struct {
 	// Request 请求对象
@@ -50,28 +46,20 @@ type Context struct {
 	//parent 父 context
 	parent context.Context
 
-	// CtxId context 唯一id由uuid生成
-	CtxId string
+	// CtxID context 唯一id由uuid生成
+	CtxID string
 
-	// Error
+	// Error 处理过程中的错误信息
 	Error error
 
-	//
+	// Cancel context.CancelFunc
 	Cancel context.CancelFunc
-	//
-	Ref int64
 
-	//
+	// Items 读写item的管道
 	Items chan *ItemMeta
 
+	// Spider 爬虫实例
 	Spider SpiderInterface
-}
-
-// contextPool context 内存池
-var contextPool *sync.Pool = &sync.Pool{
-	New: func() interface{} {
-		return new(Context)
-	},
 }
 
 // 全局的context 管理接口
@@ -84,20 +72,21 @@ type contextManager struct {
 
 var onceContextManager sync.Once
 
+// ContextOption 上下文选项
 type ContextOption func(c *Context)
 
 var ctxManager *contextManager
 
 // add 向context 管理组件添加新的context
 func (c *contextManager) add(ctx *Context) {
-	c.ctxMap.Set(ctx.CtxId, ctx)
+	c.ctxMap.Set(ctx.CtxID, ctx)
 	atomic.AddInt64(&c.ctxCount, 1)
 
 }
 
 // remove 从contextManager中删除指定的ctx
 func (c *contextManager) remove(ctx *Context) {
-	c.ctxMap.Remove(ctx.CtxId)
+	c.ctxMap.Remove(ctx.CtxID)
 	atomic.AddInt64(&c.ctxCount, -1)
 
 }
@@ -124,12 +113,14 @@ func newContextManager() {
 	})
 }
 
-// WithContextId 设置自定义的ctxId
-func WithContextId(ctxId string) ContextOption {
+// WithContextID 设置自定义的ctxId
+func WithContextID(ctxID string) ContextOption {
 	return func(c *Context) {
-		c.CtxId = ctxId
+		c.CtxID = ctxID
 	}
 }
+
+// WithItemChannelSize 设置 items 管道的缓冲大小
 func WithItemChannelSize(size int) ContextOption {
 	return func(c *Context) {
 		c.Items = make(chan *ItemMeta, size)
@@ -138,16 +129,16 @@ func WithItemChannelSize(size int) ContextOption {
 
 // NewContext 从内存池中构建context对象
 func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption) *Context {
-	ctx := contextPool.Get().(*Context)
+	ctx := &Context{}
 	parent, cancel := context.WithCancel(context.TODO())
 	ctx.Request = request
 	ctx.Spider = Spider
-	ctx.CtxId = GetUUID()
+	ctx.CtxID = GetUUID()
 	ctx.Cancel = cancel
 	ctx.Items = make(chan *ItemMeta, 32)
 	ctx.parent = parent
 	ctx.Error = nil
-	log.Infof("Generate a new request%s %s", ctx.CtxId, request.Url)
+	log.Infof("Generate a new request%s %s", ctx.CtxID, request.Url)
 
 	for _, o := range opts {
 		o(ctx)
@@ -155,18 +146,6 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 	ctxManager.add(ctx)
 	return ctx
 
-}
-
-// freeContext 重置context并返回到内存池
-func freeContext(c *Context) {
-	c.parent = nil
-	c.Cancel = nil
-	c.Items = nil
-	c.CtxId = ""
-	c.Spider = nil
-	c.Error = nil
-	contextPool.Put(c)
-	c = nil
 }
 
 // setResponse 设置响应
@@ -177,7 +156,6 @@ func (c *Context) setResponse(resp *Response) {
 // setError 设置异常
 func (c *Context) setError(msg string, stack string) {
 	DebugStack := stack
-	// logger.Errorf(DebugStack)
 	for _, v := range strings.Split(DebugStack, "\n") {
 		DebugStack += v
 	}
@@ -188,7 +166,7 @@ func (c *Context) setError(msg string, stack string) {
 	pc, file, lineNo, _ := runtime.Caller(1)
 	f := runtime.FuncForPC(pc)
 	fields := logrus.Fields{
-		"request_id": c.CtxId,
+		"request_id": c.CtxID,
 		"func":       f.Name(),
 		"file":       fmt.Sprintf("%s:%d", file, lineNo),
 		"stack":      DebugStack,
@@ -201,17 +179,13 @@ func (c *Context) setError(msg string, stack string) {
 
 // Close 关闭context
 func (c *Context) Close() {
-	// if c.Request != nil {
-	// 	// 释放request
-	// 	// freeRequest(c.Request)
-	// }
 	if c.Response != nil {
 		// 释放response
 		freeResponse(c.Response)
 	}
 	ctxManager.remove(c)
-	c.CtxId = ""
-	freeContext(c)
+	c.CtxID = ""
+	c.Cancel()
 
 }
 
@@ -224,7 +198,7 @@ func WithContext(ctx context.Context) ContextOption {
 	}
 }
 
-// Deadline
+// Deadline context.Deadline implementation
 func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	if c.Request == nil || c.parent == nil {
 		return time.Time{}, false
@@ -232,6 +206,7 @@ func (c *Context) Deadline() (deadline time.Time, ok bool) {
 	return c.parent.Deadline()
 }
 
+// Done context.Done implementation
 func (c *Context) Done() <-chan struct{} {
 	if c.Request == nil || c.parent == nil {
 		return nil
@@ -239,6 +214,7 @@ func (c *Context) Done() <-chan struct{} {
 	return c.parent.Done()
 }
 
+// Err context.Err implementation
 func (c *Context) Err() error {
 	if c.Request == nil || c.parent == nil {
 		return nil
@@ -246,6 +222,7 @@ func (c *Context) Err() error {
 	return c.parent.Err()
 }
 
+// Value context.WithValue implementation
 func (c *Context) Value(key interface{}) interface{} {
 	if key == 0 {
 		return c.Request
@@ -255,6 +232,8 @@ func (c *Context) Value(key interface{}) interface{} {
 	}
 	return c.parent.Value(key)
 }
-func (c Context) GetCtxId() string {
-	return c.CtxId
+
+// GetCtxID get context id
+func (c Context) GetCtxID() string {
+	return c.CtxID
 }

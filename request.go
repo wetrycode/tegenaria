@@ -66,7 +66,7 @@ type Request struct {
 	// MaxRedirects 最大的跳转次数
 	MaxRedirects int `json:"maxRedirects"`
 	// Parser 该请求绑定的响应解析函数，必须是一个spider实例
-	Parser Parser `json:"-"`
+	Parser string `json:"parser"`
 	// MaxConnsPerHost 单个域名最大的连接数
 	MaxConnsPerHost int `json:"maxConnsPerHost"`
 	// BodyReader 用于读取body
@@ -192,7 +192,7 @@ func RequestWithAllowedStatusCode(allowStatusCode []uint64) RequestOption {
 // RequestWithParser 设置Parser
 func RequestWithParser(parser Parser) RequestOption {
 	return func(r *Request) {
-		r.Parser = parser
+		r.Parser = GetFunctionName(parser)
 	}
 }
 
@@ -248,7 +248,7 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 	request := &Request{
 		Url:             url,
 		Method:          method,
-		Parser:          parser,
+		Parser:          GetFunctionName(parser),
 		Header:          make(map[string]string),
 		Meta:            make(map[string]interface{}),
 		DoNotFilter:     false,
@@ -292,7 +292,7 @@ func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request 
 	request := &Request{
 		Url:             "",
 		Method:          "",
-		Parser:          nil,
+		Parser:          "",
 		Header:          make(map[string]string),
 		Meta:            make(map[string]interface{}),
 		DoNotFilter:     false,

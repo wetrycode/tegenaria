@@ -30,21 +30,20 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "xxx",
+	Use:   "crawl spiderName",
 	Short: "tegenaria is a crawler framework based on golang",
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	// Run: func(cmd *cobra.Command, args []string) { },
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
+// ExecuteCmd manage engine by command
 func ExecuteCmd(engine *CrawlEngine) {
 	var isTicker bool = false
 	var timer = 0
 
 	var crawlCmd = &cobra.Command{
-		Use:   "crawl",
+		Use:   "crawl spiderName",
 		Short: "Start spider by name",
 		// Uncomment the following line if your bare application
 		// has an action associated with it:
@@ -54,14 +53,14 @@ func ExecuteCmd(engine *CrawlEngine) {
 
 			if isTicker {
 				if timer > 0 {
-					engine.interval = time.Duration(timer * int(time.Second))
+					engine.SetInterval(time.Duration(timer * int(time.Second)))
 				}
 				engineLog.Infof("以定时任务方式启动,时间间隔为:%d", engine.interval/time.Second)
 
-				engine.startWithTicker(args[0])
+				engine.StartWithTicker(args[0])
 				timer = 0
 			} else {
-				engine.start(args[0])
+				engine.Start(args[0])
 
 			}
 		},

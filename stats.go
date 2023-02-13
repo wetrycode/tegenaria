@@ -27,11 +27,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/sourcegraph/conc"
 )
 
 // StatsFieldType 统计指标的数据类型
@@ -97,7 +97,7 @@ type DistributeStatistic struct {
 	// rdb redis客户端实例
 	rdb redis.Cmdable
 	// 调度该组件的wg
-	wg *sync.WaitGroup
+	wg *conc.WaitGroup
 	// afterResetTTL 重置数据之前缓存多久
 	// 默认不缓存这些统计数据
 	afterResetTTL time.Duration
@@ -188,7 +188,7 @@ func (s *DistributeStatistic) setCurrentSpider(spider string) {
 }
 
 // NewDistributeStatistic 分布式数据统计组件构造函数
-func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.WaitGroup, opts ...DistributeStatisticOption) *DistributeStatistic {
+func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *conc.WaitGroup, opts ...DistributeStatisticOption) *DistributeStatistic {
 	d := &DistributeStatistic{
 		keyPrefix:     statsPrefixKey,
 		nodesKey:      "tegenaria:v1:nodes",
@@ -203,13 +203,15 @@ func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *sync.W
 	return d
 }
 
-// IncrStats累加指定的统计指标
+// IncrStats 累加指定的统计指标
 func (s *DistributeStatistic) IncrStats(field StatsFieldType) {
 	f := func() error {
 		return s.rdb.Incr(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)).Err()
 	}
 	funcs := []GoFunc{f}
-	AddGo(s.wg, funcs...)
+	// AddGo(s.wg, funcs...)
+	GoRunner(context.Background(), s.wg, funcs...)
+
 }
 
 // IncrItemScraped 累加一条item
@@ -229,7 +231,7 @@ func (s *DistributeStatistic) IncrErrorCount() {
 
 }
 
-// GetDownloadFail 累计获取下载失败的数量
+// IncrDownloadFail 累计获取下载失败的数量
 func (s *DistributeStatistic) IncrDownloadFail() {
 	s.IncrStats(DownloadFailStats)
 

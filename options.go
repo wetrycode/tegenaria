@@ -61,7 +61,7 @@ func EngineWithUniqueReq(uniqueReq bool) EngineOption {
 // EngineWithInterval 定时执行时间
 func EngineWithInterval(interval time.Duration) EngineOption {
 	return func(r *CrawlEngine) {
-		r.interval = interval
+		r.SetInterval(interval)
 	}
 }
 
@@ -76,7 +76,7 @@ func EngineWithLimiter(limiter LimitInterface) EngineOption {
 func EngineWithDistributedWorker(woker DistributedWorkerInterface) EngineOption {
 	return func(r *CrawlEngine) {
 		r.cache = woker
-		r.limiter = woker.GetLimter()
+		r.limiter = woker.GetLimiter()
 		r.rfpDupeFilter = woker
 		r.useDistributed = true
 		r.checkMasterLive = woker.CheckMasterLive
@@ -131,7 +131,7 @@ func DistributedWithLimiterRate(rate int) DistributeOptions {
 // DistributedWithGetqueueKey 队列key生成函数
 func DistributedWithGetqueueKey(keyFunc GetRDBKey) DistributeOptions {
 	return func(w *DistributedWorkerConfig) {
-		w.GetqueueKey = keyFunc
+		w.GetQueueKey = keyFunc
 	}
 }
 

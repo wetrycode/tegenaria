@@ -1,13 +1,13 @@
 package tegenaria
 
 import (
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 	"github.com/smartystreets/goconvey/convey"
+	"github.com/sourcegraph/conc"
 )
 
 func newTestStats(mockRedis *miniredis.Miniredis, t *testing.T, opts ...DistributeStatisticOption) *DistributeStatistic {
@@ -15,7 +15,7 @@ func newTestStats(mockRedis *miniredis.Miniredis, t *testing.T, opts ...Distribu
 	rdb := redis.NewClient(&redis.Options{
 		Addr: mockRedis.Addr(),
 	})
-	wg := &sync.WaitGroup{}
+	wg := &conc.WaitGroup{}
 	stats := NewDistributeStatistic("tegenaria:v1:stats", rdb, wg, opts...)
 	stats.setCurrentSpider("distributedStatsSpider")
 

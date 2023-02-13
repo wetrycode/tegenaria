@@ -28,7 +28,7 @@ func TestCmdStart(t *testing.T) {
 		engine := newTestEngine("testCmdIntervalSpider", EngineWithInterval(4*time.Second), EngineWithUniqueReq(false))
 		rootCmd.SetArgs([]string{"crawl", "testCmdIntervalSpider", "-i"})
 		go engine.Execute()
-		time.Sleep(8 * time.Second)
+		time.Sleep(5 * time.Second)
 		convey.So(engine.statistic.GetRequestSent(), convey.ShouldAlmostEqual, 2)
 		convey.So(engine.statistic.GetItemScraped(), convey.ShouldAlmostEqual, 2)
 	})

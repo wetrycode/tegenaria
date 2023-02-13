@@ -51,8 +51,8 @@ type DistributedWorkerInterface interface {
 	Heartbeat() error
 	// CheckAllNodesStop 检查所有的节点是否都已经停止
 	CheckAllNodesStop() (bool, error)
-	// GetLimter 获取限速器
-	GetLimter() LimitInterface
+	// GetLimiter 获取限速器
+	GetLimiter() LimitInterface
 	// CheckMasterLive 检测主节点是否还在线
 	CheckMasterLive() (bool, error)
 	// SetMaster 是否将当前的节点设置为主节点
@@ -88,8 +88,8 @@ type DistributedWorker struct {
 	bloomM uint
 	// limiter 并发控制器
 	limiter LimitInterface
-	// nodeId 节点id
-	nodeId string
+	// nodeID 节点id
+	nodeID string
 	// nodesSetPrefix 节点池的key前缀
 	// 默认为"tegenaria:v1:nodes"
 	nodesSetPrefix string
@@ -115,6 +115,8 @@ type serialize struct {
 
 // RdbNodes redis cluster 节点地址
 type RdbNodes []string
+
+// DistributeOptions 分布式组件的可选参数
 type DistributeOptions func(w *DistributedWorkerConfig)
 
 // DistributedWorkerConfig 分布式组件的配置参数
@@ -139,8 +141,8 @@ type DistributedWorkerConfig struct {
 	BloomN uint
 	// 并发量
 	LimiterRate int
-	// GetqueueKey 生成队列key的函数，允许用户自定义
-	GetqueueKey GetRDBKey
+	// GetQueueKey 生成队列key的函数，允许用户自定义
+	GetQueueKey GetRDBKey
 	// GetBFKey 布隆过滤器对应的生成key的函数，允许用户自定义
 	GetBFKey GetRDBKey
 	// getLimitKey 获取限速器对应的redis key
@@ -150,7 +152,7 @@ type DistributedWorkerConfig struct {
 // rdbCacheData request 队列缓存的数据结构
 type rdbCacheData map[string]interface{}
 
-// WorkerConfigWithRdbCluster redis cluser 模式下的分布式组件配置参数
+// WorkerConfigWithRdbCluster redis cluster 模式下的分布式组件配置参数
 type WorkerConfigWithRdbCluster struct {
 	*DistributedWorkerConfig
 	RdbNodes
@@ -168,7 +170,7 @@ func NewDistributedWorkerConfig(username string, passwd string, db uint32, opts 
 		BloomP:             0.001,
 		BloomN:             1024 * 1024,
 		LimiterRate:        32,
-		GetqueueKey:        getQueueDefaultKey,
+		GetQueueKey:        getQueueDefaultKey,
 		GetBFKey:           getBloomFilterDefaultKey,
 		getLimitKey:        getLimiterDefaultKey,
 	}
@@ -201,14 +203,14 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 	}
 	d := &DistributedWorker{
 		rdb:               rdb,
-		getQueueKey:       config.GetqueueKey,
+		getQueueKey:       config.GetQueueKey,
 		getBloomFilterKey: config.GetBFKey,
 		dupeFilter:        NewRFPDupeFilter(config.BloomP, uint(k)),
 		bloomP:            config.BloomP,
 		bloomK:            uint(k),
 		bloomN:            config.BloomN,
 		bloomM:            uint(m),
-		nodeId:            GetUUID(),
+		nodeID:            engineID,
 		ip:                ip,
 		nodesSetPrefix:    "tegenaria:v1:nodes",
 		nodePrefix:        "tegenaria:v1:node",
@@ -258,8 +260,8 @@ func getQueueDefaultKey() (string, time.Duration) {
 
 }
 
-// GetLimter 获取限速器
-func (w *DistributedWorker) GetLimter() LimitInterface {
+// GetLimiter 获取限速器
+func (w *DistributedWorker) GetLimiter() LimitInterface {
 	return w.limiter
 }
 
@@ -269,13 +271,17 @@ func (w *DistributedWorker) SetMaster(flag bool) {
 }
 
 // newRdbCache 构建待缓存的数据
-func newRdbCache(request *Request, ctxId string, spiderName string) (rdbCacheData, error) {
+func newRdbCache(request *Request, ctxID string, spiderName string) (rdbCacheData, error) {
 	r, err := request.ToMap()
 	if err != nil {
 		return nil, err
 	}
-	r["ctxId"] = ctxId
-	r["parser"] = GetFunctionName(request.Parser)
+	r["ctxId"] = ctxID
+	name := request.Parser
+	if name == "func1" {
+		engineLog.Infof("请求%s,%s, 获取到非法的解析函数", request.Url, ctxID)
+	}
+	r["parser"] = name
 	if request.Proxy != nil {
 		r["proxyUrl"] = request.Proxy.ProxyUrl
 
@@ -301,7 +307,7 @@ func (s *serialize) dumps() error {
 // 返回的是二进制数组
 func doSerialize(ctx *Context) ([]byte, error) {
 	// 先构建需要缓存的对象
-	data, err := newRdbCache(ctx.Request, ctx.CtxId, ctx.Spider.GetName())
+	data, err := newRdbCache(ctx.Request, ctx.CtxID, ctx.Spider.GetName())
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +372,6 @@ func (w *DistributedWorker) dequeue() (interface{}, error) {
 	spider := w.spiders.SpidersModules[req["spiderName"].(string)]
 
 	opts := []RequestOption{}
-	opts = append(opts, RequestWithParser(GetParserByName(spider, req["parser"].(string))))
 	if val, ok := req["proxyUrl"]; ok {
 		opts = append(opts, RequestWithRequestProxy(Proxy{ProxyUrl: val.(string)}))
 	}
@@ -374,7 +379,8 @@ func (w *DistributedWorker) dequeue() (interface{}, error) {
 		opts = append(opts, RequestWithRequestBytesBody(val.([]byte)))
 	}
 	request := RequestFromMap(req, opts...)
-	return NewContext(request, spider, WithContextId(req["ctxId"].(string))), nil
+	request.Parser = req["parser"].(string)
+	return NewContext(request, spider, WithContextID(req["ctxId"].(string))), nil
 
 }
 func (w *DistributedWorker) queueKey() (string, time.Duration) {
@@ -507,9 +513,9 @@ func (w *DistributedWorker) isExists(fingerprint []byte) (bool, error) {
 }
 
 // getNodeKey 获取当前节点的缓存key
-// 格式:{nodePrefix}:{spiderName}:{ip}:{nodeId}
+// 格式:{nodePrefix}:{spiderName}:{ip}:{nodeID}
 func (w *DistributedWorker) getNodeKey() string {
-	return fmt.Sprintf("%s:%s:%s:%s", w.nodePrefix, w.currentSpider, w.ip, w.nodeId)
+	return fmt.Sprintf("%s:%s:%s:%s", w.nodePrefix, w.currentSpider, w.ip, w.nodeID)
 }
 
 // getNodesSetKey 节点池缓存key
@@ -532,7 +538,7 @@ func (w *DistributedWorker) AddNode() error {
 	if err != nil {
 		return err
 	}
-	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeId)}
+	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeID)}
 	nodesKey := w.getNodesSetKey()
 	err = w.rdb.SAdd(goContext.TODO(), nodesKey, member...).Err()
 	if err != nil {
@@ -587,7 +593,7 @@ func (w *DistributedWorker) DelNode() error {
 	if err != nil {
 		return err
 	}
-	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeId)}
+	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeID)}
 	err = w.rdb.SRem(goContext.TODO(), w.getNodesSetKey(), member...).Err()
 	if w.isMaster {
 		w.delMaster()

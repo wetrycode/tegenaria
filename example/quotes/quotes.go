@@ -13,7 +13,7 @@ func NewQuotesEngine(opts ...tegenaria.EngineOption) *tegenaria.CrawlEngine {
 		FeedUrls: []string{"http://quotes.toscrape.com/"},
 	}
 	// 设置下载组件
-	Downloader := tegenaria.NewDownloader(tegenaria.DownloadWithTlsConfig(&tls.Config{InsecureSkipVerify: true, MaxVersion: tls.VersionTLS12}))
+	Downloader := tegenaria.NewDownloader(tegenaria.DownloadWithTLSConfig(&tls.Config{InsecureSkipVerify: true, MaxVersion: tls.VersionTLS12}))
 	opts = append(opts, tegenaria.EngineWithDownloader(Downloader))
 	Engine := tegenaria.NewEngine(opts...)
 	Engine.RegisterSpiders(ExampleSpiderInstance)

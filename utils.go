@@ -23,16 +23,16 @@
 package tegenaria
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"net"
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/google/uuid"
+	"github.com/sourcegraph/conc"
 )
 
 func GetUUID() string {
@@ -45,68 +45,37 @@ func GetUUID() string {
 // GoFunc 协程函数
 type GoFunc func() error
 
-// AddGo 向指定的wg添加协程函数
-// 使用chan error 传递异常
-func AddGo(wg *sync.WaitGroup, funcs ...GoFunc) <-chan error {
+func GoRunner(ctx context.Context, wg *conc.WaitGroup, funcs ...GoFunc) <-chan error {
 	ch := make(chan error, len(funcs))
 	for _, readyFunc := range funcs {
 		_func := readyFunc
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			defer func() {
-				wg.Done()
 			}()
 			ch <- _func()
-
-		}()
+		})
 	}
 	return ch
+
 }
 
 // GetFunctionName 提取解析函数名
 func GetFunctionName(fn Parser) string {
+	entry := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Entry()
+	file, no := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).FileLine(entry)
 	name := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 	nodes := strings.Split(name, ".")
+	engineLog.Infof("提取到的函数:%s,%s,%d", nodes[len(nodes)-1], file, no)
 	return strings.ReplaceAll(nodes[len(nodes)-1], "-fm", "")
 
 }
 
 // GetParserByName 通过函数名从spider实例中获取解析函数
-func GetParserByName(spider SpiderInterface, name string) Parser {
-	return func(resp *Context, req chan<- *Context) error {
-		args := make([]reflect.Value, 2)
-		args[0] = reflect.ValueOf(resp)
-		args[1] = reflect.ValueOf(req)
-		f := reflect.ValueOf(spider).MethodByName(name)
-		// engineLog.Errorf("无法获取到%s的解析函数%s", spider.GetName(), name)
-		rets := f.Call(args)
-		if rets[0].IsNil() {
-			return nil
-		}
-		return rets[0].Interface().(error)
-	}
+func GetParserByName(spider SpiderInterface, name string) reflect.Value {
+	return reflect.ValueOf(spider).MethodByName(name)
 }
 
-// GetAllParserMethod 获取spider实例所有的解析函数
-func GetAllParserMethod(spider SpiderInterface) map[string]Parser {
-	val := reflect.ValueOf(spider)
-	sType := reflect.TypeOf(spider)
-	parsers := make(map[string]Parser)
-	for i := 0; i < val.NumMethod(); i++ {
-		f := val.Method(i)
-		switch f.Interface().(type) {
-		case func(resp *Context, req chan<- *Context) error:
-			name := sType.Method(i).Name
-			parsers[fmt.Sprintf("%s.%s", spider.GetName(), name)] = GetParserByName(spider, name)
-		default:
-			// fmt.Printf("method is %s, type is %v, kind is %s.\n", s.Method(i).Name, f.Type(), s.Method(i).Type.Kind())
-
-		}
-	}
-	return parsers
-}
-
-// OptimalNumOfHashFunctions计算最优的布隆过滤器哈希函数个数
+// OptimalNumOfHashFunctions 计算最优的布隆过滤器哈希函数个数
 func OptimalNumOfHashFunctions(n int64, m int64) int64 {
 	// (m / n) * log(2), but avoid truncation due to division!
 	// return math.max(1, (int) Math.round((double) m / n * Math.log(2)));
@@ -139,4 +108,7 @@ func GetMachineIp() (string, error) {
 	}
 	return "", err
 
+}
+func GetEngineId() string {
+	return engineID
 }

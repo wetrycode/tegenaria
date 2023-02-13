@@ -77,19 +77,6 @@ func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 		FeedUrls: feedUrls,
 	}
 }
-func (s *BaseSpider) StartRequest(req chan<- *Context) {
-	// StartRequest start feed urls request
-}
-
-// Parser parse request response
-// it will send item or new request to engine
-func (s *BaseSpider) Parser(resp *Context, item chan<- *ItemMeta, req chan<- *Context) error {
-	return nil
-}
-func (s *BaseSpider) ErrorHandler(err *HandleError) {
-	// ErrorHandler error handler
-
-}
 
 // NewSpiders 构建Spiders实例
 func NewSpiders() *Spiders {

@@ -23,7 +23,9 @@
 package tegenaria
 
 import (
+	"context"
 	"fmt"
+	"reflect"
 	"runtime"
 	"runtime/debug"
 	"sort"
@@ -31,11 +33,12 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
+	"github.com/sourcegraph/conc"
 )
 
 var engineLog *logrus.Entry = GetLogger("engine") // engineLog engine runtime logger
-// wokerUnit context处理单元
-type wokerUnit func(c *Context) error
+// workerUnit context处理单元
+type workerUnit func(c *Context) error
 
 // EventsWatcher 事件监听器
 type EventsWatcher func(ch chan EventType) error
@@ -56,7 +59,7 @@ type CrawlEngine struct {
 	downloaderMiddlewares Middlewares
 
 	// waitGroup 引擎调度任务协程控制器
-	waitGroup *sync.WaitGroup
+	waitGroup *conc.WaitGroup
 	// downloader 下载器
 	downloader Downloader
 	// cache request队列缓存
@@ -100,6 +103,11 @@ type CrawlEngine struct {
 	mutex sync.Mutex
 	// interval 定时任务执行时间间隔
 	interval time.Duration
+
+	// statusOn
+	statusOn StatusType
+
+	ticker *time.Ticker
 }
 
 // RegisterSpider 将spider实例注册到引擎的 spiders
@@ -170,7 +178,7 @@ func (e *CrawlEngine) Execute() {
 }
 
 // start spider 爬虫启动器
-func (e *CrawlEngine) start(spiderName string) StatisticInterface {
+func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
 	e.mutex.Lock()
 	defer func() {
 		if p := recover(); p != nil {
@@ -181,11 +189,15 @@ func (e *CrawlEngine) start(spiderName string) StatisticInterface {
 	}()
 	// 引入引擎所有的组件，并通过协程执行
 	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
-	wg := &sync.WaitGroup{}
+	e.statusOn = ON_START
+	wg := &conc.WaitGroup{}
 	// 事件监听器，通过协程执行
 	hookTasks := []GoFunc{e.EventsWatcherRunner}
-	AddGo(wg, hookTasks...)
-	AddGo(e.waitGroup, tasks...)
+	// AddGo(wg, hookTasks...)
+	GoRunner(context.Background(), wg, hookTasks...)
+	GoRunner(context.Background(), e.waitGroup, tasks...)
+
+	// AddGo(e.waitGroup, tasks...)
 	e.eventsChan <- START
 	e.waitGroup.Wait()
 	e.eventsChan <- EXIT
@@ -196,16 +208,15 @@ func (e *CrawlEngine) start(spiderName string) StatisticInterface {
 	engineLog.Infof(s)
 	e.startSpiderFinish = false
 	e.isStop = false
+	e.statusOn = ON_STOP
 	return e.statistic
 }
-func (e *CrawlEngine) startWithTicker(spiderName string) {
-	ticker := time.NewTicker(e.interval)
-	defer ticker.Stop()
-	for {
-		engineLog.Infof("进入下一轮")
-		e.start(spiderName)
-		engineLog.Infof("完成一轮抓取")
-		<-ticker.C
+func (e *CrawlEngine) StartWithTicker(spiderName string) {
+	e.ticker.Reset(e.interval)
+	e.Start(spiderName)
+	for range e.ticker.C {
+		e.Start(spiderName)
+		e.statusOn = ON_PAUSE
 	}
 
 }
@@ -225,8 +236,14 @@ func (e *CrawlEngine) Scheduler() error {
 		if e.isStop {
 			return nil
 		}
+		if e.statusOn == ON_PAUSE {
+			e.eventsChan <- HEARTBEAT
+			runtime.Gosched()
+			continue
+		}
 		// 从缓存队列中读取请求对象
 		req, err := e.cache.dequeue()
+		// engineLog.Infof("读取对象:%s",err)
 		if err != nil {
 			runtime.Gosched()
 			continue
@@ -234,7 +251,8 @@ func (e *CrawlEngine) Scheduler() error {
 		request := req.(*Context)
 		// 对request进行处理
 		f := []GoFunc{e.worker(request)}
-		AddGo(e.waitGroup, f...)
+		// AddGo(e.waitGroup, f...)
+		GoRunner(context.Background(), e.waitGroup, f...)
 
 	}
 }
@@ -255,11 +273,12 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			}
 			// 处理结束回收context
 			c.Close()
+			// c.Cancel()
 		}()
 		// 发起心跳检查
 		e.eventsChan <- HEARTBEAT
 		// item启用新的协程进行处理
-		wg := &sync.WaitGroup{}
+		wg := &conc.WaitGroup{}
 		funcs := []GoFunc{func() error {
 			err := e.doPipelinesHandlers(c)
 			if err != nil {
@@ -268,9 +287,10 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			return err
 		},
 		}
-		AddGo(wg, funcs...)
+		GoRunner(ctx, wg, funcs...)
+		// AddGo(wg, funcs...)
 		// 处理request的所有工作单元
-		units := []wokerUnit{e.doDownload, e.doHandleResponse, e.doParse}
+		units := []workerUnit{e.doDownload, e.doHandleResponse, e.doParse}
 		// 依次执行工作单元
 		for _, unit := range units {
 			err := unit(c)
@@ -295,7 +315,7 @@ func (e *CrawlEngine) recvRequest() error {
 			e.writeCache(req)
 		// 每三秒钟检查一次所有的任务是否都已经结束
 		case <-time.After(time.Second * 3):
-			if e.checkReadyDone() {
+			if e.checkReadyDone() || e.statusOn == ON_STOP {
 				e.isStop = true
 				return nil
 			}
@@ -331,7 +351,7 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 		ret, err := e.rfpDupeFilter.DoDupeFilter(ctx)
 		if err != nil {
 			isDuplicated = true
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("request unique error %s", err.Error())
+			engineLog.WithField("request_id", ctx.CtxID).Errorf("request unique error %s", err.Error())
 			return err
 		}
 		// request重复则直接返回
@@ -343,7 +363,8 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 	// ctx进入缓存队列
 	err = e.cache.enqueue(ctx)
 	if err != nil {
-		engineLog.WithField("request_id", ctx.CtxId).Warnf("Cache enqueue error %s", err.Error())
+		engineLog.Errorf("进入队列失败:%s", err.Error())
+		engineLog.WithField("request_id", ctx.CtxID).Warnf("Cache enqueue error %s", err.Error())
 		time.Sleep(time.Second)
 		e.cacheChan <- ctx
 	}
@@ -369,7 +390,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 	for _, middleware := range e.downloaderMiddlewares {
 		err := middleware.ProcessRequest(ctx)
 		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
+			engineLog.WithField("request_id", ctx.CtxID).Errorf("Middleware %s handle request error %s", middleware.GetName(), err.Error())
 			return err
 		}
 	}
@@ -380,7 +401,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 	}
 	// 增加请求发送量
 	e.statistic.IncrRequestSent()
-	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request ready to download", ctx.CtxId)
+	engineLog.WithField("request_id", ctx.CtxID).Infof("%s request ready to download", ctx.CtxID)
 	rsp, err := e.downloader.Download(ctx)
 	if err != nil {
 		return err
@@ -399,13 +420,13 @@ func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 	}()
 	if ctx.Response == nil {
 		err := fmt.Errorf("response is nil")
-		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
+		engineLog.WithField("request_id", ctx.CtxID).Errorf("Request is fail with error %s", err.Error())
 		return err
 	}
 	// 检查状态码是否合法
 	if !e.downloader.CheckStatus(uint64(ctx.Response.Status), ctx.Request.AllowStatusCode) {
 		err := fmt.Errorf("%s %d", ErrNotAllowStatusCode.Error(), ctx.Response.Status)
-		engineLog.WithField("request_id", ctx.CtxId).Errorf("Request is fail with error %s", err.Error())
+		engineLog.WithField("request_id", ctx.CtxID).Errorf("Request is fail with error %s", err.Error())
 		return err
 	}
 
@@ -417,7 +438,7 @@ func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 		middleware := e.downloaderMiddlewares[len(e.downloaderMiddlewares)-index-1]
 		err := middleware.ProcessResponse(ctx, e.requestsChan)
 		if err != nil {
-			engineLog.WithField("request_id", ctx.CtxId).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
+			engineLog.WithField("request_id", ctx.CtxID).Errorf("Middleware %s handle response error %s", middleware.GetName(), err.Error())
 			return err
 		}
 	}
@@ -435,9 +456,17 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 	if ctx.Response == nil {
 		return nil
 	}
-	engineLog.WithField("request_id", ctx.CtxId).Infof("%s request response ready to parse", ctx.CtxId)
-
-	parserErr := ctx.Request.Parser(ctx, e.requestsChan)
+	engineLog.WithField("request_id", ctx.CtxID).Infof("%s request response ready to parse", ctx.CtxID)
+	args := make([]reflect.Value, 2)
+	args[0] = reflect.ValueOf(ctx)
+	args[1] = reflect.ValueOf(e.requestsChan)
+	rets := GetParserByName(ctx.Spider, ctx.Request.Parser).Call(args)
+	var parserErr error = nil
+	if !rets[0].IsNil() {
+		// return nil
+		parserErr = rets[0].Interface().(error)
+	}
+	// parserErr := ctx.Request.Parser(ctx, e.requestsChan)
 	if parserErr != nil {
 		engineLog.Errorf("%s", parserErr.Error())
 	}
@@ -454,11 +483,11 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 	}()
 	for item := range ctx.Items {
 		e.statistic.IncrItemScraped()
-		engineLog.WithField("request_id", ctx.CtxId).Infof("%s item is scraped", item.CtxId)
+		engineLog.WithField("request_id", ctx.CtxID).Infof("%s item is scraped", item.CtxID)
 		for _, pipeline := range e.pipelines {
 			err := pipeline.ProcessItem(ctx.Spider, item)
 			if err != nil {
-				engineLog.WithField("request_id", ctx.CtxId).Errorf("Pipeline %d handle item error %s", pipeline.GetPriority(), err.Error())
+				engineLog.WithField("request_id", ctx.CtxID).Errorf("Pipeline %d handle item error %s", pipeline.GetPriority(), err.Error())
 				// ctx.Error = err
 				return err
 			}
@@ -476,17 +505,48 @@ func (e *CrawlEngine) GetSpiders() *Spiders {
 func (e *CrawlEngine) Close() {
 	close(e.requestsChan)
 	close(e.cacheChan)
+	e.ticker.Stop()
 	err := e.statistic.Reset()
 	if err != nil {
 		engineLog.Errorf("reset statistic error %s", err.Error())
 
 	}
 }
+func (e *CrawlEngine) StopTicker() {
+	e.ticker.Stop()
+}
+
+// SetInterval 设置时间间隔
+func (e *CrawlEngine) SetInterval(interval time.Duration) {
+	e.interval = interval
+	e.ticker.Reset(interval)
+}
+
+// SetMaster 设置是否是主节点
+func (e *CrawlEngine) SetMaster(isMaster bool) {
+	e.isMaster = isMaster
+}
+
+// SetStatus 设置引擎状态
+// 用于控制引擎的启停
+func (e *CrawlEngine) SetStatus(status StatusType) {
+	e.statusOn = status
+}
+
+// GetStatic 获取StatisticInterface 统计指标
+func (e *CrawlEngine) GetStatic() StatisticInterface {
+	return e.statistic
+}
+
+// GetStatusOn 获取引擎的状态
+func (e *CrawlEngine) GetStatusOn() StatusType {
+	return e.statusOn
+}
 
 // 构建新的引擎
 func NewEngine(opts ...EngineOption) *CrawlEngine {
 	Engine := &CrawlEngine{
-		waitGroup:             &sync.WaitGroup{},
+		waitGroup:             &conc.WaitGroup{},
 		spiders:               NewSpiders(),
 		requestsChan:          make(chan *Context, 1024),
 		pipelines:             make(ItemPipelines, 0),
@@ -505,6 +565,8 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		downloader:            NewDownloader(),
 		hooker:                NewDefaultHooks(),
 		interval:              -1 * time.Second,
+		statusOn:              ON_STOP,
+		ticker:                time.NewTicker(1),
 	}
 	for _, o := range opts {
 		o(Engine)

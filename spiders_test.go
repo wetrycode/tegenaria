@@ -21,6 +21,7 @@ func (s *TestSpider) StartRequest(req chan<- *Context) {
 func (s *TestSpider) Parser(resp *Context, req chan<- *Context) error {
 	return testParser(resp, req)
 }
+
 func (s *TestSpider) ErrorHandler(err *Context, req chan<- *Context) {
 
 }
