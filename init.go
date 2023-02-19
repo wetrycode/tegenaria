@@ -37,7 +37,6 @@ func init() {
 	onceInit.Do(func() {
 		initSettings()
 		initLog()
-		newContextManager()
 		gob.Register(map[string]interface{}{})
 		gob.Register([]interface{}{})
 		gob.Register(GET)

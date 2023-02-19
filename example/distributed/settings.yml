@@ -2,3 +2,14 @@ redis:
   addr: "127.0.0.1:6379"
   username: ""
   password: ""
+
+influxdb:
+  host: "103.45.66.94"
+  port: 9086
+  bucket: "hothub-bucket-dev"
+  org: "hothub"
+  token: "asvCNN9-44EI0JhQzuW75AHG-DLhKpCQwRkelbb86Qdo3-2YYHos3RIdkf_EFVevV59pNFqkW8AYPIfGjEIQ-w=="
+
+log:
+  path: "/var/logs/Tegenaria"
+  level: "info" 

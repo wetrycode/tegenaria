@@ -30,7 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/spaolacci/murmur3"
 )
 
@@ -197,7 +197,7 @@ func NewDistributedWorker(addr string, config *DistributedWorkerConfig) *Distrib
 	k := OptimalNumOfHashFunctions(int64(config.BloomN), m)
 	config.RedisAddr = addr
 	rdb := NewRdbClient(config)
-	ip, err := GetMachineIp()
+	ip, err := GetMachineIP()
 	if err != nil {
 		panic(fmt.Sprintf("get machine ip error %s", err.Error()))
 	}
@@ -533,8 +533,11 @@ func (w *DistributedWorker) getMaterSetKey() string {
 // AddNode 新增节点
 func (w *DistributedWorker) AddNode() error {
 	key := w.getNodeKey()
-	status := w.rdb.SetEX(goContext.TODO(), key, 1, 10*time.Second)
+	status := w.rdb.SetEx(goContext.TODO(), key, 1, 10*time.Second)
 	err := status.Err()
+	defer func() {
+		engineLog.Infof("注册节点:%s", key)
+	}()
 	if err != nil {
 		return err
 	}
@@ -582,6 +585,7 @@ func (w *DistributedWorker) CheckMasterLive() (bool, error) {
 		result = append(result, pipe.Get(goContext.TODO(), member))
 	}
 	count, err := w.executeCheck(pipe, result, count)
+	engineLog.Infof("主节点个数:%d", count)
 	return count != 0, err
 
 }
@@ -604,14 +608,14 @@ func (w *DistributedWorker) DelNode() error {
 // StopNode 停止当前节点的活动
 func (w *DistributedWorker) StopNode() error {
 	key := w.getNodeKey()
-	err := w.rdb.SetEX(goContext.TODO(), key, 0, 1*time.Second).Err()
+	err := w.rdb.SetEx(goContext.TODO(), key, 0, 1*time.Second).Err()
 	return err
 }
 
 // Heartbeat 心跳包
 func (w *DistributedWorker) Heartbeat() error {
 	key := w.getNodeKey()
-	err := w.rdb.SetEX(goContext.TODO(), key, 1, 1*time.Second).Err()
+	err := w.rdb.SetEx(goContext.TODO(), key, 1, 1*time.Second).Err()
 	return err
 }
 
@@ -658,4 +662,7 @@ func (w *DistributedWorker) CheckAllNodesStop() (bool, error) {
 }
 func (w *DistributedWorker) close() error {
 	return w.DelNode()
+}
+func (w *DistributedWorker) GetRDB() redis.Cmdable {
+	return w.rdb
 }

@@ -53,6 +53,8 @@ var (
 	ErrResponseRead error = errors.New("read response to buffer error")
 	// ErrResponseParse 响应解析失败
 	ErrResponseParse error = errors.New("parse response error")
+	// ErrNoMaterNodeLive 找不到主节点
+	ErrNoMaterNodeLive error = errors.New("no any master node is active")
 )
 
 // RedirectError 重定向错误

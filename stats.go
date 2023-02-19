@@ -24,68 +24,53 @@ package tegenaria
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/sourcegraph/conc"
 )
 
 // StatsFieldType 统计指标的数据类型
 type StatsFieldType string
 
+// var (
+//
+//	REQUEST uint64 =
+//
+// )
+var codeStatusName = [][]int{{100, 101}, {200, 206}, {300, 307}, {400, 417}, {500, 505}}
+
 const (
 	// RequestStats 发起的请求总数
-	RequestStats StatsFieldType = "requests"
+	RequestStats string = "requests"
 	// ItemsStats 获取到的items总数
-	ItemsStats StatsFieldType = "items"
+	ItemsStats string = "items"
 	// DownloadFailStats 请求失败总数
-	DownloadFailStats StatsFieldType = "download_fail"
+	DownloadFailStats string = "download_fail"
 	// ErrorStats 错误总数
-	ErrorStats StatsFieldType = "errors"
+	ErrorStats string = "errors"
 )
 
 // StatisticInterface 数据统计组件接口
 type StatisticInterface interface {
-	// IncrItemScraped 累加一条item
-	IncrItemScraped()
-	// IncrRequestSent 累加一条request
-	IncrRequestSent()
-	// IncrDownloadFail 累加一条下载失败数据
-	IncrDownloadFail()
-	// IncrErrorCount 累加一条错误数据
-	IncrErrorCount()
-	// GetItemScraped 获取拿到的item总数
-	GetItemScraped() uint64
-	// GetRequestSent 获取发送request的总数
-	GetRequestSent() uint64
-	// GetErrorCount 获取处理过程中生成的error总数
-	GetErrorCount() uint64
-	// GetDownloadFail 获取下载失败的总数
-	GetDownloadFail() uint64
-	// OutputStats 格式化统计指标
-	OutputStats() map[string]uint64
-	// Reset 重置指标统计组件,所有指标归零
-	Reset() error
-	// setCurrentSpider 设置当前正在运行的spider
+	GetAllStats() map[string]uint64
+
 	setCurrentSpider(spider string)
+	Incr(metric string)
+	Get(metric string) uint64
 }
 
 // Statistic 数据统计指标
 type Statistic struct {
-	// ItemScraped items总数
-	ItemScraped uint64 `json:"items"`
-	// RequestSent 请求总数
-	RequestSent uint64 `json:"requets"`
-	// DownloadFail 下载失败总数
-	DownloadFail uint64 `json:"download_fail"`
-	// ErrorCount 错误总数
-	ErrorCount uint64 `json:"errors"`
+
 	// spider 当前正在运行的spider名
-	spider string `json:"-"`
+	Metrics  map[string]*uint64
+	spider   string `json:"-"`
+	register sync.Map
 }
 
 // DistributeStatistic 分布式统计组件
@@ -104,7 +89,8 @@ type DistributeStatistic struct {
 	// spider 当前在运行的spider名
 	spider string
 	// fields 所有参与统计的指标
-	fields []StatsFieldType
+	fields   []string
+	register sync.Map
 }
 
 // DistributeStatisticOption 分布式组件可选参数定义
@@ -112,12 +98,27 @@ type DistributeStatisticOption func(d *DistributeStatistic)
 
 // NewStatistic 默认统计数据组件构造函数
 func NewStatistic() *Statistic {
-	return &Statistic{
-		ItemScraped:  0,
-		RequestSent:  0,
-		DownloadFail: 0,
-		ErrorCount:   0,
+	m := map[string]*uint64{
+		RequestStats:      new(uint64),
+		DownloadFailStats: new(uint64),
+		ItemsStats:        new(uint64),
+		ErrorStats:        new(uint64),
 	}
+	for _, status := range codeStatusName {
+		min, max := status[0], status[1]
+		for i := min; i <= max; i++ {
+			m[strconv.Itoa(i)] = new(uint64)
+		}
+	}
+	for _, v := range m {
+		atomic.StoreUint64(v, 0)
+
+	}
+	s := &Statistic{
+		Metrics:  m,
+		register: sync.Map{},
+	}
+	return s
 }
 
 // setCurrentSpider 设置当前的spider
@@ -125,61 +126,27 @@ func (s *Statistic) setCurrentSpider(spider string) {
 	s.spider = spider
 }
 
-// IncrItemScraped 累加一条item
-func (s *Statistic) IncrItemScraped() {
-	atomic.AddUint64(&s.ItemScraped, 1)
+// Incr 新增一个指标值
+func (s *Statistic) Incr(metrics string) {
+	atomic.AddUint64(s.Metrics[metrics], 1)
+	s.register.Store(metrics, true)
 }
 
-// IncrRequestSent 累加一条request
-func (s *Statistic) IncrRequestSent() {
-	atomic.AddUint64(&s.RequestSent, 1)
+// Get 获取某个指标的数值
+func (s *Statistic) Get(metric string) uint64 {
+	return atomic.LoadUint64(s.Metrics[metric])
 }
 
-// IncrDownloadFail 累加一条下载失败数据
-func (s *Statistic) IncrDownloadFail() {
-	atomic.AddUint64(&s.DownloadFail, 1)
-}
+// GetAllStats 格式化统计数据
+func (s *Statistic) GetAllStats() map[string]uint64 {
+	result := make(map[string]uint64)
+	s.register.Range(func(key any, value any) bool {
+		k := key.(string)
+		result[k] = s.Get(k)
+		return true
 
-// IncrErrorCount 累加捕获到的数量
-func (s *Statistic) IncrErrorCount() {
-	atomic.AddUint64(&s.ErrorCount, 1)
-}
-
-// GetItemScraped 获取拿到的item总数
-func (s *Statistic) GetItemScraped() uint64 {
-	return atomic.LoadUint64(&s.ItemScraped)
-}
-
-// GetRequestSent 获取发送的请求总数
-func (s *Statistic) GetRequestSent() uint64 {
-	return atomic.LoadUint64(&s.RequestSent)
-}
-
-// GetDownloadFail 获取下载失败的总数
-func (s *Statistic) GetDownloadFail() uint64 {
-	return atomic.LoadUint64(&s.DownloadFail)
-}
-
-// GetErrorCount 获取捕获到错误总数
-func (s *Statistic) GetErrorCount() uint64 {
-	return atomic.LoadUint64(&s.ErrorCount)
-}
-
-// OutputStats 格式化统计数据
-func (s *Statistic) OutputStats() map[string]uint64 {
-	result := map[string]uint64{}
-	b, _ := json.Marshal(s)
-	_ = json.Unmarshal(b, &result)
+	})
 	return result
-}
-
-// Reset 重置统计数据
-func (s *Statistic) Reset() error {
-	atomic.StoreUint64(&s.DownloadFail, 0)
-	atomic.StoreUint64(&s.ItemScraped, 0)
-	atomic.StoreUint64(&s.RequestSent, 0)
-	atomic.StoreUint64(&s.ErrorCount, 0)
-	return nil
 }
 
 // setCurrentSpider 设置当前的spider名
@@ -195,7 +162,7 @@ func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *conc.W
 		rdb:           rdb,
 		wg:            wg,
 		afterResetTTL: -1 * time.Second,
-		fields:        []StatsFieldType{ItemsStats, RequestStats, DownloadFailStats, ErrorStats},
+		fields:        []string{ItemsStats, RequestStats, DownloadFailStats, ErrorStats},
 	}
 	for _, o := range opts {
 		o(d)
@@ -203,69 +170,24 @@ func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *conc.W
 	return d
 }
 
-// IncrStats 累加指定的统计指标
-func (s *DistributeStatistic) IncrStats(field StatsFieldType) {
+// Incr 新增一个指标值
+func (s *DistributeStatistic) Incr(metric string) {
 	f := func() error {
-		return s.rdb.Incr(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)).Err()
+		return s.rdb.Incr(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, metric)).Err()
 	}
 	funcs := []GoFunc{f}
-	// AddGo(s.wg, funcs...)
-	GoRunner(context.Background(), s.wg, funcs...)
-
+	s.register.Store(metric, true)
+	GoRunner(context.TODO(), s.wg, funcs...)
 }
 
-// IncrItemScraped 累加一条item
-func (s *DistributeStatistic) IncrItemScraped() {
-	s.IncrStats(ItemsStats)
-}
-
-// IncrRequestSent 累加一条request
-func (s *DistributeStatistic) IncrRequestSent() {
-	s.IncrStats(RequestStats)
-
-}
-
-// IncrErrorCount 累加一条错误
-func (s *DistributeStatistic) IncrErrorCount() {
-	s.IncrStats(ErrorStats)
-
-}
-
-// IncrDownloadFail 累计获取下载失败的数量
-func (s *DistributeStatistic) IncrDownloadFail() {
-	s.IncrStats(DownloadFailStats)
-
-}
-
-// GetStatsField 获取指定的数据指标值
-func (s *DistributeStatistic) GetStatsField(field StatsFieldType) uint64 {
+// Get 获取某一个指标
+func (s *DistributeStatistic) Get(field string) uint64 {
 	val, err := s.rdb.Get(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)).Int64()
 	if err != nil {
 		engineLog.Errorf("get %s stats error %s", field, err.Error())
 		return 0
 	}
 	return uint64(val)
-}
-
-// GetItemScraped 获取items的值
-func (s *DistributeStatistic) GetItemScraped() uint64 {
-	return s.GetStatsField(ItemsStats)
-}
-
-// GetRequestSent 获取request 量
-func (s *DistributeStatistic) GetRequestSent() uint64 {
-	return s.GetStatsField(RequestStats)
-}
-
-// GetDownloadFail 获取下载失败数
-func (s *DistributeStatistic) GetDownloadFail() uint64 {
-	return s.GetStatsField(DownloadFailStats)
-
-}
-
-// GetErrorCount 获取错误数
-func (s *DistributeStatistic) GetErrorCount() uint64 {
-	return s.GetStatsField(ErrorStats)
 }
 
 // Reset 重置各项指标
@@ -298,16 +220,19 @@ func DistributeStatisticAfterResetTTL(ttl time.Duration) DistributeStatisticOpti
 	}
 }
 
-// OutputStats 格式化输出所有的数据指标
-func (s *DistributeStatistic) OutputStats() map[string]uint64 {
+// GetAllStats 获取所有的数据指标
+func (s *DistributeStatistic) GetAllStats() map[string]uint64 {
 
 	// fields := []string{"items", "requests", "download_fail", "errors"}
 	pipe := s.rdb.Pipeline()
 	result := []*redis.StringCmd{}
-	for _, field := range s.fields {
-		key := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
-		result = append(result, pipe.Get(context.TODO(), key))
-	}
+	s.register.Range(func(key any, value any) bool {
+		field := key.(string)
+		k := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
+		result = append(result, pipe.Get(context.TODO(), k))
+		return true
+
+	})
 	_, err := pipe.Exec(context.TODO())
 	if err != nil {
 		engineLog.Errorf("output stats error %s", err.Error())

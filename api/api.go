@@ -113,14 +113,14 @@ func (t *TegenariaAPI) pause(ctx *gin.Context) {
 
 func (t *TegenariaAPI) status(ctx *gin.Context) {
 	statistic := t.E.GetStatic()
-	ip, _ := tegenaria.GetMachineIp()
+	ip, _ := tegenaria.GetMachineIP()
 	rsp := statusResp{
-		Request:       statistic.GetRequestSent(),
-		DownloadedErr: statistic.GetDownloadFail(),
-		Items:         statistic.GetItemScraped(),
-		Errors:        statistic.GetErrorCount(),
+		Request:       statistic.Get(tegenaria.RequestStats),
+		DownloadedErr: statistic.Get(tegenaria.DownloadFailStats),
+		Items:         statistic.Get(tegenaria.ItemsStats),
+		Errors:        statistic.Get(tegenaria.ErrorStats),
 		Status:        t.E.GetStatusOn().GetTypeName(),
-		EngineId:      fmt.Sprintf("%s:%s", ip, tegenaria.GetEngineId()),
+		EngineId:      fmt.Sprintf("%s:%s", ip, tegenaria.GetEngineID()),
 	}
 	appG := Gin{Ctx: ctx}
 

@@ -24,12 +24,15 @@ package tegenaria
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -70,7 +73,6 @@ type CrawlEngine struct {
 	// checkMasterLive 检查所有的master是否都在线
 	checkMasterLive CheckMasterLive
 
-	// requestsChan *Request channel
 	// 整个系统产生的request对象都应该通过该channel
 	// 提交到引擎
 	requestsChan chan *Context
@@ -104,13 +106,19 @@ type CrawlEngine struct {
 	// interval 定时任务执行时间间隔
 	interval time.Duration
 
-	// statusOn
+	// statusOn 当前引擎的状态
 	statusOn StatusType
-
+	// ticker 计时器
 	ticker *time.Ticker
+
+	// currentSpider 当前正在运行的spider 实例
+	currentSpider SpiderInterface
+
+	// ctxCount
+	ctxCount int64
 }
 
-// RegisterSpider 将spider实例注册到引擎的 spiders
+// RegisterSpiders 将spider实例注册到引擎的 spiders
 func (e *CrawlEngine) RegisterSpiders(spider SpiderInterface) {
 	err := e.spiders.Register(spider)
 	if err != nil {
@@ -137,34 +145,42 @@ func (e *CrawlEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterfa
 func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
 	_spiderName := spiderName
 	return func() error {
+		defer func() {
+			e.startSpiderFinish = true
+
+		}()
 		spider, ok := e.spiders.SpidersModules[_spiderName]
 
 		if !ok {
-			panic(fmt.Sprintf("Spider %s not found", _spiderName))
+			panic(ErrSpiderNotExist)
 		}
 		// 对相关组件设置当前的spider
 		e.statistic.setCurrentSpider(spiderName)
 		e.cache.setCurrentSpider(spiderName)
-		if e.useDistributed {
+		e.currentSpider = spider
+		if e.useDistributed && !e.isMaster {
 			// 分布式模式下非master组件不启动StartRequest
-			if e.isMaster {
-				spider.StartRequest(e.requestsChan)
-			} else {
+			start := time.Now()
+			for {
+				time.Sleep(3 * time.Second)
 				live, err := e.checkMasterLive()
-				if !live || err != nil {
+				engineLog.Infof("有主节点存在:%v", live)
+				if (!live) || (err != nil) {
 					if err != nil {
-						engineLog.Errorf("check master nodes status error %s", err.Error())
+						panic(fmt.Sprintf("check master nodes status error %s", err.Error()))
 					}
-					// 没有在线的master节点
-					// 不能启动slove节点
-					panic("master nodes not live")
+					engineLog.Warnf("正在等待主节点上线")
+					if time.Since(start) > 30*time.Second {
+						panic(ErrNoMaterNodeLive)
+					}
+					continue
 				}
+				break
 			}
 		} else {
 			spider.StartRequest(e.requestsChan)
 		}
 
-		e.startSpiderFinish = true
 		return nil
 	}
 
@@ -177,7 +193,7 @@ func (e *CrawlEngine) Execute() {
 
 }
 
-// start spider 爬虫启动器
+// Start 爬虫启动器
 func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
 	e.mutex.Lock()
 	defer func() {
@@ -188,6 +204,8 @@ func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
 		e.mutex.Unlock()
 	}()
 	// 引入引擎所有的组件，并通过协程执行
+	e.eventsChan <- START
+
 	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
 	e.statusOn = ON_START
 	wg := &conc.WaitGroup{}
@@ -198,19 +216,23 @@ func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
 	GoRunner(context.Background(), e.waitGroup, tasks...)
 
 	// AddGo(e.waitGroup, tasks...)
-	e.eventsChan <- START
-	e.waitGroup.Wait()
+	p := e.waitGroup.WaitAndRecover()
 	e.eventsChan <- EXIT
 	engineLog.Infof("Wating engine to stop...")
 	wg.Wait()
-	stats := e.statistic.OutputStats()
+	stats := e.statistic.GetAllStats()
 	s := Map2String(stats)
 	engineLog.Infof(s)
 	e.startSpiderFinish = false
 	e.isStop = false
 	e.statusOn = ON_STOP
+	if p != nil {
+		panic(p)
+	}
 	return e.statistic
 }
+
+// StartWithTicker 以定时任务的方式启动
 func (e *CrawlEngine) StartWithTicker(spiderName string) {
 	e.ticker.Reset(e.interval)
 	e.Start(spiderName)
@@ -248,11 +270,12 @@ func (e *CrawlEngine) Scheduler() error {
 			runtime.Gosched()
 			continue
 		}
+		atomic.AddInt64(&e.ctxCount, 1)
 		request := req.(*Context)
 		// 对request进行处理
 		f := []GoFunc{e.worker(request)}
 		// AddGo(e.waitGroup, f...)
-		GoRunner(context.Background(), e.waitGroup, f...)
+		GoRunner(context.TODO(), e.waitGroup, f...)
 
 	}
 }
@@ -265,7 +288,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 		defer func() {
 			if c.Error != nil {
 				// 新增一个错误
-				e.statistic.IncrErrorCount()
+				e.statistic.Incr("errors")
 				// 提交一个错误事件
 				e.eventsChan <- ERROR
 				// 将错误交给自定义的spider错误处理函数
@@ -273,6 +296,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			}
 			// 处理结束回收context
 			c.Close()
+			atomic.AddInt64(&e.ctxCount, -1)
 			// c.Cancel()
 		}()
 		// 发起心跳检查
@@ -282,7 +306,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 		funcs := []GoFunc{func() error {
 			err := e.doPipelinesHandlers(c)
 			if err != nil {
-				c.Error = NewError(c, err)
+				c.Error = NewError(c, errors.New(err.Error()))
 			}
 			return err
 		},
@@ -301,7 +325,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 				break
 			}
 		}
-		close(c.Items)
+		close(ctx.Items)
 		wg.Wait()
 		return nil
 	}
@@ -312,6 +336,7 @@ func (e *CrawlEngine) recvRequest() error {
 	for {
 		select {
 		case req := <-e.requestsChan:
+			atomic.AddInt64(&e.ctxCount, 1)
 			e.writeCache(req)
 		// 每三秒钟检查一次所有的任务是否都已经结束
 		case <-time.After(time.Second * 3):
@@ -330,33 +355,35 @@ func (e *CrawlEngine) recvRequest() error {
 // 所有的context是否都已经关闭
 // 队列是否为空
 func (e *CrawlEngine) checkReadyDone() bool {
-	return e.startSpiderFinish && ctxManager.isEmpty() && e.cache.isEmpty()
+	return e.startSpiderFinish && atomic.LoadInt64(&e.ctxCount) == 0 && e.cache.isEmpty()
 }
 
 // writeCache 将Context 写入缓存
 func (e *CrawlEngine) writeCache(ctx *Context) error {
-	var isDuplicated bool = false
+	// var isDuplicated bool = false
 	defer func() {
 		if err := recover(); err != nil {
 			ctx.setError(fmt.Sprintf("write cache error %s", err), string(debug.Stack()))
 		}
-		// 写入分布式组件后主动删除
-		if e.useDistributed || isDuplicated {
-			ctx.Close()
-		}
+		// // 写入分布式组件后主动删除
+		// if e.useDistributed || isDuplicated {
+		// 	ctx.Close()
+		// }
+		atomic.AddInt64(&e.ctxCount, -1)
+
 	}()
 	var err error = nil
 	// 是否进入去重流程
 	if e.filterDuplicateReq && !ctx.Request.DoNotFilter {
 		ret, err := e.rfpDupeFilter.DoDupeFilter(ctx)
 		if err != nil {
-			isDuplicated = true
+			// isDuplicated = true
 			engineLog.WithField("request_id", ctx.CtxID).Errorf("request unique error %s", err.Error())
 			return err
 		}
 		// request重复则直接返回
 		if ret {
-			isDuplicated = true
+			// isDuplicated = true
 			return nil
 		}
 	}
@@ -375,14 +402,14 @@ func (e *CrawlEngine) writeCache(ctx *Context) error {
 }
 
 // doDownload 对context执行下载操作
-func (e *CrawlEngine) doDownload(ctx *Context) error {
-	var err error = nil
+func (e *CrawlEngine) doDownload(ctx *Context) (err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			ctx.setError(fmt.Sprintf("Download error %s", p), string(debug.Stack()))
+			err = fmt.Errorf("Download error %s", p)
 		}
 		if err != nil || ctx.Err() != nil {
-			e.statistic.IncrDownloadFail()
+			e.statistic.Incr("download_fail")
 		}
 	}()
 	// 通过下载中间件对request进行处理
@@ -400,9 +427,12 @@ func (e *CrawlEngine) doDownload(ctx *Context) error {
 		return err
 	}
 	// 增加请求发送量
-	e.statistic.IncrRequestSent()
+	e.statistic.Incr(RequestStats)
 	engineLog.WithField("request_id", ctx.CtxID).Infof("%s request ready to download", ctx.CtxID)
 	rsp, err := e.downloader.Download(ctx)
+	if rsp != nil {
+		e.statistic.Incr(strconv.Itoa(rsp.Status))
+	}
 	if err != nil {
 		return err
 	}
@@ -452,6 +482,7 @@ func (e *CrawlEngine) doParse(ctx *Context) error {
 		if err := recover(); err != nil {
 			ctx.setError(fmt.Sprintf("parse error %s", err), string(debug.Stack()))
 		}
+
 	}()
 	if ctx.Response == nil {
 		return nil
@@ -480,15 +511,15 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 		if err := recover(); err != nil {
 			ctx.setError(fmt.Sprintf("pipeline error %s", err), string(debug.Stack()))
 		}
+		engineLog.WithField("request_id", ctx.CtxID).Infof("pipelines pass")
 	}()
 	for item := range ctx.Items {
-		e.statistic.IncrItemScraped()
+		e.statistic.Incr(ItemsStats)
 		engineLog.WithField("request_id", ctx.CtxID).Infof("%s item is scraped", item.CtxID)
 		for _, pipeline := range e.pipelines {
 			err := pipeline.ProcessItem(ctx.Spider, item)
 			if err != nil {
 				engineLog.WithField("request_id", ctx.CtxID).Errorf("Pipeline %d handle item error %s", pipeline.GetPriority(), err.Error())
-				// ctx.Error = err
 				return err
 			}
 		}
@@ -506,12 +537,10 @@ func (e *CrawlEngine) Close() {
 	close(e.requestsChan)
 	close(e.cacheChan)
 	e.ticker.Stop()
-	err := e.statistic.Reset()
-	if err != nil {
-		engineLog.Errorf("reset statistic error %s", err.Error())
 
-	}
 }
+
+// StopTicker 关闭定时任务的计时器
 func (e *CrawlEngine) StopTicker() {
 	e.ticker.Stop()
 }
@@ -543,7 +572,12 @@ func (e *CrawlEngine) GetStatusOn() StatusType {
 	return e.statusOn
 }
 
-// 构建新的引擎
+// GetCurrentSpider 获取当前正在运行的spider
+func (e *CrawlEngine) GetCurrentSpider() SpiderInterface {
+	return e.currentSpider
+}
+
+// NewEngine 构建新的引擎
 func NewEngine(opts ...EngineOption) *CrawlEngine {
 	Engine := &CrawlEngine{
 		waitGroup:             &conc.WaitGroup{},
@@ -567,6 +601,8 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		interval:              -1 * time.Second,
 		statusOn:              ON_STOP,
 		ticker:                time.NewTicker(1),
+		currentSpider:         nil,
+		ctxCount:              0,
 	}
 	for _, o := range opts {
 		o(Engine)

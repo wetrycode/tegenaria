@@ -45,13 +45,12 @@ func GetUUID() string {
 // GoFunc 协程函数
 type GoFunc func() error
 
+// GoRunner 执行协程任务
 func GoRunner(ctx context.Context, wg *conc.WaitGroup, funcs ...GoFunc) <-chan error {
 	ch := make(chan error, len(funcs))
 	for _, readyFunc := range funcs {
 		_func := readyFunc
 		wg.Go(func() {
-			defer func() {
-			}()
 			ch <- _func()
 		})
 	}
@@ -92,8 +91,8 @@ func Map2String(m interface{}) string {
 
 }
 
-// GetMachineIp 获取本机ip
-func GetMachineIp() (string, error) {
+// GetMachineIP 获取本机ip
+func GetMachineIP() (string, error) {
 	addrs, err := net.InterfaceAddrs()
 	for _, address := range addrs {
 		// 检查ip地址判断是否回环地址
@@ -106,6 +105,8 @@ func GetMachineIp() (string, error) {
 	return "", err
 
 }
-func GetEngineId() string {
+
+// GetEngineID 获取当前进程的引擎实例id
+func GetEngineID() string {
 	return engineID
 }

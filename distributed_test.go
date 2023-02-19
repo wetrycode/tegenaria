@@ -10,7 +10,7 @@ import (
 
 	"github.com/agiledragon/gomonkey/v2"
 	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -152,7 +152,7 @@ func TestAddNodeError(t *testing.T) {
 		worker.SetSpiders(&Spiders{
 			SpidersModules: spiders,
 		})
-		patch := gomonkey.ApplyFunc((*redis.Client).SetEX, func(_ *redis.Client, ctx context.Context, _ string, _ interface{}, _ time.Duration) *redis.StatusCmd {
+		patch := gomonkey.ApplyFunc((*redis.Client).SetEx, func(_ *redis.Client, ctx context.Context, _ string, _ interface{}, _ time.Duration) *redis.StatusCmd {
 			s := redis.NewStatusCmd(ctx)
 			s.SetErr(errors.New("set ex error"))
 			return s
@@ -215,7 +215,7 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		r, err = worker.CheckMasterLive()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r, convey.ShouldBeFalse)
-		ip, err := GetMachineIp()
+		ip, err := GetMachineIP()
 		convey.So(err, convey.ShouldBeNil)
 		member := fmt.Sprintf("%s:%s", ip, worker.nodeID)
 		key := fmt.Sprintf("%s:%s:%s", worker.nodePrefix, worker.currentSpider, member)

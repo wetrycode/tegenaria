@@ -26,10 +26,6 @@ import "sync"
 
 // SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
 // this interface to achieve custom spider.
-
-// SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
-// this interface to achieve custom spider.
-
 type SpiderInterface interface {
 	// StartRequest 通过GetFeedUrls()获取种子
 	// urls并构建初始请求
@@ -68,9 +64,13 @@ type Spiders struct {
 	Parsers map[string]Parser
 }
 
+// SpidersList 注册到引擎的爬虫列表
 var SpidersList *Spiders
+
+// onceSpiders SpidersList只初始化一次
 var onceSpiders sync.Once
 
+// NewBaseSpider 构建公共爬虫对象
 func NewBaseSpider(name string, feedUrls []string) *BaseSpider {
 	return &BaseSpider{
 		Name:     name,
@@ -98,17 +98,16 @@ func (s *Spiders) Register(spider SpiderInterface) error {
 	// 爬虫名不允许重复
 	if _, ok := s.SpidersModules[spider.GetName()]; ok {
 		return ErrDuplicateSpiderName
-	} else {
-		s.SpidersModules[spider.GetName()] = spider
-		return nil
 	}
+	s.SpidersModules[spider.GetName()] = spider
+	return nil
 }
 
 // GetSpider 通过爬虫名获取spider实例
 func (s *Spiders) GetSpider(name string) (SpiderInterface, error) {
 	if _, ok := s.SpidersModules[name]; !ok {
 		return nil, ErrSpiderNotExist
-	} else {
-		return s.SpidersModules[name], nil
 	}
+	return s.SpidersModules[name], nil
+
 }

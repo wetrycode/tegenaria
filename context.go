@@ -28,10 +28,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	cmap "github.com/orcaman/concurrent-map/v2"
 	"github.com/sirupsen/logrus"
 )
 
@@ -67,7 +65,7 @@ type contextManager struct {
 	// ctxCount context对象的数量
 	ctxCount int64
 	// ctxMap context缓存
-	ctxMap cmap.ConcurrentMap[*Context]
+	// ctxMap cmap.ConcurrentMap[*Context]
 }
 
 var onceContextManager sync.Once
@@ -76,42 +74,6 @@ var onceContextManager sync.Once
 type ContextOption func(c *Context)
 
 var ctxManager *contextManager
-
-// add 向context 管理组件添加新的context
-func (c *contextManager) add(ctx *Context) {
-	c.ctxMap.Set(ctx.CtxID, ctx)
-	atomic.AddInt64(&c.ctxCount, 1)
-
-}
-
-// remove 从contextManager中删除指定的ctx
-func (c *contextManager) remove(ctx *Context) {
-	c.ctxMap.Remove(ctx.CtxID)
-	atomic.AddInt64(&c.ctxCount, -1)
-
-}
-
-// isEmpty未处理的ctx是否为空
-func (c *contextManager) isEmpty() bool {
-	engineLog.Debugf("Number of remaining tasks:%d", atomic.LoadInt64(&c.ctxCount))
-	return atomic.LoadInt64(&c.ctxCount) == 0
-}
-
-// Clear 清空ctx
-func (c *contextManager) Clear() {
-	atomic.StoreInt64(&c.ctxCount, 0)
-	c.ctxMap.Clear()
-}
-
-// var ctxCount int64
-func newContextManager() {
-	onceContextManager.Do(func() {
-		ctxManager = &contextManager{
-			ctxCount: 0,
-			ctxMap:   cmap.New[*Context](),
-		}
-	})
-}
 
 // WithContextID 设置自定义的ctxId
 func WithContextID(ctxID string) ContextOption {
@@ -143,7 +105,6 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 	for _, o := range opts {
 		o(ctx)
 	}
-	ctxManager.add(ctx)
 	return ctx
 
 }
@@ -183,7 +144,7 @@ func (c *Context) Close() {
 		// 释放response
 		freeResponse(c.Response)
 	}
-	ctxManager.remove(c)
+	// ctxManager.remove(c)
 	c.CtxID = ""
 	c.Cancel()
 
