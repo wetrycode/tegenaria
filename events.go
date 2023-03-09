@@ -106,10 +106,10 @@ func (d *DefaultHooks) Heartbeat(params ...interface{}) error {
 	return nil
 }
 
-// DefaultventsWatcher 默认的事件监听器
+// DefaultWatcher 默认的事件监听器
 // ch 用于接收事件
 // hooker 事件处理实例化接口，比如DefaultHooks
-func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
+func DefaultWatcher(ch chan EventType, hooker EventHooksInterface) error {
 	for {
 		select {
 		case event := <-ch:
@@ -154,7 +154,7 @@ func DefaultventsWatcher(ch chan EventType, hooker EventHooksInterface) error {
 
 // EventsWatcher DefualtHooks 的事件监听器
 func (d *DefaultHooks) EventsWatcher(ch chan EventType) error {
-	return DefaultventsWatcher(ch, d)
+	return DefaultWatcher(ch, d)
 
 }
 
@@ -182,7 +182,7 @@ func (d *DistributedHooks) Exit(params ...interface{}) error {
 
 // EventsWatcher 分布式模式下的事件监听器
 func (d *DistributedHooks) EventsWatcher(ch chan EventType) error {
-	return DefaultventsWatcher(ch, d)
+	return DefaultWatcher(ch, d)
 
 }
 

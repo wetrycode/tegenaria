@@ -35,6 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/sirupsen/logrus"
 	"github.com/sourcegraph/conc"
 )
@@ -115,7 +116,12 @@ type CrawlEngine struct {
 	currentSpider SpiderInterface
 
 	// ctxCount
-	ctxCount int64
+	ctxCount  int64
+	StartAt   int64
+	Duration  float64
+	StopAt    int64
+	restartAt int64
+	onceStart sync.Once
 }
 
 // RegisterSpiders 将spider实例注册到引擎的 spiders
@@ -203,6 +209,11 @@ func (e *CrawlEngine) Start(spiderName string) StatisticInterface {
 		}
 		e.mutex.Unlock()
 	}()
+	e.onceStart.Do(func() {
+		e.StartAt = time.Now().Unix()
+
+	})
+	e.restartAt = time.Now().Unix()
 	// 引入引擎所有的组件，并通过协程执行
 	e.eventsChan <- START
 
@@ -237,6 +248,9 @@ func (e *CrawlEngine) StartWithTicker(spiderName string) {
 	e.ticker.Reset(e.interval)
 	e.Start(spiderName)
 	for range e.ticker.C {
+		if e.statusOn == ON_PAUSE {
+			continue
+		}
 		e.Start(spiderName)
 		e.statusOn = ON_PAUSE
 	}
@@ -256,6 +270,7 @@ func (e *CrawlEngine) EventsWatcherRunner() error {
 func (e *CrawlEngine) Scheduler() error {
 	for {
 		if e.isStop {
+			e.StopAt = time.Now().Unix()
 			return nil
 		}
 		if e.statusOn == ON_PAUSE {
@@ -275,6 +290,9 @@ func (e *CrawlEngine) Scheduler() error {
 		// 对request进行处理
 		f := []GoFunc{e.worker(request)}
 		// AddGo(e.waitGroup, f...)
+		duration := time.Since(time.Unix(e.restartAt, 0))
+		e.Duration = duration.Seconds() + e.Duration
+		engineLog.Infof("%d:运行时长:%d", e.restartAt, duration)
 		GoRunner(context.TODO(), e.waitGroup, f...)
 
 	}
@@ -576,6 +594,21 @@ func (e *CrawlEngine) GetStatusOn() StatusType {
 func (e *CrawlEngine) GetCurrentSpider() SpiderInterface {
 	return e.currentSpider
 }
+func (e *CrawlEngine) GetStartAt() int64 {
+	return e.StartAt
+}
+func (e *CrawlEngine) GetStopAt() int64 {
+	return e.StopAt
+}
+func (e *CrawlEngine) GetDuration() float64 {
+	return decimal.NewFromFloat(e.Duration).Round(2).InexactFloat64()
+}
+func (e *CrawlEngine) GetRole() string {
+	if e.isMaster {
+		return "master"
+	}
+	return "solve"
+}
 
 // NewEngine 构建新的引擎
 func NewEngine(opts ...EngineOption) *CrawlEngine {
@@ -603,6 +636,11 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		ticker:                time.NewTicker(1),
 		currentSpider:         nil,
 		ctxCount:              0,
+		onceStart:             sync.Once{},
+		StartAt:               0,
+		StopAt:                0,
+		restartAt:             0,
+		Duration:              0,
 	}
 	for _, o := range opts {
 		o(Engine)

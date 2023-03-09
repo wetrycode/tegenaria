@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/sirupsen/logrus"
@@ -37,6 +38,7 @@ func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
 			// 生成新的Context
 			ctx := tegenaria.NewContext(request, e)
 			// 将context发送到req channel
+			time.Sleep(1)
 			req <- ctx
 		}
 	}

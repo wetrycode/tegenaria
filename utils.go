@@ -24,6 +24,8 @@ package tegenaria
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"net"
@@ -109,4 +111,8 @@ func GetMachineIP() (string, error) {
 // GetEngineID 获取当前进程的引擎实例id
 func GetEngineID() string {
 	return engineID
+}
+func MD5(s string) string {
+	sum := md5.Sum([]byte(s))
+	return hex.EncodeToString(sum[:])
 }

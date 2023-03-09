@@ -21,6 +21,8 @@ type CrawlMetricCollector struct {
 	influxdbQuery api.QueryAPI
 	engine        *tegenaria.CrawlEngine
 	Locker        *redislock.Client
+	currentSpider string
+	bucket string
 }
 
 // NewInfluxdb 构建influxdb 客户端
@@ -84,8 +86,65 @@ func (c *CrawlMetricCollector) Start() {
 	}
 }
 
-// GetAllStats() map[string]uint64
+func(c *CrawlMetricCollector)GetAllStats() map[string]uint64{
+	query := fmt.Sprintf(`from(bucket:"%s")
+	|> filter(fn: (r) =>
+		r._measurement == "%s"
+	)
+	|> group()  
+	|> count()`, c.bucket, c.currentSpider)
 
-// setCurrentSpider(spider string)
-// Incr(metric string)
-// Get(metric string) uint64
+	result, err := c.influxdbQuery.Query(context.TODO(), query)
+	if err != nil {
+		metricLog.Errorf("查询统计数据失败:%s", err.Error())
+		return nil
+	}
+	ret :=map[string]uint64{}
+	for result.Next() {
+		if result.TableChanged() {
+			metricLog.Infof("table: %s\n", result.TableMetadata().String())
+		}
+		r := result.Record().Values()
+		metricLog.Infof("%v", r)
+		for key, val:=range r{
+			ret[key] = uint64(val.(float64))
+		}
+
+	}
+	return ret
+}
+
+func(c *CrawlMetricCollector)setCurrentSpider(spider string){
+	c.currentSpider = spider
+}
+func(c *CrawlMetricCollector)Incr(metric string){
+	metricLog.Infof("采集集到:%s的数据指标:%s:%d", c.currentSpider, metric, 1)
+	p := influxdb2.NewPointWithMeasurement(c.currentSpider).
+		AddField(metric, 1).
+		SetTime(time.Now())
+	c.influxdbWrite.WritePoint(context.Background(), p)
+
+}
+func(c *CrawlMetricCollector)Get(metric string) uint64{
+	query := fmt.Sprintf(`from(bucket:"%s")
+	|> filter(fn: (r) =>
+		r._measurement == "%s"
+	)
+	|> group(columns:["%s"])  
+	|> count()`, c.bucket, c.currentSpider, metric)
+
+	result, err := c.influxdbQuery.Query(context.TODO(), query)
+	if err != nil {
+		metricLog.Errorf("查询统计数据失败:%s", err.Error())
+		return 0
+	}
+	for result.Next() {
+		if result.TableChanged() {
+			metricLog.Infof("table: %s\n", result.TableMetadata().String())
+		}
+		v := result.Record().Value()
+		return uint64(v.(float64))
+
+	}
+	return 0
+}

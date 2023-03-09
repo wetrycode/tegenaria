@@ -9,6 +9,6 @@ import (
 func main() {
 	opts := []tegenaria.EngineOption{tegenaria.EngineWithUniqueReq(false), tegenaria.EngineWithLimiter(tegenaria.NewDefaultLimiter(64))}
 	engine := quotes.NewQuotesEngine(opts...)
-	api := api.NewAPI(engine)
-	api.Server()
+	api := api.NewAPI(engine, "http://127.0.0.1:12138")
+	api.Server("0.0.0.0",8003)
 }

@@ -42,7 +42,7 @@ func init() {
 		gob.Register(GET)
 		gob.Register(1 * time.Second)
 		gob.Register(url.Values{})
-		engineID = GetUUID()
+		engineID = MD5(GetUUID())[0:16]
 		debug.SetTraceback("crash")
 	})
 

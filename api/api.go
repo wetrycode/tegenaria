@@ -23,8 +23,11 @@
 package api
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -36,20 +39,29 @@ import (
 var apiLog *logrus.Entry = tegenaria.GetLogger("api") // engineLog engine runtime logger
 
 type TegenariaAPI struct {
-	G    *gin.Engine
-	E    *tegenaria.CrawlEngine
-	lock sync.Mutex
+	G           *gin.Engine
+	E           *tegenaria.CrawlEngine
+	lock        sync.Mutex
+	AdminServer string
+	ticker      *time.Ticker
+	server      string
+	host        string
 }
 type statusResp struct {
-	Request       uint64 `json:"request"`
-	DownloadedErr uint64 `json:"downloaded_err"`
-	Items         uint64 `json:"item"`
-	Errors        uint64 `json:"errors"`
-	Status        string `json:"status"`
-	EngineId      string `json:"engine_id"`
+	Request  uint64   `json:"requests"`
+	Items    uint64   `json:"items"`
+	Errors   uint64   `json:"errors"`
+	Status   string   `json:"status"`
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Host     string   `json:"host"`
+	Duration float64  `json:"duration"`
+	StartAt  string   `json:"start"`
+	Role     string   `json:"role"`
+	Spiders  []string `json:"spiders"`
 }
 type startRequest struct {
-	Spider   string `json:"spider" binding:"required"`
+	Spider   string `json:"name" binding:"required"`
 	Interval int    `json:"interval" validate:"default=0"`
 	IsMaster bool   `json:"is_master" validate:"default=false"`
 }
@@ -73,6 +85,7 @@ func (t *TegenariaAPI) start(ctx *gin.Context) {
 		return
 
 	} else {
+		t.E.SetStatus(tegenaria.ON_STOP)
 		if r.Interval <= 0 {
 			go t.E.Start(r.Spider)
 		} else {
@@ -103,44 +116,104 @@ func (t *TegenariaAPI) pause(ctx *gin.Context) {
 	defer func() {
 		t.lock.Unlock()
 	}()
-	if t.E.GetStatusOn() == tegenaria.ON_START {
-		t.E.SetStatus(tegenaria.ON_PAUSE)
-	}
+	t.E.SetStatus(tegenaria.ON_PAUSE)
+	apiLog.Infof("暂停爬虫")
 	appG := Gin{Ctx: ctx}
 
 	appG.Response(http.StatusOK, 200, "")
 }
-
-func (t *TegenariaAPI) status(ctx *gin.Context) {
-	statistic := t.E.GetStatic()
-	ip, _ := tegenaria.GetMachineIP()
-	rsp := statusResp{
-		Request:       statistic.Get(tegenaria.RequestStats),
-		DownloadedErr: statistic.Get(tegenaria.DownloadFailStats),
-		Items:         statistic.Get(tegenaria.ItemsStats),
-		Errors:        statistic.Get(tegenaria.ErrorStats),
-		Status:        t.E.GetStatusOn().GetTypeName(),
-		EngineId:      fmt.Sprintf("%s:%s", ip, tegenaria.GetEngineID()),
+func (t *TegenariaAPI) getStartAndDuration() (string, float64) {
+	startAt := t.E.GetStartAt()
+	duration := t.E.GetDuration()
+	if startAt == 0 {
+		return "", duration
 	}
-	appG := Gin{Ctx: ctx}
+	timeStr := time.Unix(startAt, 0).Format("2006-01-02 15:04:05")
+	return timeStr, duration
+}
+func (t *TegenariaAPI) getStatus() *statusResp {
+	statistic := t.E.GetStatic()
+	startAt, duration := t.getStartAndDuration()
+	spider := t.E.GetCurrentSpider()
+	name := ""
+	if spider != nil {
+		name = spider.GetName()
+	}
+	rsp := &statusResp{
+		Request:  statistic.Get(tegenaria.RequestStats),
+		Items:    statistic.Get(tegenaria.ItemsStats),
+		Errors:   statistic.Get(tegenaria.ErrorStats),
+		Status:   t.E.GetStatusOn().GetTypeName(),
+		ID:       tegenaria.GetEngineID(),
+		Host:     t.host,
+		StartAt:  startAt,
+		Duration: duration,
+		Name:     name,
+		Role:     t.E.GetRole(),
+		Spiders:  t.E.GetSpiders().GetAllSpidersName(),
+	}
+	return rsp
+}
+func (t *TegenariaAPI) status(ctx *gin.Context) {
 
+	appG := Gin{Ctx: ctx}
+	rsp := t.getStatus()
 	appG.Response(http.StatusOK, 200, rsp)
 
 }
-func (t *TegenariaAPI) Server() {
+func (t *TegenariaAPI) GetAllSpiders(ctx *gin.Context) {
+	appG := Gin{Ctx: ctx}
+	spiders := t.E.GetSpiders()
+	names := spiders.GetAllSpidersName()
+	appG.Response(http.StatusOK, 200, names)
+}
+func (t *TegenariaAPI) Server(host string, port int) {
 	server := &http.Server{
-		Addr:         "0.0.0.0:12138",
+		Addr:         fmt.Sprintf("%s:%d", host, port),
 		Handler:      t.G,
 		ReadTimeout:  time.Duration(10 * time.Second),
 		WriteTimeout: time.Duration(10 * time.Second),
 	}
+	ip, _ := tegenaria.GetMachineIP()
+
+	t.server = fmt.Sprintf("%s:%d", host, port)
+	t.host = fmt.Sprintf("%s:%d", ip, port)
+	go t.heartbeat()
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		panic(err)
 	}
 }
-func NewAPI(engine *tegenaria.CrawlEngine) *TegenariaAPI {
+func (t *TegenariaAPI) heartbeat() {
+	t.ticker = time.NewTicker(3 * time.Second)
+	for range t.ticker.C {
+		status := t.getStatus()
+		api, err := url.JoinPath(t.AdminServer, "/api/v1/update")
+		if err != nil {
+			apiLog.Errorf("心跳包发送失败:%s", err.Error())
+			panic(err)
+		}
+		jsonBytes, err := json.Marshal(status)
+		if err != nil {
+			apiLog.Errorf("心跳包发送失败:%s", err.Error())
+
+		}
+		rsp, err := http.Post(api, "application/json; charset=UTF-8", bytes.NewReader(jsonBytes))
+		if err != nil {
+			apiLog.Errorf("心跳包发送失败:%s", err.Error())
+
+		} else {
+			if rsp.StatusCode != 200 {
+				apiLog.Errorf("心跳包发送失败,状态码为:%d", rsp.StatusCode)
+
+			}
+		}
+	}
+}
+func NewAPI(engine *tegenaria.CrawlEngine, adminServer string) *TegenariaAPI {
 	API := &TegenariaAPI{
-		E: engine,
+		E:           engine,
+		AdminServer: adminServer,
+		ticker:      nil,
 	}
 	g := SetUp()
 
@@ -149,6 +222,8 @@ func NewAPI(engine *tegenaria.CrawlEngine) *TegenariaAPI {
 	v1Router.POST("/stop", API.stop)
 	v1Router.POST("/pause", API.pause)
 	v1Router.GET("/status", API.status)
+	v1Router.GET("/spiders", API.GetAllSpiders)
+
 	API.G = g
 	return API
 
