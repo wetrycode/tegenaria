@@ -50,7 +50,7 @@ func GetUUID() string {
 type GoFunc func() error
 
 // GoRunner 执行协程任务
-func GoRunner(ctx context.Context, wg *conc.WaitGroup, funcs ...GoFunc) <-chan error {
+func GoRunner(_ context.Context, wg *conc.WaitGroup, funcs ...GoFunc) <-chan error {
 	ch := make(chan error, len(funcs))
 	for _, readyFunc := range funcs {
 		_func := readyFunc

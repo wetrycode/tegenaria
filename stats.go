@@ -170,7 +170,7 @@ func (s *DefaultStatistic) Get(metric string) uint64 {
 // GetAllStats 格式化统计数据
 func (s *DefaultStatistic) GetAllStats() map[string]uint64 {
 	result := make(map[string]uint64)
-	s.register.Range(func(key any, value any) bool {
+	s.register.Range(func(key any, _ any) bool {
 		k := key.(string)
 		result[k] = s.Get(k)
 		return true

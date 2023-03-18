@@ -6,10 +6,10 @@ require (
 	github.com/agiledragon/gomonkey/v2 v2.9.0
 	github.com/alicebob/miniredis/v2 v2.30.0
 	github.com/bits-and-blooms/bloom/v3 v3.3.1
-	github.com/bsm/redislock v0.0.0-20230131085949-0563cc4d0ee9
 	github.com/gin-gonic/gin v1.8.2
 	github.com/go-kiss/monkey v0.0.0-20210912230757-40cda447d0e3
 	github.com/google/uuid v1.3.0
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.15.2
 	github.com/influxdata/influxdb-client-go/v2 v2.12.2
 	github.com/json-iterator/go v1.1.12
 	github.com/redis/go-redis/v9 v9.0.1
@@ -23,29 +23,26 @@ require (
 	github.com/wxnacy/wgo v1.0.4
 	github.com/yireyun/go-queue v0.0.0-20210520035143-72b190eafcba
 	go.uber.org/ratelimit v0.2.0
-	golang.org/x/net v0.5.0
+	golang.org/x/net v0.7.0
+	google.golang.org/genproto v0.0.0-20230223222841-637eb2293923
+	google.golang.org/grpc v1.53.0
 )
 
 require (
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/andybalholm/cascadia v1.3.1 // indirect
-	github.com/apache/arrow/go/v7 v7.0.1 // indirect
-	github.com/benbjohnson/immutable v0.3.0 // indirect
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/goccy/go-json v0.9.11 // indirect
-	github.com/google/flatbuffers v22.9.30-0.20221019131441-5792623df42e+incompatible // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/gopherjs/gopherjs v0.0.0-20181017120253-0766667cb4d1 // indirect
-	github.com/influxdata/flux v0.193.0 // indirect
 	github.com/influxdata/line-protocol v0.0.0-20200327222509-2487e7298839 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/smartystreets/assertions v1.2.0 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
-	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
-	golang.org/x/tools v0.1.12 // indirect
-	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
+	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -59,6 +56,7 @@ require (
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.11.1 // indirect
+	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/huandu/go-tls v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
@@ -77,9 +75,9 @@ require (
 	github.com/ugorji/go/codec v1.2.7 // indirect
 	golang.org/x/arch v0.0.0-20210901143047-ebb09ed340f1 // indirect
 	golang.org/x/crypto v0.1.0 // indirect
-	golang.org/x/sys v0.4.0 // indirect
-	golang.org/x/text v0.6.0 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/text v0.7.0 // indirect
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

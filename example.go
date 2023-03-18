@@ -121,7 +121,7 @@ func (p *TestItemPipeline4) ProcessItem(spider SpiderInterface, item *ItemMeta) 
 func (p *TestItemPipeline4) GetPriority() int {
 	return p.Priority
 }
-func testParser(resp *Context, req chan<- *Context) error {
+func testParser(resp *Context, _ chan<- *Context) error {
 	newItem := &testItem{
 		test:      "test",
 		pipelines: make([]int, 0),

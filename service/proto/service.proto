@@ -1,0 +1,52 @@
+syntax = "proto3";
+package pb;
+option go_package = "github.com/wetrycode/tegenaria/service/pb";
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+
+
+message StatusContorlRequest {
+    TegenariaStatus Status = 1;
+    string SpiderName=2;
+}
+message ResponseMessage {
+  int32 Code=1;
+    string Msg=2;
+    bytes Data=3;
+}
+enum ResponseStatus {
+  UNKOWN=0;
+  OK=1000;
+  UNKOWN_ERROR=5000;
+  NOT_FOUND_SPIDER=50001;
+
+}
+enum TegenariaStatus{
+    ON_START=0;
+    ON_STOP=1;
+
+    ON_PAUSE=2;
+}
+message TegenariaStatusMessage {
+    string Status=1;
+    string Start_at=2;
+    string Stop_at=3;
+    double Duration=4;
+
+    map<string,uint64> Metrics = 5;
+    string Spider_name=6;
+
+}
+service TegenariaService {
+  rpc SetStatus(StatusContorlRequest) returns (ResponseMessage) {
+    option (google.api.http) = {
+        post: "/api/v1/tegenaria/status"
+        body: "*"
+      };
+  }
+  rpc GetStatus(google.protobuf.Empty)returns(ResponseMessage) {
+    option (google.api.http) = {
+        get: "/api/v1/tegenaria/status"
+      };
+  }
+}
