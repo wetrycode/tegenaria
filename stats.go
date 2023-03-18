@@ -23,25 +23,17 @@
 package tegenaria
 
 import (
-	"context"
-	"fmt"
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"time"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/sourcegraph/conc"
+	"github.com/shopspring/decimal"
 )
 
 // StatsFieldType 统计指标的数据类型
 type StatsFieldType string
 
-// var (
-//
-//	REQUEST uint64 =
-//
-// )
+// codeStatusName http状态码
 var codeStatusName = [][]int{{100, 101}, {200, 206}, {300, 307}, {400, 417}, {500, 505}}
 
 const (
@@ -55,49 +47,87 @@ const (
 	ErrorStats string = "errors"
 )
 
+type RuntimeStatus struct {
+	StartAt   int64
+	Duration  float64
+	StopAt    int64
+	RestartAt int64
+	// StatusOn 当前引擎的状态
+	StatusOn StatusType
+}
+
+func NewRuntimeStatus() *RuntimeStatus {
+	return &RuntimeStatus{
+		StartAt:   0,
+		Duration:  0,
+		StopAt:    0,
+		RestartAt: 0,
+		StatusOn:  ON_STOP,
+	}
+}
+
+// SetStatus 设置引擎状态
+// 用于控制引擎的启停
+func (r *RuntimeStatus) SetStatus(status StatusType) {
+	r.StatusOn = status
+}
+
+// GetStatusOn 获取引擎的状态
+func (r *RuntimeStatus) GetStatusOn() StatusType {
+	return r.StatusOn
+}
+func (r *RuntimeStatus) SetStartAt(startAt int64) {
+	r.StartAt = startAt
+}
+
+// GetStartAt 获取引擎启动的时间戳
+func (r *RuntimeStatus) GetStartAt() int64 {
+	return r.StartAt
+}
+func (r *RuntimeStatus) SetRestartAt(startAt int64) {
+	r.RestartAt = startAt
+}
+
+// GetStartAt 获取引擎启动的时间戳
+func (r *RuntimeStatus) GetRestartAt() int64 {
+	return r.RestartAt
+}
+func (r *RuntimeStatus) SetStopAt(stopAt int64) {
+	r.StopAt = stopAt
+}
+
+// GetStopAt 爬虫停止的时间戳
+func (r *RuntimeStatus) GetStopAt() int64 {
+	return r.StopAt
+}
+func (r *RuntimeStatus) SetDuration(duration float64) {
+	r.Duration = duration
+}
+
+// GetDuration 爬虫运行时长
+func (r *RuntimeStatus) GetDuration() float64 {
+	return decimal.NewFromFloat(r.Duration).Round(2).InexactFloat64()
+}
+
 // StatisticInterface 数据统计组件接口
 type StatisticInterface interface {
 	GetAllStats() map[string]uint64
-
-	setCurrentSpider(spider string)
 	Incr(metric string)
 	Get(metric string) uint64
+	SetCurrentSpider(spider SpiderInterface)
 }
 
 // Statistic 数据统计指标
-type Statistic struct {
+type DefaultStatistic struct {
 
 	// spider 当前正在运行的spider名
 	Metrics  map[string]*uint64
-	spider   string `json:"-"`
+	spider   SpiderInterface `json:"-"`
 	register sync.Map
 }
-
-// DistributeStatistic 分布式统计组件
-type DistributeStatistic struct {
-	// keyPrefix 缓存key前缀，默认tegenaria:v1:nodes
-	keyPrefix string
-	// nodesKey 节点池的key
-	nodesKey string
-	// rdb redis客户端实例
-	rdb redis.Cmdable
-	// 调度该组件的wg
-	wg *conc.WaitGroup
-	// afterResetTTL 重置数据之前缓存多久
-	// 默认不缓存这些统计数据
-	afterResetTTL time.Duration
-	// spider 当前在运行的spider名
-	spider string
-	// fields 所有参与统计的指标
-	fields   []string
-	register sync.Map
-}
-
-// DistributeStatisticOption 分布式组件可选参数定义
-type DistributeStatisticOption func(d *DistributeStatistic)
 
 // NewStatistic 默认统计数据组件构造函数
-func NewStatistic() *Statistic {
+func NewDefaultStatistic() *DefaultStatistic {
 	m := map[string]*uint64{
 		RequestStats:      new(uint64),
 		DownloadFailStats: new(uint64),
@@ -114,31 +144,31 @@ func NewStatistic() *Statistic {
 		atomic.StoreUint64(v, 0)
 
 	}
-	s := &Statistic{
+	s := &DefaultStatistic{
 		Metrics:  m,
 		register: sync.Map{},
 	}
 	return s
 }
 
-// setCurrentSpider 设置当前的spider
-func (s *Statistic) setCurrentSpider(spider string) {
+// SetCurrentSpider 设置当前的spider
+func (s *DefaultStatistic) SetCurrentSpider(spider SpiderInterface) {
 	s.spider = spider
 }
 
 // Incr 新增一个指标值
-func (s *Statistic) Incr(metrics string) {
+func (s *DefaultStatistic) Incr(metrics string) {
 	atomic.AddUint64(s.Metrics[metrics], 1)
 	s.register.Store(metrics, true)
 }
 
 // Get 获取某个指标的数值
-func (s *Statistic) Get(metric string) uint64 {
+func (s *DefaultStatistic) Get(metric string) uint64 {
 	return atomic.LoadUint64(s.Metrics[metric])
 }
 
 // GetAllStats 格式化统计数据
-func (s *Statistic) GetAllStats() map[string]uint64 {
+func (s *DefaultStatistic) GetAllStats() map[string]uint64 {
 	result := make(map[string]uint64)
 	s.register.Range(func(key any, value any) bool {
 		k := key.(string)
@@ -147,106 +177,4 @@ func (s *Statistic) GetAllStats() map[string]uint64 {
 
 	})
 	return result
-}
-
-// setCurrentSpider 设置当前的spider名
-func (s *DistributeStatistic) setCurrentSpider(spider string) {
-	s.spider = spider
-}
-
-// NewDistributeStatistic 分布式数据统计组件构造函数
-func NewDistributeStatistic(statsPrefixKey string, rdb redis.Cmdable, wg *conc.WaitGroup, opts ...DistributeStatisticOption) *DistributeStatistic {
-	d := &DistributeStatistic{
-		keyPrefix:     statsPrefixKey,
-		nodesKey:      "tegenaria:v1:nodes",
-		rdb:           rdb,
-		wg:            wg,
-		afterResetTTL: -1 * time.Second,
-		fields:        []string{ItemsStats, RequestStats, DownloadFailStats, ErrorStats},
-	}
-	for _, o := range opts {
-		o(d)
-	}
-	return d
-}
-
-// Incr 新增一个指标值
-func (s *DistributeStatistic) Incr(metric string) {
-	f := func() error {
-		return s.rdb.Incr(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, metric)).Err()
-	}
-	funcs := []GoFunc{f}
-	s.register.Store(metric, true)
-	GoRunner(context.TODO(), s.wg, funcs...)
-}
-
-// Get 获取某一个指标
-func (s *DistributeStatistic) Get(field string) uint64 {
-	val, err := s.rdb.Get(context.TODO(), fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)).Int64()
-	if err != nil {
-		engineLog.Errorf("get %s stats error %s", field, err.Error())
-		return 0
-	}
-	return uint64(val)
-}
-
-// Reset 重置各项指标
-// 若afterResetTTL>0则为每一项指标设置ttl否则直接删除指标
-func (s *DistributeStatistic) Reset() error {
-	nodesKey := fmt.Sprintf("%s:%s", s.nodesKey, s.spider)
-	members := s.rdb.SCard(context.TODO(), nodesKey).Val()
-	if members <= 0 {
-		return nil
-	}
-	// fields := []string{"items", "requests", "download_fail", "errors"}
-	pipe := s.rdb.Pipeline()
-	for _, field := range s.fields {
-		key := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
-		// ttl >-0则先设置ttl不直接删除
-		if s.afterResetTTL > 0 {
-			pipe.Expire(context.TODO(), key, s.afterResetTTL)
-			continue
-		}
-		pipe.Del(context.TODO(), key)
-	}
-	_, err := pipe.Exec(context.TODO())
-	return err
-}
-
-// DistributeStatisticAfterResetTTL 为分布式计数器设置重置之前的ttl
-func DistributeStatisticAfterResetTTL(ttl time.Duration) DistributeStatisticOption {
-	return func(d *DistributeStatistic) {
-		d.afterResetTTL = ttl
-	}
-}
-
-// GetAllStats 获取所有的数据指标
-func (s *DistributeStatistic) GetAllStats() map[string]uint64 {
-
-	// fields := []string{"items", "requests", "download_fail", "errors"}
-	pipe := s.rdb.Pipeline()
-	result := []*redis.StringCmd{}
-	s.register.Range(func(key any, value any) bool {
-		field := key.(string)
-		k := fmt.Sprintf("%s:%s:%s", s.keyPrefix, s.spider, field)
-		result = append(result, pipe.Get(context.TODO(), k))
-		return true
-
-	})
-	_, err := pipe.Exec(context.TODO())
-	if err != nil {
-		engineLog.Errorf("output stats error %s", err.Error())
-		return map[string]uint64{}
-	}
-	stats := map[string]uint64{}
-	for index, r := range result {
-		val, err := r.Result()
-		if err != nil {
-			engineLog.Errorf("get stats error %s", err.Error())
-		}
-		v, _ := strconv.ParseInt(val, 10, 64)
-		stats[string(s.fields[index])] = uint64(v)
-	}
-
-	return stats
 }

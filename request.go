@@ -168,6 +168,7 @@ func RequestWithMaxRedirects(maxRedirects int) RequestOption {
 	return func(r *Request) {
 		if maxRedirects <= 0 {
 			r.AllowRedirects = false
+			r.MaxRedirects = 0
 		} else {
 			r.MaxRedirects = maxRedirects
 			r.AllowRedirects = true
@@ -303,7 +304,10 @@ func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request 
 		bodyReader:      nil,
 		body:            nil,
 	}
-	mapstructure.Decode(src, request)
+	err := mapstructure.Decode(src, request)
+	if err != nil {
+		panic(err.Error())
+	}
 	for _, o := range opts {
 		o(request)
 	}

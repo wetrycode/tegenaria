@@ -6,32 +6,6 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
-type TestSpider struct {
-	*BaseSpider
-}
-
-func (s *TestSpider) StartRequest(req chan<- *Context) {
-
-	for _, url := range s.FeedUrls {
-		request := NewRequest(url, GET, s.Parser)
-		ctx := NewContext(request, s)
-		req <- ctx
-	}
-}
-func (s *TestSpider) Parser(resp *Context, req chan<- *Context) error {
-	return testParser(resp, req)
-}
-
-func (s *TestSpider) ErrorHandler(err *Context, req chan<- *Context) {
-
-}
-func (s *TestSpider) GetName() string {
-	return s.Name
-}
-func (s *TestSpider) GetFeedUrls() []string {
-	return s.FeedUrls
-}
-
 func TestSpiders(t *testing.T) {
 	convey.Convey("test spiders", t, func() {
 		spiders := NewSpiders()

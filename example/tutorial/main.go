@@ -116,7 +116,7 @@ func NewQuotesEngine(opts ...tegenaria.EngineOption) *tegenaria.CrawlEngine {
 
 }
 func main() {
-	opts := []tegenaria.EngineOption{tegenaria.EngineWithUniqueReq(false), tegenaria.EngineWithLimiter(tegenaria.NewDefaultLimiter(64))}
+	opts := []tegenaria.EngineOption{tegenaria.EngineWithUniqueReq(false)}
 	engine := NewQuotesEngine(opts...)
-	engine.Execute()
+	engine.Execute("example")
 }

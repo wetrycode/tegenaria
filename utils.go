@@ -27,10 +27,12 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -74,15 +76,15 @@ func GetParserByName(spider SpiderInterface, name string) reflect.Value {
 }
 
 // OptimalNumOfHashFunctions 计算最优的布隆过滤器哈希函数个数
-func OptimalNumOfHashFunctions(n int64, m int64) int64 {
+func OptimalNumOfHashFunctions(n int, m int) int {
 	// (m / n) * log(2), but avoid truncation due to division!
 	// return math.max(1, (int) Math.round((double) m / n * Math.log(2)));
-	return int64(math.Max(1, math.Round(float64(m)/float64(n)*math.Log(2))))
+	return int(math.Max(1, math.Round(float64(m)/float64(n)*math.Log(2))))
 }
 
 // OptimalNumOfBits 计算位数组长度
-func OptimalNumOfBits(n int64, p float64) int64 {
-	return (int64)(-float64(n) * math.Log(p) / (math.Log(2) * math.Log(2)))
+func OptimalNumOfBits(n int, p float64) int {
+	return (int)(-float64(n) * math.Log(p) / (math.Log(2) * math.Log(2)))
 }
 
 // Map2String 将map转为string
@@ -115,4 +117,27 @@ func GetEngineID() string {
 func MD5(s string) string {
 	sum := md5.Sum([]byte(s))
 	return hex.EncodeToString(sum[:])
+}
+func Interface2Uint(value interface{}) uint {
+	switch interfaceType := value.(type) {
+	case int:
+		return uint(value.(int))
+	case float64:
+		return uint(int(value.(float64)))
+	case string:
+		ret, _ := strconv.Atoi(value.(string))
+		return uint(ret)
+	case uint:
+		return value.(uint)
+	case int64:
+		return uint(value.(int64))
+	case int32:
+		return uint(value.(uint32))
+	case uint64:
+		return uint(value.(uint64))
+	case nil:
+		return 0
+	default:
+		panic(fmt.Sprintf("unknown type %s", interfaceType))
+	}
 }

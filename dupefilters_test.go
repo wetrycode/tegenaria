@@ -12,7 +12,7 @@ import (
 func TestDoDupeFilter(t *testing.T) {
 
 	convey.Convey("test dupefilter", t, func() {
-		server := newTestServer()
+		server := NewTestServer()
 		headers := map[string]string{
 			"Params1":    "params1",
 			"Intparams":  "1",
@@ -51,7 +51,7 @@ func TestDoDupeFilterErr(t *testing.T) {
 			return 0, errors.New("write string error")
 		})
 		defer patch.Reset()
-		server := newTestServer()
+		server := NewTestServer()
 		// downloader := NewDownloader()
 		headers := map[string]string{
 			"Params1":    "params1",
@@ -74,7 +74,7 @@ func TestDoDupeFilterErr(t *testing.T) {
 }
 func TestDoBodyDupeFilter(t *testing.T) {
 	convey.Convey("test body dupefilter", t, func() {
-		server := newTestServer()
+		server := NewTestServer()
 		// downloader := NewDownloader()
 		headers := map[string]string{
 			"Params1":    "params1",

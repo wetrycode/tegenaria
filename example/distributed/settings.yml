@@ -4,11 +4,11 @@ redis:
   password: ""
 
 influxdb:
-  host: "103.45.66.94"
+  host: "127.0.0.1"
   port: 9086
-  bucket: "hothub-bucket-dev"
-  org: "hothub"
-  token: "asvCNN9-44EI0JhQzuW75AHG-DLhKpCQwRkelbb86Qdo3-2YYHos3RIdkf_EFVevV59pNFqkW8AYPIfGjEIQ-w=="
+  bucket: "tegenaria"
+  org: "wetrycode"
+  token: "9kCeULToVdZVdUGboG5qhiWaMiUUV1XKjKMlrFwPisNMKSENDAK3EBsuh_M-GFwGnNpQZkcZ6kPgltrDOHZo5g=="
 
 log:
   path: "/var/logs/Tegenaria"

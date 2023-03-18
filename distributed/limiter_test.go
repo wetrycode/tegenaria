@@ -20,44 +20,47 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package tegenaria
+package distributed
 
 import (
-	"go.uber.org/ratelimit"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
+	"github.com/smartystreets/goconvey/convey"
 )
 
-// LimitInterface 限速器接口
-type LimitInterface interface {
-	// checkAndWaitLimiterPass 检查当前并发量
-	// 如果并发量达到上限则等待
-	CheckAndWaitLimiterPass() error
-	// setCurrrentSpider 设置当前正在的运行的spider
-	SetCurrentSpider(spider SpiderInterface)
-}
+func TestLeakyBucketLimiterWithRdb(t *testing.T) {
+	convey.Convey("test leaky bucket limiter with rdb", t, func() {
+		mockRedis := miniredis.RunT(t)
 
-// defaultLimiter 默认的限速器
-type DefaultLimiter struct {
-	limiter ratelimit.Limiter
-	spider  SpiderInterface
-}
+		defer mockRedis.Close()
+		rdb := redis.NewClient(&redis.Options{
+			Addr: mockRedis.Addr(),
+		})
+		f := func() (string, time.Duration) {
+			return "tegenaria:v1:limiter", 5 * time.Second
+		}
+		limit := NewLeakyBucketLimiterWithRdb(16, rdb, f)
+		limit.setCurrrentSpider("testLeakyBucketLimiterSpider")
+		start := time.Now()
+		wg := &sync.WaitGroup{}
+		for i := 0; i < 64; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				err := limit.CheckAndWaitLimiterPass()
+				if err != nil {
+					t.Errorf("checkAndWaitLimiterPass error %s", err.Error())
+				}
+			}()
+		}
+		wg.Wait()
+		interval := time.Since(start).Seconds()
+		convey.So(interval, convey.ShouldBeGreaterThan, 2)
+		t.Logf("task interval is %f", interval)
 
-// NewDefaultLimiter 创建一个新的限速器
-// limitRate 最大请求速率
-func NewDefaultLimiter(limitRate int) *DefaultLimiter {
-	return &DefaultLimiter{
-		limiter: ratelimit.New(limitRate, ratelimit.WithoutSlack),
-	}
-}
-
-// checkAndWaitLimiterPass 检查当前并发量
-// 如果并发量达到上限则等待
-func (d *DefaultLimiter) CheckAndWaitLimiterPass() error {
-	d.limiter.Take()
-	return nil
-}
-
-// setCurrrentSpider 设置当前的spider名
-func (d *DefaultLimiter) SetCurrentSpider(spider SpiderInterface) {
-	d.spider = spider
-
+	})
 }

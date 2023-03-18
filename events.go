@@ -34,6 +34,8 @@ const (
 	START EventType = iota
 	// HEARTBEAT 心跳
 	HEARTBEAT
+	// PAUSE 暂停
+	PAUSE
 	// STOP 停止
 	STOP
 	// ERROR 错误
@@ -59,21 +61,11 @@ type EventHooksInterface interface {
 	Heartbeat(params ...interface{}) error
 	// EventsWatcher 事件监听器
 	EventsWatcher(ch chan EventType) error
+
+	SetCurrentSpider(spider SpiderInterface)
 }
 type DefaultHooks struct {
-}
-
-// DistributedHooks 分布式事件监听器
-type DistributedHooks struct {
-	worker DistributedWorkerInterface
-}
-
-// DistributedHooks 构建新的分布式监听器组件对象
-func NewDistributedHooks(worker DistributedWorkerInterface) *DistributedHooks {
-	return &DistributedHooks{
-		worker: worker,
-	}
-
+	spider SpiderInterface
 }
 
 // NewDefaultHooks 构建新的默认事件监听器
@@ -123,7 +115,6 @@ func DefaultWatcher(ch chan EventType, hooker EventHooksInterface) error {
 				err := hooker.Stop()
 				if err != nil {
 					return err
-
 				}
 			case ERROR:
 				err := hooker.Error()
@@ -158,35 +149,6 @@ func (d *DefaultHooks) EventsWatcher(ch chan EventType) error {
 
 }
 
-// Start 用于处理分布式模式下的START事件
-func (d *DistributedHooks) Start(params ...interface{}) error {
-	return d.worker.AddNode()
-
-}
-
-// Stop 用于处理分布式模式下的STOP事件
-func (d *DistributedHooks) Stop(params ...interface{}) error {
-	return d.worker.StopNode()
-
-}
-
-// Error 用于处理分布式模式下的ERROR事件
-func (d *DistributedHooks) Error(params ...interface{}) error {
-	return nil
-}
-
-// Exit 用于处理分布式模式下的Exit事件
-func (d *DistributedHooks) Exit(params ...interface{}) error {
-	return d.worker.DelNode()
-}
-
-// EventsWatcher 分布式模式下的事件监听器
-func (d *DistributedHooks) EventsWatcher(ch chan EventType) error {
-	return DefaultWatcher(ch, d)
-
-}
-
-// Exit 用于处理分布式模式下的HEARTBEAT事件
-func (d *DistributedHooks) Heartbeat(params ...interface{}) error {
-	return d.worker.Heartbeat()
+func (d *DefaultHooks) SetCurrentSpider(spider SpiderInterface) {
+	d.spider = spider
 }

@@ -27,5 +27,5 @@ func (p StatusType) GetTypeName() string {
 	case ON_PAUSE:
 		return "pause"
 	}
-	return ""
+	return "unknown"
 }

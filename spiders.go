@@ -112,10 +112,10 @@ func (s *Spiders) GetSpider(name string) (SpiderInterface, error) {
 
 }
 
-func(s *Spiders)GetAllSpidersName()[]string{
+func (s *Spiders) GetAllSpidersName() []string {
 	spidersModules := s.SpidersModules
 	names := []string{}
-	for spider, _ := range spidersModules {
+	for spider := range spidersModules {
 		names = append(names, spider)
 	}
 	return names

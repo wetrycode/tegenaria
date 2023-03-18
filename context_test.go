@@ -10,9 +10,9 @@ import (
 
 func TestWithDeadline(t *testing.T) {
 	convey.Convey("test context dead line", t, func() {
-		server := newTestServer()
+		server := NewTestServer()
 		spider1 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
 		}
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 		deadLine, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*2))
@@ -31,7 +31,7 @@ func TestWithDeadline(t *testing.T) {
 
 func TestWithTimeout(t *testing.T) {
 	convey.Convey("test time context", t, func() {
-		server := newTestServer()
+		server := NewTestServer()
 		spider1 := &TestSpider{
 			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
 		}
@@ -53,9 +53,9 @@ func TestWithValue(t *testing.T) {
 		type ContextKey string
 		k := ContextKey("test_key")
 		spider1 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
 		}
-		server := newTestServer()
+		server := NewTestServer()
 
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 		valueCtx := context.WithValue(context.Background(), k, "tegenaria")
@@ -65,11 +65,27 @@ func TestWithValue(t *testing.T) {
 	})
 
 }
+
+func TestWithContextID(t *testing.T) {
+	convey.Convey("test value context", t, func() {
+		spider1 := &TestSpider{
+			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+		}
+		server := NewTestServer()
+
+		request := NewRequest(server.URL+"/testGET", GET, testParser)
+
+		ctx := NewContext(request, spider1, WithContextID("1234567890"))
+		convey.So(ctx.GetCtxID(), convey.ShouldContainSubstring, "1234567890")
+	})
+
+}
+
 func TestWithEmptyContext(t *testing.T) {
 	convey.Convey("test empty context", t, func() {
-		server := newTestServer()
+		server := NewTestServer()
 		spider1 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
 		}
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 
@@ -85,4 +101,23 @@ func TestWithEmptyContext(t *testing.T) {
 		k := ContextKey("test_key")
 		convey.So(ctx.Value(k), convey.ShouldBeNil)
 	})
+}
+func TestContextWithRequestNil(t *testing.T) {
+	convey.Convey("test context with  nil empty", t, func() {
+		server := NewTestServer()
+		spider1 := &TestSpider{
+			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+		}
+		request := NewRequest(server.URL+"/testGET", GET, testParser)
+		ctx := NewContext(request, spider1)
+		ctx.Request = nil
+		t, d := ctx.Deadline()
+		convey.So(d, convey.ShouldBeFalse)
+		convey.So(t.String(), convey.ShouldContainSubstring, "0001-01-01")
+		c := ctx.Done()
+		convey.So(c, convey.ShouldBeNil)
+		convey.So(ctx.Err(), convey.ShouldBeNil)
+
+	})
+
 }

@@ -32,26 +32,27 @@ import (
 // CacheInterface request缓存组件
 type CacheInterface interface {
 	// enqueue ctx写入缓存
-	enqueue(ctx *Context) error
+	Enqueue(ctx *Context) error
 	// dequeue ctx 从缓存出队列
-	dequeue() (interface{}, error)
+	Dequeue() (interface{}, error)
 	// isEmpty 缓存是否为空
-	isEmpty() bool
+	IsEmpty() bool
 	// getSize 缓存大小
-	getSize() uint64
+	GetSize() uint64
 	// close 关闭缓存
-	close() error
-	// setCurrentSpider 设置当前的spider
-	setCurrentSpider(spider string)
+	Close() error
+	// SetCurrentSpider 设置当前的spider
+	SetCurrentSpider(spider SpiderInterface)
 }
 
 // RequestCache request缓存队列
-type RequestCache struct {
-	queue *queue.EsQueue
+type DefaultQueue struct {
+	queue  *queue.EsQueue
+	spider SpiderInterface
 }
 
 // enqueue request对象入队列
-func (c *RequestCache) enqueue(ctx *Context) error {
+func (c *DefaultQueue) Enqueue(ctx *Context) error {
 	// It will wait to put request until queue is not full
 	if ctx == nil || ctx.Request == nil {
 		return errors.New("context or request cannot be nil")
@@ -65,7 +66,7 @@ func (c *RequestCache) enqueue(ctx *Context) error {
 }
 
 // dequeue 从队列中获取request对象
-func (c *RequestCache) dequeue() (interface{}, error) {
+func (c *DefaultQueue) Dequeue() (interface{}, error) {
 	val, ok, _ := c.queue.Get()
 	if !ok {
 		return nil, ErrGetCacheItem
@@ -75,28 +76,28 @@ func (c *RequestCache) dequeue() (interface{}, error) {
 }
 
 // isEmpty 缓存是否为空
-func (c *RequestCache) isEmpty() bool {
+func (c *DefaultQueue) IsEmpty() bool {
 	return int64(c.queue.Quantity()) == 0
 }
 
 // getSize 缓存大小
-func (c *RequestCache) getSize() uint64 {
+func (c *DefaultQueue) GetSize() uint64 {
 	return uint64(c.queue.Quantity())
 }
 
 // close 关闭缓存
-func (c *RequestCache) close() error {
+func (c *DefaultQueue) Close() error {
 	return nil
 }
 
-// setCurrentSpider 设置当前的spider
-func (c *RequestCache) setCurrentSpider(spider string) {
-
+// SetCurrentSpider 设置当前的spider
+func (c *DefaultQueue) SetCurrentSpider(spider SpiderInterface) {
+	c.spider = spider
 }
 
-// NewRequestCache get a new RequestCache
-func NewRequestCache() *RequestCache {
-	return &RequestCache{
-		queue: queue.NewQueue(1024 * 1024),
+// NewDefaultQueue get a new DefaultQueue
+func NewDefaultQueue(size int) *DefaultQueue {
+	return &DefaultQueue{
+		queue: queue.NewQueue(uint32(size)),
 	}
 }

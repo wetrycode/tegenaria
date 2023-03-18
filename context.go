@@ -27,7 +27,6 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -60,20 +59,8 @@ type Context struct {
 	Spider SpiderInterface
 }
 
-// 全局的context 管理接口
-type contextManager struct {
-	// ctxCount context对象的数量
-	ctxCount int64
-	// ctxMap context缓存
-	// ctxMap cmap.ConcurrentMap[*Context]
-}
-
-var onceContextManager sync.Once
-
 // ContextOption 上下文选项
 type ContextOption func(c *Context)
-
-var ctxManager *contextManager
 
 // WithContextID 设置自定义的ctxId
 func WithContextID(ctxID string) ContextOption {

@@ -41,28 +41,31 @@ type RFPDupeFilterInterface interface {
 
 	// DoDupeFilter request去重
 	DoDupeFilter(ctx *Context) (bool, error)
+
+	SetCurrentSpider(spider SpiderInterface)
 }
 
 // RFPDupeFilter 去重组件
-type RFPDupeFilter struct {
+type DefaultRFPDupeFilter struct {
 	bloomFilter *bloom.BloomFilter
+	spider      SpiderInterface
 }
 
 // NewRFPDupeFilter 新建去重组件
 // bloomP容错率
 // bloomN数据规模
-func NewRFPDupeFilter(bloomP float64, bloomN uint) *RFPDupeFilter {
+func NewRFPDupeFilter(bloomP float64, bloomN int) *DefaultRFPDupeFilter {
 	// 计算最佳的bit set大小
-	bloomM := OptimalNumOfBits(int64(bloomN), bloomP)
+	bloomM := OptimalNumOfBits(bloomN, bloomP)
 	// 计算最佳的哈希函数大小
-	bloomK := OptimalNumOfHashFunctions(int64(bloomN), bloomM)
-	return &RFPDupeFilter{
+	bloomK := OptimalNumOfHashFunctions(bloomN, bloomM)
+	return &DefaultRFPDupeFilter{
 		bloomFilter: bloom.New(uint(bloomM), uint(bloomK)),
 	}
 }
 
 // canonicalizeUrl request 规整化处理
-func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool) url.URL {
+func (f *DefaultRFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool) url.URL {
 	u, _ := url.ParseRequestURI(request.Url)
 	u.RawQuery = u.Query().Encode()
 	u.ForceQuery = true
@@ -73,7 +76,7 @@ func (f *RFPDupeFilter) canonicalizetionUrl(request *Request, keepFragment bool)
 }
 
 // encodeHeader 请求头序列化
-func (f *RFPDupeFilter) encodeHeader(request *Request) string {
+func (f *DefaultRFPDupeFilter) encodeHeader(request *Request) string {
 	h := request.Header
 	if h == nil || len(request.Header) == 0 {
 		return ""
@@ -93,7 +96,7 @@ func (f *RFPDupeFilter) encodeHeader(request *Request) string {
 }
 
 // Fingerprint 计算指纹
-func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
+func (f *DefaultRFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 	request := ctx.Request
 	// get sha128
 	sha := murmur3.New128()
@@ -107,7 +110,10 @@ func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 
 	if err == nil && request.bodyReader != nil {
 		buffer := bytes.Buffer{}
-		io.Copy(&buffer, request.bodyReader)
+		_, err := io.Copy(&buffer, request.bodyReader)
+		if err != nil {
+			return nil, err
+		}
 		sha.Write(buffer.Bytes())
 	}
 	// to handle request header
@@ -122,7 +128,7 @@ func (f *RFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 }
 
 // DoDupeFilter 通过布隆过滤器对request对象进行去重处理
-func (f *RFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
+func (f *DefaultRFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
 	// Use bloom filter to do fingerprint deduplication
 	if ctx.Request.DoNotFilter {
 		return false, nil
@@ -132,4 +138,8 @@ func (f *RFPDupeFilter) DoDupeFilter(ctx *Context) (bool, error) {
 		return false, err
 	}
 	return f.bloomFilter.TestOrAdd(data), nil
+}
+
+func (f *DefaultRFPDupeFilter) SetCurrentSpider(spider SpiderInterface) {
+	f.spider = spider
 }

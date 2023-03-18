@@ -3,7 +3,7 @@ package tegenaria
 import (
 	"errors"
 	"fmt"
-	"strconv"
+	"net/url"
 	"testing"
 	"time"
 
@@ -14,76 +14,9 @@ import (
 	queue "github.com/yireyun/go-queue"
 )
 
-type TestDownloadMiddler struct {
-	Priority int
-	Name     string
-}
-
-func (m TestDownloadMiddler) GetPriority() int {
-	return m.Priority
-}
-func (m TestDownloadMiddler) ProcessRequest(ctx *Context) error {
-	header := fmt.Sprintf("priority-%d", m.Priority)
-	ctx.Request.Header[header] = strconv.Itoa(m.Priority)
-	return nil
-}
-
-func (m TestDownloadMiddler) ProcessResponse(ctx *Context, req chan<- *Context) error {
-	return nil
-
-}
-func (m TestDownloadMiddler) GetName() string {
-	return m.Name
-}
-
-type TestDownloadMiddler2 struct {
-	Priority int
-	Name     string
-}
-
-func (m TestDownloadMiddler2) GetPriority() int {
-	return m.Priority
-}
-func (m TestDownloadMiddler2) ProcessRequest(ctx *Context) error {
-	return errors.New("process request fail")
-}
-
-func (m TestDownloadMiddler2) ProcessResponse(ctx *Context, req chan<- *Context) error {
-	return errors.New("process response fail")
-
-}
-func (m TestDownloadMiddler2) GetName() string {
-	return m.Name
-}
-func newTestEngine(spiderName string, opts ...EngineOption) *CrawlEngine {
-	engine := NewEngine(opts...)
-	server := newTestServer()
-
-	// register test spider
-	engine.RegisterSpiders(&TestSpider{NewBaseSpider(spiderName, []string{server.URL + "/testGET"})})
-
-	// register test pipelines
-	engine.RegisterPipelines(&TestItemPipeline{0})
-	engine.RegisterPipelines(&TestItemPipeline3{2})
-	engine.RegisterPipelines(&TestItemPipeline2{1})
-
-	// register download middlerware
-	engine.RegisterDownloadMiddlewares(TestDownloadMiddler{0, "1"})
-	engine.RegisterDownloadMiddlewares(TestDownloadMiddler{2, "3"})
-	engine.RegisterDownloadMiddlewares(TestDownloadMiddler{1, "2"})
-
-	return engine
-}
-func newTestRequest(spider SpiderInterface, opts ...RequestOption) *Context {
-	server := newTestServer()
-	// spider := &TestSpider{NewBaseSpider("spiderRequest", []string{server.URL + "/testGET"})}
-	request := NewRequest(server.URL+"/testGET", GET, spider.Parser, opts...)
-	ctx := NewContext(request, spider, WithItemChannelSize(16))
-	return ctx
-}
 func TestEngineRegister(t *testing.T) {
 	convey.Convey("EngineRegister", t, func() {
-		engine := newTestEngine("testSpider1")
+		engine := NewTestEngine("testSpider1")
 		for index, pipeline := range engine.pipelines {
 			convey.So(pipeline.GetPriority(), convey.ShouldAlmostEqual, index)
 		}
@@ -95,78 +28,73 @@ func TestEngineRegister(t *testing.T) {
 
 func TestEngineOptions(t *testing.T) {
 	convey.Convey("Add EngineOptions to engine when new an engine", t, func() {
-		engine := NewEngine(
-			EngineWithCache(NewRequestCache()),
-			EngineWithDownloader(NewDownloader()),
-			EngineWithFilter(NewRFPDupeFilter(0.001, 1024*1024)),
-			EngineWithUniqueReq(true),
-			EngineWithLimiter(NewDefaultLimiter(32)),
+		components := NewDefaultComponents(
+			DefaultComponentsWithDefaultHooks(NewDefaultHooks()),
+			DefaultComponentsWithDefaultLimiter(NewDefaultLimiter(16)),
+			DefaultComponentsWithDefaultStatistic(NewDefaultStatistic()),
+			DefaultComponentsWithDupefilter(NewRFPDupeFilter(0.001, 1024*1024)),
+			DefaultComponentsWithDefaultQueue(NewDefaultQueue(1024*1024)),
 		)
-		convey.So(engine.cache, convey.ShouldHaveSameTypeAs, NewRequestCache())
+		engine := NewEngine(
+			EngineWithDownloader(NewDownloader()),
+			EngineWithUniqueReq(true),
+			EngineWithComponents(components),
+		)
 		convey.So(engine.downloader, convey.ShouldHaveSameTypeAs, NewDownloader())
-		convey.So(engine.rfpDupeFilter, convey.ShouldHaveSameTypeAs, NewRFPDupeFilter(0.001, 1024*1024))
+		convey.So(engine.components.GetQueue(), convey.ShouldPointTo, components.GetQueue())
+		convey.So(engine.components.GetLimiter(), convey.ShouldPointTo, components.GetLimiter())
+		convey.So(engine.components.GetDupefilter(), convey.ShouldPointTo, components.GetDupefilter())
+		convey.So(engine.components.GetEventHooks(), convey.ShouldPointTo, components.GetEventHooks())
+		convey.So(engine.components.GetStats(), convey.ShouldPointTo, components.GetStats())
 		convey.So(engine.filterDuplicateReq, convey.ShouldBeTrue)
-		convey.So(engine.limiter, convey.ShouldHaveSameTypeAs, NewDefaultLimiter(32))
 	})
 
 }
 
 func TestCache(t *testing.T) {
 	convey.Convey("request write to memory cache", t, func() {
-		engine := newTestEngine("testWriteMemoryCache")
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testWriteMemoryCache"])
-		engine.writeCache(ctx)
-		convey.So(engine.cache.getSize(), convey.ShouldAlmostEqual, 1)
-	})
-	convey.Convey("test empty request write to memory cache", t, func() {
-		engine := newTestEngine("testEmptyRequest")
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testEmptyRequest"])
-		ctx.Request = nil
-		err := engine.cache.enqueue(ctx)
-		convey.So(err, convey.ShouldBeError, errors.New("context or request cannot be nil"))
-	})
-	convey.Convey("request write to memory cache dupefilters", t, func() {
-		config := NewDistributedWorkerConfig("", "", 0)
-		mockRedis := miniredis.RunT(t)
-		defer mockRedis.Close()
-		worker := NewDistributedWorker(mockRedis.Addr(), config)
-		worker.setCurrentSpider("testCacheSpider")
-		opts := []EngineOption{}
-		opts = append(opts, EngineWithUniqueReq(true))
-		opts = append(opts, EngineWithDistributedWorker(worker))
-		engine := newTestEngine("testCacheSpider", opts...)
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testCacheSpider"])
-		body := map[string]interface{}{}
-		body["test"] = "test"
-		ctx1 := newTestRequest(engine.GetSpiders().SpidersModules["testCacheSpider"], RequestWithRequestBody(body))
-		engine.writeCache(ctx1)
-		engine.writeCache(ctx)
+		engine := NewTestEngine("testWriteMemoryCache")
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testWriteMemoryCache"])
 		err := engine.writeCache(ctx)
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(engine.cache.getSize(), convey.ShouldAlmostEqual, 2)
+
+		convey.So(engine.components.GetQueue().GetSize(), convey.ShouldAlmostEqual, 1)
 	})
+	convey.Convey("test empty request write to memory cache", t, func() {
+		engine := NewTestEngine("testEmptyRequest")
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testEmptyRequest"])
+		ctx.Request = nil
+		err := engine.components.GetQueue().Enqueue(ctx)
+		convey.So(err, convey.ShouldBeError, errors.New("context or request cannot be nil"))
+	})
+
 }
 func TestCacheError(t *testing.T) {
 	convey.Convey("request write to cache error", t, func() {
-		engine := newTestEngine("testWriteCacheError", EngineWithUniqueReq(false))
-		q := NewRequestCache()
-		q.queue = queue.NewQueue(3)
-		engine.cache = q
+		engine := NewTestEngine("testWriteCacheError", EngineWithUniqueReq(false), EngineWithComponents(NewDefaultComponents(DefaultComponentsWithDefaultQueue(NewDefaultQueue(3)))))
 
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testWriteCacheError"])
-		engine.writeCache(ctx)
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testWriteCacheError"])
+		err := engine.writeCache(ctx)
+		convey.So(err, convey.ShouldBeNil)
+
 		patch := gomonkey.ApplyFunc((*queue.EsQueue).Put, func(_ *queue.EsQueue, _ interface{}) (bool, uint32) { return false, 0 })
-		engine.writeCache(ctx)
+		err = engine.writeCache(ctx)
+		convey.So(err, convey.ShouldNotBeNil)
+
 		patch.Reset()
-		newCtx := <-engine.cacheChan
-		convey.So(newCtx, convey.ShouldNotBeNil)
-		size := engine.cache.getSize()
-		convey.So(size, convey.ShouldAlmostEqual, 1)
+		req, err := engine.components.GetQueue().Dequeue()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(req, convey.ShouldNotBeNil)
+
+		size := engine.components.GetQueue().GetSize()
+		convey.So(size, convey.ShouldAlmostEqual, 0)
 		engine.filterDuplicateReq = true
-		engine.writeCache(ctx)
+		err = engine.writeCache(ctx)
+		convey.So(err, convey.ShouldBeNil)
+
 		convey.So(ctx.CtxID, convey.ShouldNotBeEmpty)
 
-		engine.cache.close()
+		engine.components.GetQueue().Close()
 
 	})
 }
@@ -174,8 +102,8 @@ func TestCacheError(t *testing.T) {
 func TestDoDownload(t *testing.T) {
 	convey.Convey("engine download request and parse response and exec pipenline ", t, func() {
 		monkey.UnpatchAll()
-		engine := newTestEngine("testSpider2")
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testSpider2"])
+		engine := NewTestEngine("testSpider2")
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testSpider2"])
 		err := engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(ctx.Response.Status, convey.ShouldAlmostEqual, 200)
@@ -196,9 +124,9 @@ func TestDoDownload(t *testing.T) {
 func TestErrResponse(t *testing.T) {
 	convey.Convey("test error response handle", t, func() {
 		downloader := NewDownloader(DownloadWithTimeout(1 * time.Second))
-		engine := newTestEngine("testErrResponse", EngineWithDownloader(downloader))
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testErrResponse"])
-		ctx.Request.Url = newTestServer().URL + "/testTimeout"
+		engine := NewTestEngine("testErrResponse", EngineWithDownloader(downloader))
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testErrResponse"])
+		ctx.Request.Url = NewTestServer().URL + "/testTimeout"
 		err := engine.doDownload(ctx)
 		convey.So(err, convey.ShouldNotBeNil)
 
@@ -208,9 +136,9 @@ func TestErrResponse(t *testing.T) {
 
 func TestAllowedStatusCode(t *testing.T) {
 	convey.Convey("test allowed status code", t, func() {
-		engine := newTestEngine("testAllowedStatusCode")
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testAllowedStatusCode"], RequestWithAllowedStatusCode([]uint64{404, 403}))
-		ctx.Request.Url = newTestServer().URL + "/test404"
+		engine := NewTestEngine("testAllowedStatusCode")
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testAllowedStatusCode"], RequestWithAllowedStatusCode([]uint64{404, 403}))
+		ctx.Request.Url = NewTestServer().URL + "/test404"
 
 		err := engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
@@ -222,9 +150,9 @@ func TestAllowedStatusCode(t *testing.T) {
 
 func TestNotAllowedStatus(t *testing.T) {
 	convey.Convey("test not allowed status", t, func() {
-		engine := newTestEngine("testNotAllowedStatus")
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testNotAllowedStatus"], RequestWithAllowedStatusCode([]uint64{404}))
-		ctx.Request.Url = newTestServer().URL + "/test403"
+		engine := NewTestEngine("testNotAllowedStatus")
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testNotAllowedStatus"], RequestWithAllowedStatusCode([]uint64{404}))
+		ctx.Request.Url = NewTestServer().URL + "/test403"
 		err := engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
 		err = engine.doHandleResponse(ctx)
@@ -232,20 +160,26 @@ func TestNotAllowedStatus(t *testing.T) {
 	})
 
 }
-
+func TestGetSpiders(t *testing.T) {
+	convey.Convey("test get spiders", t, func() {
+		NewTestEngine("GetSpiders")
+		convey.So(SpidersList.GetAllSpidersName(), convey.ShouldContain, "GetSpiders")
+	})
+}
 func TestSpiderNotFound(t *testing.T) {
 	convey.Convey("test spider not found", t, func() {
-		engine := newTestEngine("testSpiderNotFound")
+		engine := NewTestEngine("testSpiderNotFound")
 		f := engine.startSpider("spiderNotFound")
 		convey.So(func() {
-			f()
+			err := f()
+			convey.So(err, convey.ShouldBeNil)
 		}, convey.ShouldPanic)
 	})
 
 }
 func TestSpiderDuplicate(t *testing.T) {
 	convey.Convey("test spider duplicate", t, func() {
-		engine := newTestEngine("testSpider7")
+		engine := NewTestEngine("testSpider7")
 		convey.So(func() {
 			engine.RegisterSpiders(&TestSpider{NewBaseSpider("testSpider7", []string{})})
 
@@ -256,14 +190,46 @@ func TestSpiderDuplicate(t *testing.T) {
 func TestEngineStart(t *testing.T) {
 	convey.Convey("engine start", t, func() {
 
-		engine := newTestEngine("testSpider9")
-		engine.Start("testSpider9")
-		convey.So(engine.statistic.Get(string(DownloadFailStats)), convey.ShouldAlmostEqual, 0)
-		convey.So(engine.statistic.Get(RequestStats), convey.ShouldAlmostEqual, 1)
-		convey.So(engine.statistic.Get(ItemsStats), convey.ShouldAlmostEqual, 1)
-		convey.So(engine.statistic.Get("200"), convey.ShouldAlmostEqual, 1)
+		engine := NewTestEngine("testSpider9")
 
-		convey.So(engine.statistic.Get(ErrorStats), convey.ShouldAlmostEqual, 0)
+		engine.Execute("testSpider9")
+		convey.So(GetEngineID(), convey.ShouldContainSubstring, engineID)
+		convey.So(engine.GetStatic().Get(DownloadFailStats), convey.ShouldAlmostEqual, 0)
+		convey.So(engine.GetStatic().Get(RequestStats), convey.ShouldAlmostEqual, 1)
+		convey.So(engine.GetStatic().Get(ItemsStats), convey.ShouldAlmostEqual, 1)
+		convey.So(engine.GetStatic().Get("200"), convey.ShouldAlmostEqual, 1)
+		convey.So(engine.GetStatic().Get(ErrorStats), convey.ShouldAlmostEqual, 0)
+		r := engine.GetRuntimeStatus()
+		convey.So(r.GetStartAt(), convey.ShouldBeLessThan, time.Now().Unix()+1)
+		convey.So(r.GetDuration(), convey.ShouldBeLessThan, 1)
+		convey.So(r.GetRestartAt(), convey.ShouldBeLessThan, time.Now().Unix()+1)
+		convey.So(r.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_STOP.GetTypeName())
+		convey.So(r.GetStopAt(), convey.ShouldBeLessThan, 1)
+
+		engine.Close()
+	})
+	convey.Convey("status control", t, func() {
+		engine := NewTestEngine("controlSpider9")
+		patch := gomonkey.ApplyFunc((*CrawlEngine).checkReadyDone, func(_ *CrawlEngine) bool {
+			return false
+
+		})
+		defer patch.Reset()
+
+		go engine.Execute("controlSpider9")
+		time.Sleep(time.Second)
+
+		r := engine.GetRuntimeStatus()
+		t.Log(r.GetStatusOn().GetTypeName())
+		convey.So(r.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_START.GetTypeName())
+		convey.So(engine.GetCurrentSpider().GetName(), convey.ShouldContainSubstring, "controlSpider9")
+		r.SetStatus(ON_PAUSE)
+		convey.So(r.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_PAUSE.GetTypeName())
+		r.SetStatus(ON_STOP)
+
+		const unknown StatusType = 5
+		convey.So(unknown.GetTypeName(), convey.ShouldContainSubstring, "unknown")
+
 		engine.Close()
 	})
 
@@ -271,75 +237,27 @@ func TestEngineStart(t *testing.T) {
 func TestEngineStartPanic(t *testing.T) {
 	convey.Convey("engine start panic", t, func() {
 
-		engine := newTestEngine("testStartPanicSpider")
-		patch := gomonkey.ApplyFunc((*CrawlEngine).Start, func(_ *CrawlEngine, _ string) StatisticInterface {
+		engine := NewTestEngine("testStartPanicSpider")
+		patch := gomonkey.ApplyFunc((*CrawlEngine).Execute, func(_ *CrawlEngine, _ string) StatisticInterface {
 			panic("output panic")
 
 		})
 		defer patch.Reset()
-		f := func() { engine.Start("testStartPanicSpider") }
+		f := func() { engine.Execute("testStartPanicSpider") }
 		convey.So(f, convey.ShouldPanic)
 		convey.So(engine.mutex.TryLock(), convey.ShouldBeTrue)
 		engine.Close()
 	})
 
 }
-func TestEngineStartWithDistributed(t *testing.T) {
-	convey.Convey("engine start with distributed", t, func() {
 
-		mockRedis, err := miniredis.Run()
-		if err != nil {
-			panic(err)
-		}
-		config := NewDistributedWorkerConfig("", "", 0)
-		defer mockRedis.Close()
-		worker := NewDistributedWorker(mockRedis.Addr(), config)
-		worker.setCurrentSpider("testDistributedSpider9")
-		engine := newTestEngine("testDistributedSpider9", EngineWithDistributedWorker(worker))
-		go func() {
-			for range time.Tick(1 * time.Second) {
-				mockRedis.FastForward(1 * time.Second)
-			}
-		}()
-		engine.Start("testDistributedSpider9")
-		convey.So(engine.statistic.Get(string(DownloadFailStats)), convey.ShouldAlmostEqual, 0)
-		convey.So(engine.statistic.Get(RequestStats), convey.ShouldAlmostEqual, 1)
-		convey.So(engine.statistic.Get(ItemsStats), convey.ShouldAlmostEqual, 1)
-		convey.So(engine.statistic.Get(ErrorStats), convey.ShouldAlmostEqual, 0)
-	})
-
-}
-func TestEngineStartWithDistributedSlove(t *testing.T) {
-	convey.Convey("engine start with distributed", t, func() {
-
-		mockRedis := miniredis.RunT(t)
-		config := NewDistributedWorkerConfig("", "", 0)
-		defer mockRedis.Close()
-		worker := NewDistributedWorker(mockRedis.Addr(), config)
-		worker.setCurrentSpider("testDistributedSloveSpider")
-		engine := newTestEngine("testDistributedSloveSpider", EngineWithDistributedWorker(worker))
-		patch := gomonkey.ApplyFunc(time.Since, func(_ time.Time) time.Duration {
-			return 90 * time.Second
-		})
-		defer patch.Reset()
-		engine.SetMaster(false)
-		worker.isMaster = false
-		go func() {
-			for range time.Tick(1 * time.Second) {
-				mockRedis.FastForward(1 * time.Second)
-			}
-		}()
-		convey.So(func() { engine.Start("testDistributedSloveSpider") }, convey.ShouldPanic)
-	})
-
-}
 func TestEngineErrorHandler(t *testing.T) {
 	convey.Convey("test error handler", t, func() {
-		engine := newTestEngine("testErrorHandlerSpider")
+		engine := NewTestEngine("testErrorHandlerSpider")
 		engine.spiders.SpidersModules["testErrorHandlerSpider"].(*TestSpider).FeedUrls = []string{"http://127.0.0.1:12345"}
-		engine.Start("testErrorHandlerSpider")
-		convey.So(engine.statistic.Get(RequestStats), convey.ShouldAlmostEqual, 1)
-		convey.So(engine.statistic.Get(ErrorStats), convey.ShouldAlmostEqual, 1)
+		engine.Execute("testErrorHandlerSpider")
+		convey.So(engine.components.GetStats().Get(RequestStats), convey.ShouldAlmostEqual, 1)
+		convey.So(engine.components.GetStats().Get(ErrorStats), convey.ShouldAlmostEqual, 1)
 
 	})
 
@@ -347,10 +265,10 @@ func TestEngineErrorHandler(t *testing.T) {
 
 func TestProcessRequestError(t *testing.T) {
 	convey.Convey("test process request error", t, func() {
-		engine := newTestEngine("testProcessRequestErrorSpider")
+		engine := NewTestEngine("testProcessRequestErrorSpider")
 		m := TestDownloadMiddler2{9, "test"}
 		engine.RegisterDownloadMiddlewares(m)
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testProcessRequestErrorSpider"])
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testProcessRequestErrorSpider"])
 		err := engine.doDownload(ctx)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "process request fail")
 	})
@@ -360,16 +278,17 @@ func TestProcessRequestError(t *testing.T) {
 func TestProcessResponseError(t *testing.T) {
 	convey.Convey("test process response error", t, func() {
 
-		engine := newTestEngine("testProcessResposeErrorSpider")
+		engine := NewTestEngine("testProcessResposeErrorSpider")
 		m := TestDownloadMiddler2{9, "test"}
 		patch := gomonkey.ApplyFunc(TestDownloadMiddler2.ProcessRequest, func(_ TestDownloadMiddler2, _ *Context) error {
 			return nil
 		})
 		defer patch.Reset()
 		engine.RegisterDownloadMiddlewares(m)
-		ctx := newTestRequest(engine.GetSpiders().SpidersModules["testProcessResposeErrorSpider"])
-		engine.doDownload(ctx)
-		err := engine.doHandleResponse(ctx)
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testProcessResposeErrorSpider"])
+		err := engine.doDownload(ctx)
+		convey.So(err, convey.ShouldBeNil)
+		err = engine.doHandleResponse(ctx)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "process response fail")
 		ctx.Response = nil
 		err = engine.doHandleResponse(ctx)
@@ -382,17 +301,17 @@ func TestProcessResponseError(t *testing.T) {
 func TestProcessItemError(t *testing.T) {
 
 	convey.Convey("test process item error", t, func() {
-		engine := newTestEngine("testProcessItemErrorSpider")
+		engine := NewTestEngine("testProcessItemErrorSpider")
 		engine.RegisterPipelines(&TestItemPipeline4{4})
-		engine.Start("testProcessItemErrorSpider")
-		convey.So(engine.statistic.Get(ErrorStats), convey.ShouldAlmostEqual, 1)
+		engine.Execute("testProcessItemErrorSpider")
+		convey.So(engine.components.GetStats().Get(ErrorStats), convey.ShouldAlmostEqual, 1)
 	})
 }
 func TestParseError(t *testing.T) {
 
 	convey.Convey("test parser error", t, func() {
-		engine := newTestEngine("testSpiderParseError")
-		server := newTestServer()
+		engine := NewTestEngine("testSpiderParseError")
+		server := NewTestServer()
 		spider, err := engine.spiders.GetSpider("testSpiderParseError")
 		convey.So(err, convey.ShouldBeNil)
 		patch := gomonkey.ApplyFunc((*TestSpider).Parser, func(_ *TestSpider, _ *Context, _ chan<- *Context) error {
@@ -421,7 +340,9 @@ func wokerError(ctx *Context, url string, errMsg string, t *testing.T, patch *go
 		}()
 		ctx.Items = make(chan *ItemMeta, 16)
 		f := engine.worker(ctx)
-		f()
+		err := f()
+		convey.So(err, convey.ShouldBeNil)
+
 		convey.So(ctx.Error.Error(), convey.ShouldContainSubstring, errMsg)
 	})
 }
@@ -432,9 +353,9 @@ func restContext(ctx *Context, url string) {
 
 }
 func TestWorkerErr(t *testing.T) {
-	engine := newTestEngine("wokerSpider")
+	engine := NewTestEngine("wokerSpider")
 
-	ctx := newTestRequest(engine.GetSpiders().SpidersModules["wokerSpider"])
+	ctx := NewTestRequest(engine.GetSpiders().SpidersModules["wokerSpider"])
 	url := ctx.Request.Url
 	patch := gomonkey.ApplyFunc(
 		(*CrawlEngine).doDownload,
@@ -459,28 +380,34 @@ func TestWorkerErr(t *testing.T) {
 
 }
 
-func TestTicker(t *testing.T) {
-	convey.Convey("engine ticker start", t, func() {
+func TestPostForm(t *testing.T) {
+	convey.Convey("test tegenaria.RequestWithPostForm", t, func() {
+		tServer := NewTestServer()
+		mockRedis := miniredis.RunT(t)
+		defer mockRedis.Close()
+		engine := NewTestEngine("RequestWithPostFormSpider")
+		spider1, _ := engine.GetSpiders().GetSpider("RequestWithPostFormSpider")
 
-		engine := newTestEngine("testTickerSpider", EngineWithInterval(4*time.Second), EngineWithUniqueReq(false))
-		go func() {
-			engine.StartWithTicker("testTickerSpider")
-		}()
-
-		time.Sleep(5 * time.Second)
-		// statistic := engine.GetStatic()
-		convey.So(engine.statistic.Get(string(DownloadFailStats)), convey.ShouldAlmostEqual, 0)
-		convey.So(engine.statistic.Get(RequestStats), convey.ShouldAlmostEqual, 2)
-		convey.So(engine.statistic.Get(ItemsStats), convey.ShouldAlmostEqual, 2)
-		convey.So(engine.statistic.Get(ErrorStats), convey.ShouldAlmostEqual, 0)
-		convey.So(engine.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_START.GetTypeName())
-		engine.SetStatus(ON_PAUSE)
-		convey.So(engine.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_PAUSE.GetTypeName())
-		engine.SetStatus(ON_STOP)
-		convey.So(engine.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_STOP.GetTypeName())
-		onUnknown := StatusType(4)
-		convey.So(onUnknown.GetTypeName(), convey.ShouldBeEmpty)
-
-		// engine.Close()
+		components := engine.GetComponents()
+		urlReq := fmt.Sprintf("%s/testForm", tServer.URL)
+		form := url.Values{}
+		form.Set("key", "form data")
+		header := make(map[string]string)
+		header["Content-Type"] = "application/x-www-form-urlencoded"
+		request := NewRequest(urlReq, POST, spider1.Parser, RequestWithPostForm(form), RequestWithRequestHeader(header))
+		ctx := NewContext(request, spider1)
+		queue := components.GetQueue()
+		queue.SetCurrentSpider(spider1)
+		err := queue.Enqueue(ctx)
+		convey.So(err, convey.ShouldBeNil)
+		var c interface{}
+		c, err = queue.Dequeue()
+		convey.So(err, convey.ShouldBeNil)
+		newCtx := c.(*Context)
+		downloader := NewDownloader()
+		resp, err := downloader.Download(newCtx)
+		content, _ := resp.String()
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(content, convey.ShouldContainSubstring, "form data")
 	})
 }

@@ -20,13 +20,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-package tegenaria
+package command
 
 import (
-	"time"
-
 	"github.com/spf13/cobra"
+	"github.com/wetrycode/tegenaria"
 )
+
+var logger = tegenaria.GetLogger("command")
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -38,9 +39,7 @@ var rootCmd = &cobra.Command{
 }
 
 // ExecuteCmd manage engine by command
-func ExecuteCmd(engine *CrawlEngine) {
-	var isTicker bool = false
-	var timer = 0
+func ExecuteCmd(engine *tegenaria.CrawlEngine) {
 
 	var crawlCmd = &cobra.Command{
 		Use:   "crawl spiderName",
@@ -49,26 +48,15 @@ func ExecuteCmd(engine *CrawlEngine) {
 		// has an action associated with it:
 
 		Run: func(_ *cobra.Command, args []string) {
-			engineLog.Infof("准备启动%s爬虫", args[0])
-
-			if isTicker {
-				if timer > 0 {
-					engine.SetInterval(time.Duration(timer * int(time.Second)))
-				}
-				engineLog.Infof("以定时任务方式启动,时间间隔为:%d", engine.interval/time.Second)
-
-				engine.StartWithTicker(args[0])
-				timer = 0
-			} else {
-				engine.Start(args[0])
-
-			}
+			logger.Infof("准备启动%s爬虫", args[0])
+			engine.Execute(args[0])
 		},
 	}
 	rootCmd.AddCommand(crawlCmd)
-	crawlCmd.Flags().BoolVarP(&isTicker, "interval", "i", false, "Whether to start tasks at regular intervals,default false")
-	crawlCmd.Flags().IntVarP(&timer, "timer", "t", 0, "Timed task interval,default 0")
 
-	crawlCmd.Flags().BoolVarP(&engine.isMaster, "master", "m", false, "Whether to set the current node as the master node,default false")
-	rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		panic(err.Error())
+	}
+
 }
