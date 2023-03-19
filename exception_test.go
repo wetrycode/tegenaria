@@ -12,7 +12,7 @@ func TestErrorWithExtras(t *testing.T) {
 		extras := map[string]interface{}{}
 		extras["errExt"] = "ext"
 		spider := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 		request := NewRequest("http://www.example.com", GET, spider.Parser)
 		ctx := NewContext(request, spider)

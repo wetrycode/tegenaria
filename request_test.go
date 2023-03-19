@@ -13,7 +13,7 @@ func TestRequestWithBodyError(t *testing.T) {
 	convey.Convey("request body read error,should be panic", t, func() {
 		body := map[string]interface{}{}
 		body["key"] = "value"
-		request := NewRequest("http://www.baidu.com", GET, testParser)
+		request := NewRequest("http://www.example.com", GET, testParser)
 		opt := RequestWithRequestBody(body)
 		patch := gomonkey.ApplyFunc(jsoniter.Marshal, func(_ interface{}) ([]byte, error) {
 			return nil, errors.New("marshal error")
@@ -34,14 +34,14 @@ func TestRequestToMap(t *testing.T) {
 		bytesBody := `{
 			"key":"value"
 		}`
-		request := NewRequest("http://www.baidu.com", GET, testParser)
+		request := NewRequest("http://www.example.com", GET, testParser)
 
 		r, err := request.ToMap()
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(r["url"], convey.ShouldContainSubstring, "http://www.baidu.com")
+		convey.So(r["url"], convey.ShouldContainSubstring, "http://www.example.com")
 
 		newReq := RequestFromMap(r, RequestWithRequestBytesBody([]byte(bytesBody)))
-		convey.So(newReq.Url, convey.ShouldContainSubstring, "http://www.baidu.com")
+		convey.So(newReq.Url, convey.ShouldContainSubstring, "http://www.example.com")
 
 	})
 
@@ -51,9 +51,9 @@ func TestRequestWithParser(t *testing.T) {
 	convey.Convey("RequestWithParser", t, func() {
 
 		testSpider = &TestSpider{
-			NewBaseSpider("tWithParserSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("tWithParserSpider", []string{"https://www.example.com"}),
 		}
-		request := NewRequest("http://www.baidu.com", GET, testSpider.Parser, RequestWithParser(testSpider.Parser))
+		request := NewRequest("http://www.example.com", GET, testSpider.Parser, RequestWithParser(testSpider.Parser))
 		convey.So(request.Parser, convey.ShouldContainSubstring, GetFunctionName(testSpider.Parser))
 
 	})

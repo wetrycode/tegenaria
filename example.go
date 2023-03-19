@@ -29,8 +29,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
+	"path/filepath"
 	"strconv"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -133,7 +135,7 @@ func testParser(resp *Context, _ chan<- *Context) error {
 func newTestSpider() {
 	onceTestSpider.Do(func() {
 		testSpider = &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 	})
 }
@@ -253,7 +255,7 @@ func (m TestDownloadMiddler) GetPriority() int {
 }
 func (m TestDownloadMiddler) ProcessRequest(ctx *Context) error {
 	header := fmt.Sprintf("priority-%d", m.Priority)
-	ctx.Request.Header[header] = strconv.Itoa(m.Priority)
+	ctx.Request.Headers[header] = strconv.Itoa(m.Priority)
 	return nil
 }
 
@@ -310,4 +312,15 @@ func NewTestEngine(spiderName string, opts ...EngineOption) *CrawlEngine {
 	engine.RegisterDownloadMiddlewares(TestDownloadMiddler{1, "2"})
 
 	return engine
+}
+
+func AbsFilePathTest(t *testing.T, path string) string {
+	t.Helper()
+
+	s, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return s
 }

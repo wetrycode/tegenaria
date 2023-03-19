@@ -51,6 +51,8 @@ type PointMocker struct {
 	Value float64
 	Time  int64
 }
+
+// InfluxdbServerMocker mock influxdb服务的读写操作
 type InfluxdbServerMocker struct {
 	Points map[string]*PointMocker
 }
@@ -97,6 +99,7 @@ func (s *InfluxdbServerMocker) QueryInflux(c *gin.Context) {
 		",result,table,_start,_stop,_value,_field,_measurement",
 	}
 	isOk := false
+	// 标准化influxdb查询响应格式
 	for _, field := range fields {
 		if strings.Contains(bodyString, field) {
 			logger.Infof("查询指标:%s", field)
@@ -170,7 +173,7 @@ func TestSerialize(t *testing.T) {
 			ProxyUrl: "http://127.0.0.1",
 		}
 		spider1 := &tegenaria.TestSpider{
-			BaseSpider: tegenaria.NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			BaseSpider: tegenaria.NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 		request := tegenaria.NewRequest("http://www.example.com", tegenaria.GET, spider1.Parser, tegenaria.RequestWithMaxRedirects(3), tegenaria.RequestWithRequestBody(body), tegenaria.RequestWithRequestProxy(proxy))
 		convey.So(request.AllowRedirects, convey.ShouldBeTrue)
@@ -236,6 +239,8 @@ func TestDistributedWorker(t *testing.T) {
 		// 请求入队列
 		err := queue.Enqueue(ctx)
 		convey.So(err, convey.ShouldBeNil)
+		convey.So(queue.GetSize(), convey.ShouldAlmostEqual, 1)
+
 		var c interface{}
 		// 请求出队列
 		c, err = queue.Dequeue()
@@ -255,7 +260,8 @@ func TestDistributedWorker(t *testing.T) {
 		convey.So(newCtx.Request.AllowRedirects, convey.ShouldBeFalse)
 		convey.So(newCtx.Request.MaxRedirects, convey.ShouldAlmostEqual, 0)
 		convey.So(newCtx.Request.Proxy.ProxyUrl, convey.ShouldContainSubstring, pServer.URL)
-
+		convey.So(queue.GetSize(), convey.ShouldAlmostEqual, 0)
+		convey.So(queue.Close(), convey.ShouldBeNil)
 	})
 	convey.Convey("test tegenaria.RequestWithPostForm", t, func() {
 		tServer := tegenaria.NewTestServer()
@@ -270,8 +276,10 @@ func TestDistributedWorker(t *testing.T) {
 		form := url.Values{}
 		form.Set("key", "form data")
 		header := make(map[string]string)
+		meta := make(map[string]interface{})
+		meta["test"] = "test"
 		header["Content-Type"] = "application/x-www-form-urlencoded"
-		request := tegenaria.NewRequest(urlReq, tegenaria.POST, spider1.Parser, tegenaria.RequestWithPostForm(form), tegenaria.RequestWithRequestHeader(header))
+		request := tegenaria.NewRequest(urlReq, tegenaria.POST, spider1.Parser, tegenaria.RequestWithPostForm(form), tegenaria.RequestWithRequestHeader(header), tegenaria.RequestWithRequestMeta(meta))
 		ctx := tegenaria.NewContext(request, spider1)
 		queue := components.GetQueue()
 		queue.SetCurrentSpider(spider1)
@@ -286,6 +294,7 @@ func TestDistributedWorker(t *testing.T) {
 		content, _ := resp.String()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(content, convey.ShouldContainSubstring, "form data")
+		convey.So(newCtx.Request.Meta, convey.ShouldContainKey, "test")
 	})
 }
 func TestAddNodeError(t *testing.T) {
@@ -338,7 +347,7 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		ts = NewInfluxServer()
 		config := NewDistributedWorkerConfig(NewRedisConfig(mockRedis.Addr(), "", "", 0), NewInfluxdbConfig(ts.URL, "xxxx", "test", "distributed"))
 		worker := NewWorkerWithRdbCluster(NewWorkerConfigWithRdbCluster(config, nodes))
-		components := NewDistributedComponents(config, worker, worker.rdb)
+		components := NewDistributedComponents(config, worker, worker.GetRDB())
 		components.SetCurrentSpider(spider1)
 		err := components.worker.AddNode()
 		convey.So(err, convey.ShouldBeNil)
@@ -348,9 +357,10 @@ func TestDistributedWorkerNodeStatus(t *testing.T) {
 		r, err := components.worker.CheckMasterLive()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r, convey.ShouldBeTrue)
-		err = components.worker.StopNode()
+		err = components.worker.PauseNode()
 		convey.So(err, convey.ShouldBeNil)
-
+		err = components.worker.DelNode()
+		convey.So(err, convey.ShouldBeNil)
 		r, err = components.worker.CheckAllNodesStop()
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r, convey.ShouldBeTrue)
@@ -436,6 +446,10 @@ func TestEngineStartWithDistributed(t *testing.T) {
 		convey.So(stats.Get(tegenaria.RequestStats), convey.ShouldAlmostEqual, 1)
 		convey.So(stats.Get(tegenaria.ItemsStats), convey.ShouldAlmostEqual, 1)
 		convey.So(stats.Get(tegenaria.ErrorStats), convey.ShouldAlmostEqual, 0)
+
+		err := components.worker.(*DistributedWorker).DelMaster()
+		convey.So(err, convey.ShouldBeNil)
+
 	})
 
 }

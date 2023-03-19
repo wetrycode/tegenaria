@@ -89,7 +89,10 @@ func (e *ExampleSpider) Parser(resp *tegenaria.Context, req chan<- *tegenaria.Co
 
 // ErrorHandler 异常处理函数,用于处理数据抓取过程中出现的错误
 func (e *ExampleSpider) ErrorHandler(err *tegenaria.Context, req chan<- *tegenaria.Context) {
-
+	srcRequest, _ := err.Request.ToMap()
+	newRequest := tegenaria.RequestFromMap(srcRequest, tegenaria.RequestWithDoNotFilter(true))
+	newCtx := tegenaria.NewContext(newRequest, e)
+	req <- newCtx
 }
 
 // GetName 获取爬虫名

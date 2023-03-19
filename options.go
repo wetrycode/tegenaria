@@ -39,7 +39,8 @@ func EngineWithComponents(components ComponentInterface) EngineOption {
 	}
 }
 
-// EngineWithUniqueReq 是否进行去重处理
+// EngineWithUniqueReq 是否进行去重处理,
+// true则进行去重处理，默认值为true
 func EngineWithUniqueReq(uniqueReq bool) EngineOption {
 	return func(r *CrawlEngine) {
 		r.filterDuplicateReq = uniqueReq

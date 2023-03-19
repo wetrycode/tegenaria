@@ -44,9 +44,9 @@ func (d *DistributedHooks) Start(params ...interface{}) error {
 
 }
 
-// Stop 用于处理分布式模式下的STOP事件
-func (d *DistributedHooks) Stop(params ...interface{}) error {
-	return d.worker.StopNode()
+// Pause 用于处理分布式模式下的PAUSE事件
+func (d *DistributedHooks) Pause(params ...interface{}) error {
+	return d.worker.PauseNode()
 
 }
 

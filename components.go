@@ -49,13 +49,20 @@ type ComponentInterface interface {
 	SpiderBeforeStart(engine *CrawlEngine, spider SpiderInterface) error
 }
 
+// DefaultComponents 默认的组件
 type DefaultComponents struct {
+	// dupefilter 默认的去重过滤模块
 	dupefilter *DefaultRFPDupeFilter
-	queue      *DefaultQueue
-	limiter    *DefaultLimiter
-	statistic  *DefaultStatistic
-	events     *DefaultHooks
-	spider     SpiderInterface
+	// queue 默认的请求队列
+	queue *DefaultQueue
+	// limiter 默认限速器
+	limiter *DefaultLimiter
+	// statistic 指标统计组件
+	statistic *DefaultStatistic
+	// events 事件监听器
+	events *DefaultHooks
+	// 当前运行的爬虫实例
+	spider SpiderInterface
 }
 type DefaultComponentsOption func(d *DefaultComponents)
 

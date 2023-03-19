@@ -111,29 +111,36 @@ func (r *RuntimeStatus) GetDuration() float64 {
 
 // StatisticInterface 数据统计组件接口
 type StatisticInterface interface {
+	// GetAllStats 获取所有的指标数据
 	GetAllStats() map[string]uint64
+	// Incr 指定的指标计数器自增1
 	Incr(metric string)
+	// Get 获取指标的数值
 	Get(metric string) uint64
+	// SetCurrentSpider 设置当前的爬虫实例
 	SetCurrentSpider(spider SpiderInterface)
 }
 
 // Statistic 数据统计指标
 type DefaultStatistic struct {
 
-	// spider 当前正在运行的spider名
-	Metrics  map[string]*uint64
-	spider   SpiderInterface `json:"-"`
+	// Metrics 指标-数值缓存
+	Metrics map[string]*uint64
+	spider  SpiderInterface `json:"-"`
+	// register 指标注册器,注册指标字段
 	register sync.Map
 }
 
 // NewStatistic 默认统计数据组件构造函数
 func NewDefaultStatistic() *DefaultStatistic {
+	// 初始化指标
 	m := map[string]*uint64{
 		RequestStats:      new(uint64),
 		DownloadFailStats: new(uint64),
 		ItemsStats:        new(uint64),
 		ErrorStats:        new(uint64),
 	}
+	// 指标初始化为0
 	for _, status := range codeStatusName {
 		min, max := status[0], status[1]
 		for i := min; i <= max; i++ {

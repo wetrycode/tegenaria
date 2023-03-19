@@ -98,7 +98,33 @@ func TestCacheError(t *testing.T) {
 
 	})
 }
+func TestDupeFilterError(t *testing.T) {
+	convey.Convey("request write to DupeFilter error", t, func() {
+		engine := NewTestEngine("testWriteDupeFilterError")
 
+		ctx := NewTestRequest(engine.GetSpiders().SpidersModules["testWriteDupeFilterError"])
+		patch := gomonkey.ApplyFunc((*DefaultRFPDupeFilter).DoDupeFilter, func(_ *DefaultRFPDupeFilter, _ *Context) (bool, error) {
+			return false, errors.New("DefaultRFPDupeFilter ERROR")
+		})
+		defer patch.Reset()
+		err := engine.writeCache(ctx)
+		convey.So(err, convey.ShouldNotBeNil)
+	})
+}
+func TestStartRequestError(t *testing.T) {
+	convey.Convey("request start requests error", t, func() {
+		engine := NewTestEngine("testStartRequestError")
+
+		patch := gomonkey.ApplyFunc((*TestSpider).StartRequest, func(_ *TestSpider, _ chan<- *Context) {
+			panic("start requests ERROR")
+		})
+		defer patch.Reset()
+		f := func() {
+			engine.startSpider(engine.GetSpiders().SpidersModules["testStartRequestError"])
+		}
+		convey.So(f, convey.ShouldPanic)
+	})
+}
 func TestDoDownload(t *testing.T) {
 	convey.Convey("engine download request and parse response and exec pipenline ", t, func() {
 		monkey.UnpatchAll()
@@ -107,7 +133,7 @@ func TestDoDownload(t *testing.T) {
 		err := engine.doDownload(ctx)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(ctx.Response.Status, convey.ShouldAlmostEqual, 200)
-		convey.So(ctx.Request.Header, convey.ShouldContainKey, "priority-0")
+		convey.So(ctx.Request.Headers, convey.ShouldContainKey, "priority-0")
 		err = engine.doParse(ctx)
 		convey.So(err, convey.ShouldBeNil)
 		close(ctx.Items)
@@ -207,7 +233,6 @@ func TestEngineStart(t *testing.T) {
 		convey.So(r.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_STOP.GetTypeName())
 		convey.So(r.GetStopAt(), convey.ShouldBeGreaterThan, 0)
 
-		engine.Close()
 	})
 	convey.Convey("status control", t, func() {
 		engine := NewTestEngine("controlSpider9")
@@ -231,9 +256,21 @@ func TestEngineStart(t *testing.T) {
 
 		const unknown StatusType = 5
 		convey.So(unknown.GetTypeName(), convey.ShouldContainSubstring, "unknown")
-		engine.Close()
 	})
 
+}
+func TestBeforeStartError(t *testing.T) {
+	convey.Convey("engine start before error", t, func() {
+
+		engine := NewTestEngine("testStartBeforeErrorSpider")
+		patch := gomonkey.ApplyFunc((*DefaultComponents).SpiderBeforeStart, func(_ *DefaultComponents, _ *CrawlEngine, _ SpiderInterface) error {
+			return errors.New("ERROR Before start")
+
+		})
+		defer patch.Reset()
+		engine.Execute("testStartBeforeErrorSpider")
+		convey.So(engine.GetRuntimeStatus().StartAt, convey.ShouldAlmostEqual, 0)
+	})
 }
 func TestEngineStartPanic(t *testing.T) {
 	convey.Convey("engine start panic", t, func() {
@@ -247,7 +284,6 @@ func TestEngineStartPanic(t *testing.T) {
 		f := func() { engine.Execute("testStartPanicSpider") }
 		convey.So(f, convey.ShouldPanic)
 		convey.So(engine.mutex.TryLock(), convey.ShouldBeTrue)
-		engine.Close()
 	})
 
 }

@@ -12,7 +12,7 @@ func TestWithDeadline(t *testing.T) {
 	convey.Convey("test context dead line", t, func() {
 		server := NewTestServer()
 		spider1 := &TestSpider{
-			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.example.com"}),
 		}
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 		deadLine, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Second*2))
@@ -33,7 +33,7 @@ func TestWithTimeout(t *testing.T) {
 	convey.Convey("test time context", t, func() {
 		server := NewTestServer()
 		spider1 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 		timeout, cancel := context.WithTimeout(context.Background(), time.Second*3)
@@ -53,7 +53,7 @@ func TestWithValue(t *testing.T) {
 		type ContextKey string
 		k := ContextKey("test_key")
 		spider1 := &TestSpider{
-			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.example.com"}),
 		}
 		server := NewTestServer()
 
@@ -69,7 +69,7 @@ func TestWithValue(t *testing.T) {
 func TestWithContextID(t *testing.T) {
 	convey.Convey("test value context", t, func() {
 		spider1 := &TestSpider{
-			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.example.com"}),
 		}
 		server := NewTestServer()
 
@@ -85,7 +85,7 @@ func TestWithEmptyContext(t *testing.T) {
 	convey.Convey("test empty context", t, func() {
 		server := NewTestServer()
 		spider1 := &TestSpider{
-			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.example.com"}),
 		}
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 
@@ -106,7 +106,7 @@ func TestContextWithRequestNil(t *testing.T) {
 	convey.Convey("test context with  nil empty", t, func() {
 		server := NewTestServer()
 		spider1 := &TestSpider{
-			NewBaseSpider("testSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testSpider", []string{"https://www.example.com"}),
 		}
 		request := NewRequest(server.URL+"/testGET", GET, testParser)
 		ctx := NewContext(request, spider1)

@@ -37,7 +37,7 @@ func newRdbCache(request *tegenaria.Request, ctxID string, spiderName string) (r
 	}
 	r["ctxId"] = ctxID
 	name := request.Parser
-	if name == "func1" {
+	if name == "func1" || name == "1" {
 		logger.Panicf("请求%s,%s, 获取到非法的解析函数", request.Url, ctxID)
 	}
 	r["parser"] = name

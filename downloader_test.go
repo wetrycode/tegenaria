@@ -90,7 +90,7 @@ func TestRequestCookie(t *testing.T) {
 		resp, err := newRequestDownloadCase("/testGETCookie", GET, RequestWithRequestCookies(cookies))
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp.Status, convey.ShouldAlmostEqual, 200)
-		convey.So(len(resp.Header["Set-Cookie"]), convey.ShouldAlmostEqual, 2)
+		convey.So(len(resp.Headers["Set-Cookie"]), convey.ShouldAlmostEqual, 2)
 	})
 
 }

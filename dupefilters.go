@@ -77,8 +77,8 @@ func (f *DefaultRFPDupeFilter) canonicalizetionUrl(request *Request, keepFragmen
 
 // encodeHeader 请求头序列化
 func (f *DefaultRFPDupeFilter) encodeHeader(request *Request) string {
-	h := request.Header
-	if h == nil || len(request.Header) == 0 {
+	h := request.Headers
+	if h == nil || len(request.Headers) == 0 {
 		return ""
 	}
 	var buf bytes.Buffer
@@ -117,7 +117,7 @@ func (f *DefaultRFPDupeFilter) Fingerprint(ctx *Context) ([]byte, error) {
 		sha.Write(buffer.Bytes())
 	}
 	// to handle request header
-	if err == nil && len(request.Header) != 0 {
+	if err == nil && len(request.Headers) != 0 {
 		_, err = io.WriteString(sha, f.encodeHeader(request))
 	}
 	if err != nil {

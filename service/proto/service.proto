@@ -20,9 +20,9 @@ message ResponseMessage {
     google.protobuf.Struct Data=3 [json_name = "data"];
 }
 enum ResponseStatus {
-  UNKOWN=0;
+  UNKNOWN=0;
   OK=1000;
-  UNKOWN_ERROR=5000;
+  UNKNOWN_ERROR=5000;
   NOT_FOUND_SPIDER=50001;
 
 }

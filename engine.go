@@ -89,6 +89,7 @@ type CrawlEngine struct {
 	// components 引擎核心组件,包括去重、请求队列、限速器、指标统计组件、时间监听器
 	components ComponentInterface
 	onceStart  sync.Once
+	oncePause  sync.Once
 }
 
 // RegisterSpiders 将spider实例注册到引擎的 spiders
@@ -126,7 +127,6 @@ func (e *CrawlEngine) startSpider(spider SpiderInterface) {
 		e.startSpiderFinish = true
 	}()
 	spider.StartRequest(e.requestsChan)
-
 }
 
 // stop 引擎停止时的动作,
@@ -139,7 +139,7 @@ func (e *CrawlEngine) stop() StatisticInterface {
 	e.startSpiderFinish = false
 	e.isStop = false
 	e.runtimeStatus.SetStatus(ON_STOP)
-	e.Close()
+	e.close()
 	engineLog.Warning("关闭引擎")
 	e.runtimeStatus.SetStopAt(time.Now().Unix())
 	return e.components.GetStats()
@@ -189,6 +189,7 @@ func (e *CrawlEngine) start(spiderName string) {
 	e.runtimeStatus.SetRestartAt(time.Now().Unix())
 	// 引入引擎所有的组件
 	e.eventsChan <- START
+	e.oncePause = sync.Once{}
 	tasks := []GoFunc{e.recvRequest, e.Scheduler}
 	e.runtimeStatus.SetStatus(ON_START)
 	wg := &conc.WaitGroup{}
@@ -224,6 +225,9 @@ func (e *CrawlEngine) Scheduler() error {
 			return nil
 		}
 		if e.runtimeStatus.GetStatusOn() == ON_PAUSE {
+			e.oncePause.Do(func() {
+				e.eventsChan <- PAUSE
+			})
 			e.eventsChan <- HEARTBEAT
 			runtime.Gosched()
 			continue
@@ -516,7 +520,10 @@ func (e *CrawlEngine) GetSpiders() *Spiders {
 }
 
 // Close 关闭引擎
-func (e *CrawlEngine) Close() {
+func (e *CrawlEngine) close() {
+	defer func() {
+
+	}()
 	close(e.requestsChan)
 }
 

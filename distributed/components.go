@@ -41,6 +41,26 @@ type DistributedComponents struct {
 	spider     tegenaria.SpiderInterface
 }
 
+// NewDefaultDistributedComponents 构建默认的分布式组件
+func NewDefaultDistributedComponents(opts ...DistributeOptions) *DistributedComponents {
+	// redis配置
+	redisAddr := tegenaria.Config.GetString("redis.addr")
+	redisUsername := tegenaria.Config.GetString("redis.username")
+	redisPassword := tegenaria.Config.GetString("redis.password")
+	rdbConfig := NewRedisConfig(redisAddr, redisUsername, redisPassword, 0)
+	// influxdb 配置
+	host := tegenaria.Config.GetString("influxdb.host")
+	port := tegenaria.Config.GetInt("influxdb.port")
+	bucket := tegenaria.Config.GetString("influxdb.bucket")
+	token := tegenaria.Config.GetString("influxdb.token")
+	org := tegenaria.Config.GetString("influxdb.org")
+
+	influxdbConfig := NewInfluxdbConfig(fmt.Sprintf("http://%s:%d", host, port), token, bucket, org)
+	config := NewDistributedWorkerConfig(rdbConfig, influxdbConfig, opts...)
+	worker := NewDistributedWorker(config)
+	components := NewDistributedComponents(config, worker, worker.GetRDB())
+	return components
+}
 func NewDistributedComponents(config *DistributedWorkerConfig, worker tegenaria.DistributedWorkerInterface, rdb redis.Cmdable) *DistributedComponents {
 	worker.SetMaster(config.isMaster)
 	d := &DistributedComponents{
@@ -55,29 +75,44 @@ func NewDistributedComponents(config *DistributedWorkerConfig, worker tegenaria.
 	return d
 }
 
+// GetDupefilter 获取去重组件
 func (d *DistributedComponents) GetDupefilter() tegenaria.RFPDupeFilterInterface {
 	return d.dupefilter
 }
+
+// GetQueue 请求消息队列组件
 func (d *DistributedComponents) GetQueue() tegenaria.CacheInterface {
 	return d.queue
 }
+
+// GetLimiter 获取限速器
 func (d *DistributedComponents) GetLimiter() tegenaria.LimitInterface {
 	return d.limiter
 }
+
+// GetStats 获取指标采集器
 func (d *DistributedComponents) GetStats() tegenaria.StatisticInterface {
 	return d.statistic
 }
+
+// GetEventHooks 事件监听器
 func (d *DistributedComponents) GetEventHooks() tegenaria.EventHooksInterface {
 	return d.events
 }
+
+// CheckWorkersStop 检查所有节点是否都已经停止
 func (d *DistributedComponents) CheckWorkersStop() bool {
 	stopped, _ := d.worker.CheckAllNodesStop()
 	return d.queue.IsEmpty() && stopped
 }
+
+// SetCurrentSpider 当前的爬虫实例
 func (d *DistributedComponents) SetCurrentSpider(spider tegenaria.SpiderInterface) {
 	d.spider = spider
 	d.worker.SetCurrentSpider(spider)
 }
+// SpiderBeforeStart 启动爬虫之前检查主节点的状态
+// 若没有在线的主节点则从节点直接退出，并抛出panic
 func (d *DistributedComponents) SpiderBeforeStart(engine *tegenaria.CrawlEngine, spider tegenaria.SpiderInterface) error {
 	if !d.worker.IsMaster() {
 		// 分布式模式下的启动流程

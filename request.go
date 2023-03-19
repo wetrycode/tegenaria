@@ -47,8 +47,8 @@ type Proxy struct {
 type Request struct {
 	// Url 请求Url
 	Url string `json:"url"`
-	// Header 请求头
-	Header map[string]string `json:"header"`
+	// Headers 请求头
+	Headers map[string]string `json:"headers"`
 	// Method 请求方式
 	Method RequestMethod `json:"method"`
 	// Body 请求body
@@ -131,9 +131,9 @@ func RequestWithRequestProxy(proxy Proxy) RequestOption {
 }
 
 // RequestWithRequestHeader 设置请求头
-func RequestWithRequestHeader(header map[string]string) RequestOption {
+func RequestWithRequestHeader(headers map[string]string) RequestOption {
 	return func(r *Request) {
-		r.Header = header
+		r.Headers = headers
 	}
 }
 
@@ -197,7 +197,8 @@ func RequestWithParser(parser Parser) RequestOption {
 	}
 }
 
-// RequestWithDoNotFilter 设置当前请求是否进行过滤处理
+// RequestWithDoNotFilter 设置当前请求是否进行过滤处理,
+// true则认为该条请求无需进入去重流程,默认值为false
 func RequestWithDoNotFilter(doNotFilter bool) RequestOption {
 	return func(r *Request) {
 		r.DoNotFilter = doNotFilter
@@ -243,18 +244,20 @@ func (r *Request) updateQueryParams() {
 	}
 }
 
-// NewRequest 从Request对象内存池创建新的Request对象
+// 请注意parser函数必须是某一个spiderinterface实例的解析函数
+// 否则无法正常调用该解析函数
 func NewRequest(url string, method RequestMethod, parser Parser, opts ...RequestOption) *Request {
-	// request := requestPool.Get().(*Request)
 	request := &Request{
 		Url:             url,
 		Method:          method,
 		Parser:          GetFunctionName(parser),
-		Header:          make(map[string]string),
+		Headers:         make(map[string]string),
 		Meta:            make(map[string]interface{}),
+		Cookies:         make(map[string]string),
 		DoNotFilter:     false,
 		AllowRedirects:  true,
 		MaxRedirects:    3,
+		MaxConnsPerHost: 128,
 		AllowStatusCode: make([]uint64, 0),
 		Timeout:         -1 * time.Second,
 		bodyReader:      nil,
@@ -294,7 +297,7 @@ func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request 
 		Url:             "",
 		Method:          "",
 		Parser:          "",
-		Header:          make(map[string]string),
+		Headers:         make(map[string]string),
 		Meta:            make(map[string]interface{}),
 		DoNotFilter:     false,
 		AllowRedirects:  true,

@@ -30,7 +30,7 @@ type QuotesbotItem struct {
 
 // StartRequest 爬虫启动，请求种子urls
 func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 128; i++ {
 		for _, url := range e.GetFeedUrls() {
 			// 生成新的request 对象
 			exampleLog.Infof("request %s", url)

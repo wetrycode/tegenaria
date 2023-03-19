@@ -280,7 +280,7 @@ func (w *DistributedWorker) addMaster() error {
 }
 
 // delMaster 删除master节点
-func (w *DistributedWorker) delMaster() error {
+func (w *DistributedWorker) DelMaster() error {
 	key := w.getMaterSetKey()
 	nodeKey := w.getNodeKey()
 	member := []interface{}{nodeKey}
@@ -314,15 +314,15 @@ func (w *DistributedWorker) DelNode() error {
 	member := []interface{}{fmt.Sprintf("%s:%s", w.ip, w.nodeID)}
 	err = w.rdb.SRem(context.TODO(), w.getNodesSetKey(), member...).Err()
 	if err != nil && w.isMaster {
-		err = w.delMaster()
+		err = w.DelMaster()
 	}
 	return err
 }
 
-// StopNode 停止当前节点的活动
-func (w *DistributedWorker) StopNode() error {
+// PauseNode 停止当前节点的活动
+func (w *DistributedWorker) PauseNode() error {
 	key := w.getNodeKey()
-	err := w.rdb.SetEx(context.TODO(), key, 0, 1*time.Second).Err()
+	err := w.rdb.SetEx(context.TODO(), fmt.Sprintf("%s:pause", key), 1, 1*time.Second).Err()
 	return err
 }
 

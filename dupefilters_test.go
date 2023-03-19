@@ -62,7 +62,7 @@ func TestDoDupeFilterErr(t *testing.T) {
 		body["test"] = "tegenaria"
 		request1 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers), RequestWithRequestBody(body))
 		spider1 := &TestSpider{
-			NewBaseSpider("DoDupeFilterErrTestSpider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("DoDupeFilterErrTestSpider", []string{"https://www.example.com"}),
 		}
 		ctx1 := NewContext(request1, spider1)
 		duplicates := NewRFPDupeFilter(0.001, 1024*1024)
@@ -86,7 +86,7 @@ func TestDoBodyDupeFilter(t *testing.T) {
 		body1 := make(map[string]interface{})
 		body1["test"] = "tegenaria2"
 		spider1 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 		request1 := NewRequest(server.URL+"/testHeader", GET, testParser, RequestWithRequestHeader(headers), RequestWithRequestBody(body))
 		ctx1 := NewContext(request1, spider1)

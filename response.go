@@ -35,8 +35,8 @@ import (
 type Response struct {
 	// Status状态码
 	Status int
-	// Header 响应头
-	Header map[string][]string // Header response header
+	// Headers 响应头
+	Headers map[string][]string // Header response header
 	// Delay 请求延迟
 	Delay float64 // Delay the time of handle download request
 	// ContentLength 响应体大小
@@ -124,7 +124,7 @@ func NewResponse() *Response {
 // freeResponse 重置response对象并放回对象池
 func freeResponse(r *Response) {
 	r.Status = -1
-	r.Header = nil
+	r.Headers = nil
 	r.Delay = 0
 	r.Body.Close()
 	responsePool.Put(r)

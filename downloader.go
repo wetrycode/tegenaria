@@ -36,6 +36,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wxnacy/wgo/arrays"
 	"golang.org/x/net/http/httpproxy"
+	"golang.org/x/net/http2"
 )
 
 // ctxKey WithValueContext key
@@ -181,6 +182,12 @@ func DownloadWithTLSConfig(tls *tls.Config) DownloaderOption {
 func DownloadWithH2(h2 bool) DownloaderOption {
 	return func(d *SpiderDownloader) {
 		d.transport.ForceAttemptHTTP2 = h2
+		if h2 {
+			err := http2.ConfigureTransport(d.transport)
+			if err != nil {
+				panic("http2 config error")
+			}
+		}
 
 	}
 }
@@ -288,7 +295,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 
 	// 设置请求头
-	for k, v := range ctx.Request.Header {
+	for k, v := range ctx.Request.Headers {
 		req.Header.Set(k, v)
 	}
 
@@ -312,7 +319,7 @@ func (d *SpiderDownloader) Download(ctx *Context) (*Response, error) {
 	}
 	// 构建响应
 	response := NewResponse()
-	response.Header = resp.Header
+	response.Headers = resp.Header
 	response.Status = resp.StatusCode
 	response.URL = req.URL.String()
 	response.Delay = time.Since(now).Seconds()

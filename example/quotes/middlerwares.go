@@ -37,8 +37,8 @@ func (m HeadersDownloadMiddler) ProcessRequest(ctx *tegenaria.Context) error {
 	}
 
 	for key, value := range header {
-		if _, ok := ctx.Request.Header[key]; !ok {
-			ctx.Request.Header[key] = value
+		if _, ok := ctx.Request.Headers[key]; !ok {
+			ctx.Request.Headers[key] = value
 		}
 	}
 	return nil

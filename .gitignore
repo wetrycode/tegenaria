@@ -3,3 +3,6 @@
 *.out
 .vscode/
 ./.vscode
+*.txt
+*.bak
+*.bk

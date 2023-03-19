@@ -16,7 +16,6 @@ func TestEventWatcher(t *testing.T) {
 			ch := make(chan EventType, 5)
 			defer close(ch)
 			ch <- START
-			ch <- STOP
 			ch <- ERROR
 			ch <- HEARTBEAT
 			ch <- EXIT
@@ -47,15 +46,15 @@ func TestEventWatcherWithError(t *testing.T) {
 		c.So(f, c.ShouldPanic)
 		defer patch.Reset()
 	})
-	c.Convey("Watch stop event error", t, func() {
-		patch := gomonkey.ApplyFunc((*DefaultHooks).Stop, func(_ *DefaultHooks, _ ...interface{}) error {
-			return fmt.Errorf("stop error")
+	c.Convey("Watch pause event error", t, func() {
+		patch := gomonkey.ApplyFunc((*DefaultHooks).Pause, func(_ *DefaultHooks, _ ...interface{}) error {
+			return fmt.Errorf("pause error")
 		})
 		hooker := NewDefaultHooks()
 
 		f := func() {
 			ch := make(chan EventType, 1)
-			ch <- STOP
+			ch <- PAUSE
 			err := hooker.EventsWatcher(ch)
 			if err != nil {
 				panic(err)

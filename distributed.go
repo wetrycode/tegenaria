@@ -29,8 +29,8 @@ type DistributedWorkerInterface interface {
 	AddNode() error
 	// DelNode 删除当前的节点
 	DelNode() error
-	// StopNode 停止当前的节点
-	StopNode() error
+	// PauseNode 停止当前的节点
+	PauseNode() error
 	// Heartbeat 心跳
 	Heartbeat() error
 	// CheckAllNodesStop 检查所有的节点是否都已经停止

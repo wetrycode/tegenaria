@@ -51,7 +51,7 @@ func TestEventWatcher(t *testing.T) {
 			ch := make(chan tegenaria.EventType, 5)
 			defer close(ch)
 			ch <- tegenaria.START
-			ch <- tegenaria.STOP
+			ch <- tegenaria.PAUSE
 			ch <- tegenaria.ERROR
 			ch <- tegenaria.HEARTBEAT
 			ch <- tegenaria.EXIT
@@ -83,8 +83,8 @@ func TestEventWatcherWithError(t *testing.T) {
 		c.So(f, c.ShouldPanic)
 		defer patch.Reset()
 	})
-	c.Convey("Watch stop event error", t, func() {
-		patch := gomonkey.ApplyFunc((*DistributedHooks).Stop, func(_ *DistributedHooks, _ ...interface{}) error {
+	c.Convey("Watch pause event error", t, func() {
+		patch := gomonkey.ApplyFunc((*DistributedHooks).Pause, func(_ *DistributedHooks, _ ...interface{}) error {
 			return fmt.Errorf("stop error")
 		})
 		worker, r := watcher(t, "stopErrorSpider")
@@ -93,7 +93,7 @@ func TestEventWatcherWithError(t *testing.T) {
 
 		f := func() {
 			ch := make(chan tegenaria.EventType, 1)
-			ch <- tegenaria.STOP
+			ch <- tegenaria.PAUSE
 			err := hooker.EventsWatcher(ch)
 			if err != nil {
 				panic(err)

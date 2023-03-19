@@ -10,19 +10,19 @@ func TestSpiders(t *testing.T) {
 	convey.Convey("test spiders", t, func() {
 		spiders := NewSpiders()
 		spider1 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 		spider2 := &TestSpider{
-			NewBaseSpider("testspider", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider", []string{"https://www.example.com"}),
 		}
 		spider3 := &TestSpider{
-			NewBaseSpider("testspider1", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider1", []string{"https://www.example.com"}),
 		}
 		spider4 := &TestSpider{
-			NewBaseSpider("testspider2", []string{"https://www.baidu.com"}),
+			NewBaseSpider("testspider2", []string{"https://www.example.com"}),
 		}
 		spider5 := &TestSpider{
-			NewBaseSpider("", []string{"https://www.baidu.com"}),
+			NewBaseSpider("", []string{"https://www.example.com"}),
 		}
 		err := spiders.Register(spider1)
 		convey.So(err, convey.ShouldBeNil)

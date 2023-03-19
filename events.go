@@ -36,8 +36,6 @@ const (
 	HEARTBEAT
 	// PAUSE 暂停
 	PAUSE
-	// STOP 停止
-	STOP
 	// ERROR 错误
 	ERROR
 	// EXIT 退出
@@ -52,7 +50,7 @@ type EventHooksInterface interface {
 	// Start 处理引擎启动事件
 	Start(params ...interface{}) error
 	// Stop 处理引擎停止事件
-	Stop(params ...interface{}) error
+	Pause(params ...interface{}) error
 	// Error处理错误事件
 	Error(params ...interface{}) error
 	// Exit 退出引擎事件
@@ -78,8 +76,8 @@ func (d *DefaultHooks) Start(params ...interface{}) error {
 	return nil
 }
 
-// Stop 处理STOP事件
-func (d *DefaultHooks) Stop(params ...interface{}) error {
+// Pause 处理STOP事件
+func (d *DefaultHooks) Pause(params ...interface{}) error {
 	return nil
 }
 
@@ -111,8 +109,8 @@ func DefaultWatcher(ch chan EventType, hooker EventHooksInterface) error {
 				if err != nil {
 					return err
 				}
-			case STOP:
-				err := hooker.Stop()
+			case PAUSE:
+				err := hooker.Pause()
 				if err != nil {
 					return err
 				}
