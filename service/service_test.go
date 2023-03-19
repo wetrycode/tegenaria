@@ -23,7 +23,7 @@ import (
 )
 
 func NewTestClient() pb.TegenariaServiceClient {
-	conn, err := grpc.Dial("127.0.0.1:9527", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial("127.0.0.1:19527", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestSetStatusWithRPC(t *testing.T) {
 	convey.Convey("test set status RPC  api", t, func() {
 		engine := tegenaria.NewTestEngine("example")
 
-		server := NewServer(engine, "127.0.0.1", 9527)
+		server := NewServer(engine, "127.0.0.1", 19527)
 		patch := gomonkey.ApplyFunc((*tegenaria.DefaultComponents).CheckWorkersStop, func(_ *tegenaria.DefaultComponents) bool {
 			return false
 
@@ -44,6 +44,7 @@ func TestSetStatusWithRPC(t *testing.T) {
 		go func() {
 			server.Start()
 		}()
+		// 启动example爬虫
 		time.Sleep(time.Second * 2)
 		client := NewTestClient()
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
@@ -52,18 +53,22 @@ func TestSetStatusWithRPC(t *testing.T) {
 			Status:     pb.TegenariaStatus_ON_START,
 			SpiderName: "example",
 		})
-		time.Sleep(time.Second * 5)
+		time.Sleep(time.Second * 6)
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r.Code, convey.ShouldAlmostEqual, pb.ResponseStatus_OK)
+		// 查询状态
 		r, err = client.GetStatus(context.TODO(), &emptypb.Empty{})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(r.Code, convey.ShouldAlmostEqual, pb.ResponseStatus_OK)
 		// 获取状态
 		convey.So(r.Data, convey.ShouldNotBeNil)
 		var status = &pb.TegenariaStatusMessage{}
-		err = json.Unmarshal(r.Data, status)
+		data, err := r.Data.GetFields()["data"].MarshalJSON()
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(status.Metrics["requests"], convey.ShouldAlmostEqual, 1)
+
+		err = json.Unmarshal(data, status)
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(status.Metrics[tegenaria.RequestStats], convey.ShouldAlmostEqual, 1)
 		convey.So(status.Status, convey.ShouldContainSubstring, tegenaria.ON_START.GetTypeName())
 		// 暂停
 		r, err = client.SetStatus(context.TODO(), &pb.StatusContorlRequest{
@@ -79,10 +84,23 @@ func TestSetStatusWithRPC(t *testing.T) {
 		// 获取状态
 		convey.So(r.Data, convey.ShouldNotBeNil)
 		var statusPause = &pb.TegenariaStatusMessage{}
-		err = json.Unmarshal(r.Data, statusPause)
+		data, err = r.Data.GetFields()["data"].MarshalJSON()
+		convey.So(err, convey.ShouldBeNil)
+		err = json.Unmarshal(data, statusPause)
+
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(statusPause.Metrics["requests"], convey.ShouldAlmostEqual, 1)
 		convey.So(statusPause.Status, convey.ShouldContainSubstring, tegenaria.ON_PAUSE.GetTypeName())
+
+		ctx, cancel = context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		r, err = client.SetStatus(ctx, &pb.StatusContorlRequest{
+			Status:     pb.TegenariaStatus_ON_START,
+			SpiderName: "example_2",
+		})
+		time.Sleep(time.Second * 5)
+		convey.So(err, convey.ShouldNotBeNil)
+		convey.So(r, convey.ShouldBeNil)
 
 	})
 
@@ -122,7 +140,7 @@ func TestSetStatusWithHTTP(t *testing.T) {
 		convey.So(err, convey.ShouldBeNil)
 		rsp, err := client.Do(req)
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(rsp.StatusCode, convey.ShouldAlmostEqual,200)
+		convey.So(rsp.StatusCode, convey.ShouldAlmostEqual, 200)
 
 		defer rsp.Body.Close()
 		body, err := io.ReadAll(rsp.Body)
@@ -134,11 +152,11 @@ func TestSetStatusWithHTTP(t *testing.T) {
 		time.Sleep(time.Second * 5)
 
 		// 获取爬虫状态
-		statusRequest,_:=http.NewRequest("GET","http://127.0.0.1:12138/api/v1/tegenaria/status", nil)
+		statusRequest, _ := http.NewRequest("GET", "http://127.0.0.1:12138/api/v1/tegenaria/status", nil)
 		statusRequest.Header.Set("Accept", "application/json")
 
 		statusRsp, err := client.Do(statusRequest)
-		convey.So(statusRsp.StatusCode, convey.ShouldAlmostEqual,200)
+		convey.So(statusRsp.StatusCode, convey.ShouldAlmostEqual, 200)
 
 		convey.So(err, convey.ShouldBeNil)
 		var statusMessage = &pb.ResponseMessage{}
@@ -150,7 +168,10 @@ func TestSetStatusWithHTTP(t *testing.T) {
 		convey.So(statusMessage.Code, convey.ShouldAlmostEqual, pb.ResponseStatus_OK)
 		convey.So(err, convey.ShouldBeNil)
 		var engineStatus = &pb.TegenariaStatusMessage{}
-		err = json.Unmarshal(statusMessage.Data, engineStatus)
+		data, err := statusMessage.Data.MarshalJSON()
+		convey.So(err, convey.ShouldBeNil)
+		err = json.Unmarshal(data, engineStatus)
+
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(engineStatus.Metrics["requests"], convey.ShouldAlmostEqual, 1)
 		convey.So(engineStatus.Status, convey.ShouldContainSubstring, tegenaria.ON_STOP.GetTypeName())

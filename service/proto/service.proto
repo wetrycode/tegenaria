@@ -3,16 +3,21 @@ package pb;
 option go_package = "github.com/wetrycode/tegenaria/service/pb";
 import "google/api/annotations.proto";
 import "google/protobuf/empty.proto";
-
+import "google/protobuf/struct.proto";
 
 message StatusContorlRequest {
-    TegenariaStatus Status = 1;
-    string SpiderName=2;
+    // @inject_tag: json:"status"
+    TegenariaStatus Status = 1 [json_name = "status"];
+    // @inject_tag: json:"spider_name"
+    string SpiderName=2 [json_name = "spider_name"];
 }
 message ResponseMessage {
-  int32 Code=1;
-    string Msg=2;
-    bytes Data=3;
+    // @gotags: json:"code"
+    int32 Code=1 [json_name = "code"];
+    // @gotags: json:"msg"
+    string Msg=2 [json_name = "msg"];
+    // @gotags: json:"data"
+    google.protobuf.Struct Data=3 [json_name = "data"];
 }
 enum ResponseStatus {
   UNKOWN=0;
@@ -28,13 +33,18 @@ enum TegenariaStatus{
     ON_PAUSE=2;
 }
 message TegenariaStatusMessage {
+    // @inject_tag: json:"status"
     string Status=1;
-    string Start_at=2;
-    string Stop_at=3;
+    // @inject_tag: json:"start_at"
+    string StartAt=2;
+    // @inject_tag: json:"stop_at"
+    string StopAt=3;
+    // @inject_tag: json:"duration"
     double Duration=4;
-
+    // @inject_tag: json:"metrics"
     map<string,uint64> Metrics = 5;
-    string Spider_name=6;
+    // @inject_tag: json:"spider_name" 
+    string SpiderName=6;
 
 }
 service TegenariaService {

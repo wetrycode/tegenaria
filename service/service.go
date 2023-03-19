@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -19,7 +20,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
+
+var logger = tegenaria.GetLogger("service")
 
 type Server struct {
 	pb.UnimplementedTegenariaServiceServer
@@ -75,24 +79,50 @@ func (s *Server) SetStatus(ctx context.Context, request *pb.StatusContorlRequest
 	return rsp, err
 }
 func (s *Server) GetStatus(ctx context.Context, _ *emptypb.Empty) (*pb.ResponseMessage, error) {
+	defer func() {
+		if p := recover(); p != nil {
+			logger.Errorf("get engine status fail %s %s", p, debug.Stack())
+		}
+	}()
 	runtimeStatus := s.Engine.GetRuntimeStatus()
 
 	stats := s.Engine.GetStatic()
-
+	current_spider := ""
+	if s.Engine.GetCurrentSpider() != nil {
+		current_spider = s.Engine.GetCurrentSpider().GetName()
+	}
+	start_at := ""
+	if runtimeStatus.GetStartAt() != 0 {
+		start_at = time.Unix(runtimeStatus.GetStartAt(), 0).Format("2006-01-02 15:04:05")
+	}
+	stop_at := ""
+	if runtimeStatus.GetStopAt() != 0 {
+		start_at = time.Unix(runtimeStatus.GetStartAt(), 0).Format("2006-01-02 15:04:05")
+	}
 	info := &pb.TegenariaStatusMessage{
 		Status:     runtimeStatus.GetStatusOn().GetTypeName(),
-		StartAt:    time.Unix(runtimeStatus.GetStartAt(), 0).Format("2006-01-02 15:04:05"),
-		StopAt:     time.Unix(runtimeStatus.GetStopAt(), 0).Format("2006-01-02 15:04:05"),
+		StartAt:    start_at,
+		StopAt:     stop_at,
 		Duration:   runtimeStatus.GetDuration(),
 		Metrics:    stats.GetAllStats(),
-		SpiderName: s.Engine.GetCurrentSpider().GetName(),
+		SpiderName: current_spider,
 	}
 	jsonInfo, _ := json.Marshal(info)
-
+	var m map[string]interface{}
+	_ = json.Unmarshal(jsonInfo, &m)
+	value, err := structpb.NewValue(m)
+	if err != nil {
+		logger.Errorf("get status error %s", err.Error())
+	}
+	rspStruct := &structpb.Struct{
+		Fields: map[string]*structpb.Value{
+			"data": value,
+		},
+	}
 	return &pb.ResponseMessage{
 		Code: int32(pb.ResponseStatus_OK.Number()),
 		Msg:  "ok",
-		Data: jsonInfo,
+		Data: rspStruct,
 	}, nil
 }
 
@@ -123,6 +153,10 @@ func (s *Server) Start() {
 		Addr:    fmt.Sprintf("%s:%d", s.Host, s.Port),
 		Handler: s.grpcHandlerFunc(g, mux), // 请求的统一入口
 	}
+	IP, _ := tegenaria.GetMachineIP()
+	fmt.Printf("Server listen on:http://%s:%d\n", s.Host, s.Port)
+	fmt.Printf("Server listen on:http://%s:%d\n", IP, s.Port)
+
 	log.Fatalln(gwServer.Serve(lis)) // 启动HTTP服务
 
 }

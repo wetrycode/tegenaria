@@ -23,7 +23,6 @@
 package tegenaria
 
 import (
-	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -50,7 +49,7 @@ func GetUUID() string {
 type GoFunc func() error
 
 // GoRunner 执行协程任务
-func GoRunner(_ context.Context, wg *conc.WaitGroup, funcs ...GoFunc) <-chan error {
+func GoRunner(wg *conc.WaitGroup, funcs ...GoFunc) <-chan error {
 	ch := make(chan error, len(funcs))
 	for _, readyFunc := range funcs {
 		_func := readyFunc
@@ -132,7 +131,7 @@ func Interface2Uint(value interface{}) uint {
 	case int64:
 		return uint(value.(int64))
 	case int32:
-		return uint(value.(uint32))
+		return uint(value.(int32))
 	case uint64:
 		return uint(value.(uint64))
 	case nil:

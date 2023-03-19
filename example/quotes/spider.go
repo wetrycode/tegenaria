@@ -30,7 +30,7 @@ type QuotesbotItem struct {
 
 // StartRequest 爬虫启动，请求种子urls
 func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		for _, url := range e.GetFeedUrls() {
 			// 生成新的request 对象
 			exampleLog.Infof("request %s", url)
@@ -38,7 +38,7 @@ func (e *ExampleSpider) StartRequest(req chan<- *tegenaria.Context) {
 			// 生成新的Context
 			ctx := tegenaria.NewContext(request, e)
 			// 将context发送到req channel
-			time.Sleep(1)
+			time.Sleep(time.Second)
 			req <- ctx
 		}
 	}
@@ -52,12 +52,12 @@ func (e *ExampleSpider) Parser(resp *tegenaria.Context, req chan<- *tegenaria.Co
 	if err != nil {
 		log.Fatal(err)
 	}
-	doc.Find(".quote").Each(func(i int, s *goquery.Selection) {
+	doc.Find(".quote").Each(func(_ int, s *goquery.Selection) {
 		// For each item found, get the title
 		qText := s.Find(".text").Text()
 		author := s.Find(".author").Text()
 		tags := make([]string, 0)
-		s.Find("a.tag").Each(func(i int, s *goquery.Selection) {
+		s.Find("a.tag").Each(func(_ int, s *goquery.Selection) {
 			tags = append(tags, s.Text())
 		})
 		// ready to send a item to engine

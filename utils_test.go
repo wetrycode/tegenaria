@@ -49,6 +49,9 @@ func TestInterface2Uint(t *testing.T) {
 			Interface2Uint(false)
 		}
 		v8 := Interface2Uint(uint64(2))
+		v9 := Interface2Uint(uint(2))
+		v10 := Interface2Uint(int(2))
+		v11 := Interface2Uint(int32(2))
 		convey.So(v1, convey.ShouldEqual, 2)
 		convey.So(v2, convey.ShouldEqual, 2)
 		convey.So(v3, convey.ShouldEqual, 2)
@@ -56,6 +59,9 @@ func TestInterface2Uint(t *testing.T) {
 		convey.So(v5, convey.ShouldEqual, 2)
 		convey.So(v6, convey.ShouldEqual, 0)
 		convey.So(v8, convey.ShouldEqual, 2)
+		convey.So(v9, convey.ShouldEqual, 2)
+		convey.So(v10, convey.ShouldEqual, 2)
+		convey.So(v11, convey.ShouldEqual, 2)
 		convey.So(v7, convey.ShouldPanic)
 	})
 

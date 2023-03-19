@@ -23,7 +23,6 @@
 package tegenaria
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -31,6 +30,7 @@ import (
 	"runtime/debug"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,9 +60,11 @@ type CrawlEngine struct {
 	// downloader 下载器
 	downloader Downloader
 
-	// 整个系统产生的request对象都应该通过该channel
+	// requestsChan 整个系统产生的request对象都应该通过该channel
 	// 提交到引擎
 	requestsChan chan *Context
+	// reqChannelSize 请求channel的大小
+	reqChannelSize int
 
 	// eventsChan 事件管道
 	// 数据抓取过程中发起的事件都需要通过该channel与引擎进行交互
@@ -78,10 +80,8 @@ type CrawlEngine struct {
 	// mutex spider 启动锁
 	// 同一进程下只能启动一个spider
 	mutex sync.Mutex
-
 	// currentSpider 当前正在运行的spider 实例
 	currentSpider SpiderInterface
-
 	// ctxCount 请求计数器
 	ctxCount int64
 	// runtimeStatus 运行时的一些状态，包括运行开始时间，持续时间，引擎的状态
@@ -114,39 +114,34 @@ func (e *CrawlEngine) RegisterDownloadMiddlewares(middlewares MiddlewaresInterfa
 }
 
 // startSpider 通过爬虫名启动爬虫
-func (e *CrawlEngine) startSpider(spiderName string) GoFunc {
-	_spiderName := spiderName
-	return func() error {
-		defer func() {
-			e.startSpiderFinish = true
-		}()
-		// 通过爬虫名获取爬虫实例
-		spider, ok := e.spiders.SpidersModules[_spiderName]
-
-		if !ok {
-			panic(ErrSpiderNotExist)
+func (e *CrawlEngine) startSpider(spider SpiderInterface) {
+	defer func() {
+		if p := recover(); p != nil {
+			if strings.Contains(fmt.Sprintf("%s", p), "send on closed channel") {
+				engineLog.Warningf("%s", p)
+			} else {
+				panic(p)
+			}
 		}
-		e.setCurrentSpider(spider)
-		err := e.components.SpiderBeforeStart(e, spider)
-		if err != nil {
-			return err
-		}
-		spider.StartRequest(e.requestsChan)
-		return nil
-	}
+		e.startSpiderFinish = true
+	}()
+	spider.StartRequest(e.requestsChan)
 
 }
-
 
 // stop 引擎停止时的动作,
 // 汇总stats并设置状态
 func (e *CrawlEngine) stop() StatisticInterface {
+	defer e.reInit()
 	stats := e.components.GetStats().GetAllStats()
 	s := Map2String(stats)
 	engineLog.Infof(s)
 	e.startSpiderFinish = false
 	e.isStop = false
 	e.runtimeStatus.SetStatus(ON_STOP)
+	e.Close()
+	engineLog.Warning("关闭引擎")
+	e.runtimeStatus.SetStopAt(time.Now().Unix())
 	return e.components.GetStats()
 }
 func (e *CrawlEngine) Execute(spiderName string) StatisticInterface {
@@ -169,6 +164,7 @@ func (e *CrawlEngine) setCurrentSpider(spider SpiderInterface) {
 // Start 爬虫启动器
 func (e *CrawlEngine) start(spiderName string) {
 	e.mutex.Lock()
+	e.reInit()
 	defer func() {
 		if p := recover(); p != nil {
 			e.mutex.Unlock()
@@ -176,6 +172,16 @@ func (e *CrawlEngine) start(spiderName string) {
 		}
 		e.mutex.Unlock()
 	}()
+	spider, err := e.spiders.GetSpider(spiderName)
+	if err != nil {
+		panic(err.Error())
+	}
+	e.setCurrentSpider(spider)
+	err = e.components.SpiderBeforeStart(e, spider)
+	if err != nil {
+		engineLog.Errorf("SpiderBeforeStart ERROR %s", err.Error())
+		return
+	}
 	e.onceStart.Do(func() {
 		e.runtimeStatus.SetStartAt(time.Now().Unix())
 
@@ -183,13 +189,15 @@ func (e *CrawlEngine) start(spiderName string) {
 	e.runtimeStatus.SetRestartAt(time.Now().Unix())
 	// 引入引擎所有的组件
 	e.eventsChan <- START
-	tasks := []GoFunc{e.startSpider(spiderName), e.recvRequest, e.Scheduler}
+	tasks := []GoFunc{e.recvRequest, e.Scheduler}
 	e.runtimeStatus.SetStatus(ON_START)
 	wg := &conc.WaitGroup{}
 	// eventTasks 事件监听器
 	eventTasks := []GoFunc{e.EventsWatcherRunner}
-	GoRunner(context.Background(), wg, eventTasks...)
-	GoRunner(context.Background(), e.waitGroup, tasks...)
+	GoRunner(wg, eventTasks...)
+	GoRunner(e.waitGroup, tasks...)
+	go e.startSpider(spider)
+
 	p := e.waitGroup.WaitAndRecover()
 	e.eventsChan <- EXIT
 	engineLog.Infof("Wating engine to stop...")
@@ -212,7 +220,7 @@ func (e *CrawlEngine) EventsWatcherRunner() error {
 // Scheduler 调度器
 func (e *CrawlEngine) Scheduler() error {
 	for {
-		if e.isStop {
+		if e.isStop || e.GetRuntimeStatus().GetStatusOn() == ON_STOP {
 			return nil
 		}
 		if e.runtimeStatus.GetStatusOn() == ON_PAUSE {
@@ -230,10 +238,10 @@ func (e *CrawlEngine) Scheduler() error {
 		request := req.(*Context)
 		// 对request进行处理
 		f := []GoFunc{e.worker(request)}
-		duration := time.Since(time.Unix(e.runtimeStatus.GetRestartAt(), 0))
-		e.runtimeStatus.SetDuration(duration.Seconds() + e.runtimeStatus.GetDuration())
+		duration := time.Since(time.Unix(e.runtimeStatus.GetRestartAt(), 0)) / time.Second
+		e.runtimeStatus.SetDuration(float64(duration))
 		engineLog.Infof("%d:运行时长:%d", e.runtimeStatus.GetRestartAt(), duration)
-		GoRunner(context.TODO(), e.waitGroup, f...)
+		GoRunner(e.waitGroup, f...)
 
 	}
 }
@@ -261,7 +269,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 		defer func() {
 			if c.Error != nil {
 				// 新增一个错误
-				e.components.GetStats().Incr("errors")
+				e.components.GetStats().Incr(ErrorStats)
 				// 提交一个错误事件
 				e.eventsChan <- ERROR
 				// 将错误交给自定义的spider错误处理函数
@@ -282,7 +290,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 			return err
 		},
 		}
-		GoRunner(ctx, wg, funcs...)
+		GoRunner(wg, funcs...)
 		// 处理request的所有工作单元
 		units := []workerUnit{e.doDownload, e.doHandleResponse, e.doParse}
 		e.doWorkerUnit(c, units...)
@@ -297,6 +305,14 @@ func (e *CrawlEngine) recvRequest() error {
 	for {
 		select {
 		case req := <-e.requestsChan:
+			if req == nil {
+				continue
+			}
+			if e.GetRuntimeStatus().GetStatusOn() == ON_STOP {
+				logger.Warnf("准备停止爬虫")
+				e.isStop = true
+				return nil
+			}
 			// 新增一条请求
 			atomic.AddInt64(&e.ctxCount, 1)
 			err := e.writeCache(req)
@@ -306,8 +322,10 @@ func (e *CrawlEngine) recvRequest() error {
 		// 每三秒钟检查一次所有的任务是否都已经结束
 		case <-time.After(time.Second * 3):
 			// 被动等待爬虫停止或主动停止爬虫
+			engineLog.Infof("当前运行状态:%s", e.runtimeStatus.GetStatusOn().GetTypeName())
 			if e.checkReadyDone() || e.runtimeStatus.GetStatusOn() == ON_STOP {
 				e.isStop = true
+				engineLog.Warningf("停止接收请求")
 				return nil
 			}
 
@@ -518,6 +536,11 @@ func (e *CrawlEngine) GetRuntimeStatus() *RuntimeStatus {
 func (e *CrawlEngine) GetComponents() ComponentInterface {
 	return e.components
 }
+func (e *CrawlEngine) reInit() {
+	e.requestsChan = make(chan *Context, e.reqChannelSize)
+	e.eventsChan = make(chan EventType, 16)
+	e.ctxCount = 0
+}
 
 // NewEngine 构建新的引擎
 func NewEngine(opts ...EngineOption) *CrawlEngine {
@@ -534,6 +557,7 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		runtimeStatus:         NewRuntimeStatus(),
 		currentSpider:         nil,
 		ctxCount:              0,
+		reqChannelSize:        1024,
 		onceStart:             sync.Once{},
 		components:            NewDefaultComponents(),
 	}

@@ -169,10 +169,11 @@ func TestGetSpiders(t *testing.T) {
 func TestSpiderNotFound(t *testing.T) {
 	convey.Convey("test spider not found", t, func() {
 		engine := NewTestEngine("testSpiderNotFound")
-		f := engine.startSpider("spiderNotFound")
+		f := func() {
+			engine.start("spiderNotFound")
+		}
 		convey.So(func() {
-			err := f()
-			convey.So(err, convey.ShouldBeNil)
+			f()
 		}, convey.ShouldPanic)
 	})
 
@@ -190,7 +191,7 @@ func TestSpiderDuplicate(t *testing.T) {
 func TestEngineStart(t *testing.T) {
 	convey.Convey("engine start", t, func() {
 
-		engine := NewTestEngine("testSpider9")
+		engine := NewTestEngine("testSpider9", EngineWithReqChannelSize(1024))
 
 		engine.Execute("testSpider9")
 		convey.So(GetEngineID(), convey.ShouldContainSubstring, engineID)
@@ -204,7 +205,7 @@ func TestEngineStart(t *testing.T) {
 		convey.So(r.GetDuration(), convey.ShouldBeLessThan, 1)
 		convey.So(r.GetRestartAt(), convey.ShouldBeLessThan, time.Now().Unix()+1)
 		convey.So(r.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_STOP.GetTypeName())
-		convey.So(r.GetStopAt(), convey.ShouldBeLessThan, 1)
+		convey.So(r.GetStopAt(), convey.ShouldBeGreaterThan, 0)
 
 		engine.Close()
 	})
@@ -225,11 +226,11 @@ func TestEngineStart(t *testing.T) {
 		convey.So(engine.GetCurrentSpider().GetName(), convey.ShouldContainSubstring, "controlSpider9")
 		r.SetStatus(ON_PAUSE)
 		convey.So(r.GetStatusOn().GetTypeName(), convey.ShouldContainSubstring, ON_PAUSE.GetTypeName())
+		time.Sleep(time.Second * 4)
 		r.SetStatus(ON_STOP)
 
 		const unknown StatusType = 5
 		convey.So(unknown.GetTypeName(), convey.ShouldContainSubstring, "unknown")
-
 		engine.Close()
 	})
 
