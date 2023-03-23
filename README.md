@@ -39,11 +39,11 @@ import "github.com/wetrycode/tegenaria"
 
 # 文档
 
-- [入门](docs/Tutorial.md)
+- [入门](https://wetrycode.github.io/tegenaria/#/quickstart)
 
 # TODO
 
-- 管理WEB API
+- ~~管理WEB API~~
 
 
 # Contribution
@@ -53,4 +53,4 @@ Send me an email directly, vforfreedom96@gmail.com
 
 ## License
 
-[MIT](LICENSE) © geebytes  
+[MIT](LICENSE) © wetrycode  

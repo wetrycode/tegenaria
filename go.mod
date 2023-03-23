@@ -42,7 +42,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/smartystreets/assertions v1.2.0 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
@@ -56,7 +55,6 @@ require (
 	github.com/go-playground/locales v0.14.0 // indirect
 	github.com/go-playground/universal-translator v0.18.0 // indirect
 	github.com/go-playground/validator/v10 v10.11.1 // indirect
-	github.com/grpc-ecosystem/grpc-gateway v1.16.0
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/huandu/go-tls v1.0.1 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect

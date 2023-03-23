@@ -111,6 +111,7 @@ func (d *DistributedComponents) SetCurrentSpider(spider tegenaria.SpiderInterfac
 	d.spider = spider
 	d.worker.SetCurrentSpider(spider)
 }
+
 // SpiderBeforeStart 启动爬虫之前检查主节点的状态
 // 若没有在线的主节点则从节点直接退出，并抛出panic
 func (d *DistributedComponents) SpiderBeforeStart(engine *tegenaria.CrawlEngine, spider tegenaria.SpiderInterface) error {

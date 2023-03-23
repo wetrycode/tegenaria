@@ -46,8 +46,8 @@ type CrawlEngine struct {
 	runtimeStatus *RuntimeStatus
 	// components 引擎核心组件,包括去重、请求队列、限速器、指标统计组件、时间监听器
 	components ComponentInterface
-	onceStart  sync.Once
-	oncePause  sync.Once
+	// onceClose 引擎关闭动作只执行一次
+	onceClose sync.Once
 }
 func NewEngine(opts ...EngineOption) *CrawlEngine {
 	Engine := &CrawlEngine{
@@ -64,8 +64,9 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		currentSpider:         nil,
 		ctxCount:              0,
 		reqChannelSize:        1024,
-		onceStart:             sync.Once{},
 		components:            NewDefaultComponents(),
+		onceClose:             sync.Once{},
+
 	}
 	for _, o := range opts {
 		o(Engine)
@@ -76,4 +77,38 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 
 #### 说明  
 
-可以看到引擎包含了前文提及到的说有组件，引擎负责将这些组件进行组合构成一个完整的调度链路 
+- 可以看到引擎包含了前文提及到的说有组件，引擎负责将这些组件进行组合构成一个完整的调度链路 
+
+- 引擎提供了运行时状态控制和查询的组件`RuntimeStatus`,该组件可以控制和查询爬虫的运行状态，其定义如下
+
+```go
+// RuntimeStatus 引擎状态控制和查询
+type RuntimeStatus struct {
+	// StartAt 第一次启动时间
+	StartAt int64
+	// Duration 运行时长
+	Duration float64
+	// StopAt 停止时间
+	StopAt int64
+	// RestartAt 重启时间
+	RestartAt int64
+	// StatusOn 当前引擎的状态
+	StatusOn StatusType
+	// onceStart 启动状态只执行一次
+	onceStart sync.Once
+	// oncePause 暂停状态只触发一次
+	oncePause *sync.Once
+}
+
+func NewRuntimeStatus() *RuntimeStatus {
+	return &RuntimeStatus{
+		StartAt:   0,
+		Duration:  0,
+		StopAt:    0,
+		RestartAt: 0,
+		StatusOn:  ON_STOP,
+		onceStart: sync.Once{},
+		oncePause: &sync.Once{},
+	}
+}
+```

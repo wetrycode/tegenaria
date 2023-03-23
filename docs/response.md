@@ -47,3 +47,5 @@ type Response struct {
 - ```func (r *Response) Json() (map[string]interface{}, error)``` 序列化为json格式数据  
 
 - ```func (r *Response) String() (string, error)``` 序列化为stringa数据类型
+
+- ```WriteTo(writer io.Writer) (int64, error)``` 允许用户将response写入自定义的witer,例如下载文件时可以将response写入本地文件

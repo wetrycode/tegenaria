@@ -47,13 +47,22 @@ const (
 	ErrorStats string = "errors"
 )
 
+// RuntimeStatus 引擎状态控制和查询
 type RuntimeStatus struct {
-	StartAt   int64
-	Duration  float64
-	StopAt    int64
+	// StartAt 第一次启动时间
+	StartAt int64
+	// Duration 运行时长
+	Duration float64
+	// StopAt 停止时间
+	StopAt int64
+	// RestartAt 重启时间
 	RestartAt int64
 	// StatusOn 当前引擎的状态
 	StatusOn StatusType
+	// onceStart 启动状态只执行一次
+	onceStart sync.Once
+	// oncePause 暂停状态只触发一次
+	oncePause *sync.Once
 }
 
 func NewRuntimeStatus() *RuntimeStatus {
@@ -63,12 +72,17 @@ func NewRuntimeStatus() *RuntimeStatus {
 		StopAt:    0,
 		RestartAt: 0,
 		StatusOn:  ON_STOP,
+		onceStart: sync.Once{},
+		oncePause: &sync.Once{},
 	}
 }
 
 // SetStatus 设置引擎状态
 // 用于控制引擎的启停
 func (r *RuntimeStatus) SetStatus(status StatusType) {
+	if status == ON_START {
+		r.oncePause = &sync.Once{}
+	}
 	r.StatusOn = status
 }
 
@@ -76,8 +90,12 @@ func (r *RuntimeStatus) SetStatus(status StatusType) {
 func (r *RuntimeStatus) GetStatusOn() StatusType {
 	return r.StatusOn
 }
+
+// SetStartAt 第一次启动的时间
 func (r *RuntimeStatus) SetStartAt(startAt int64) {
-	r.StartAt = startAt
+	r.onceStart.Do(func() {
+		r.StartAt = startAt
+	})
 }
 
 // GetStartAt 获取引擎启动的时间戳

@@ -448,3 +448,57 @@ func TestPostForm(t *testing.T) {
 		convey.So(content, convey.ShouldContainSubstring, "form data")
 	})
 }
+
+func TestPauseRestart(t *testing.T) {
+	convey.Convey("test pause then restart,puase should be done once", t, func() {
+		engine := NewTestEngine("PauseSpider01", EngineWithUniqueReq(false))
+		server := NewTestServer()
+
+		feedUrls := []string{
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+		}
+		spider := &TestSpider{NewBaseSpider("PauseSpider02", feedUrls)}
+		engine.RegisterSpiders(spider)
+		patch := gomonkey.ApplyFunc(
+			(*TestSpider).StartRequest,
+			func(spider *TestSpider, req chan<- *Context) {
+				for _, url := range spider.FeedUrls {
+					request := NewRequest(url, GET, spider.Parser)
+					ctx := NewContext(request, spider)
+					req <- ctx
+					time.Sleep(time.Second)
+				}
+			})
+		defer patch.Reset()
+		count := 0
+		pausePatch := gomonkey.ApplyFunc((*DefaultHooks).Pause, func(_ *DefaultHooks, params ...interface{}) error {
+			count = count + 1
+			return nil
+		})
+		defer pausePatch.Reset()
+
+		go func() {
+			go engine.Execute("PauseSpider02")
+		}()
+		time.Sleep(time.Second)
+		engine.GetRuntimeStatus().SetStatus(ON_PAUSE)
+
+		engine.GetRuntimeStatus().SetStatus(ON_PAUSE)
+		time.Sleep(time.Second)
+		// except pause only once
+		convey.So(count, convey.ShouldAlmostEqual, 1)
+		// restart and reset pause status
+		engine.GetRuntimeStatus().SetStatus(ON_START)
+		time.Sleep(time.Second)
+
+		engine.GetRuntimeStatus().SetStatus(ON_PAUSE)
+		time.Sleep(time.Second)
+
+		convey.So(count, convey.ShouldAlmostEqual, 2)
+
+	})
+}

@@ -88,8 +88,8 @@ type CrawlEngine struct {
 	runtimeStatus *RuntimeStatus
 	// components 引擎核心组件,包括去重、请求队列、限速器、指标统计组件、时间监听器
 	components ComponentInterface
-	onceStart  sync.Once
-	oncePause  sync.Once
+	// onceClose 引擎关闭动作只执行一次
+	onceClose sync.Once
 }
 
 // RegisterSpiders 将spider实例注册到引擎的 spiders
@@ -144,22 +144,6 @@ func (e *CrawlEngine) stop() StatisticInterface {
 	e.runtimeStatus.SetStopAt(time.Now().Unix())
 	return e.components.GetStats()
 }
-func (e *CrawlEngine) Execute(spiderName string) StatisticInterface {
-	e.start(spiderName)
-	return e.stop()
-
-}
-
-// setCurrentSpider 对相关组件设置当前的spider
-func (e *CrawlEngine) setCurrentSpider(spider SpiderInterface) {
-	e.components.GetStats().SetCurrentSpider(spider)
-	e.components.GetQueue().SetCurrentSpider(spider)
-	e.components.GetDupefilter().SetCurrentSpider(spider)
-	e.components.GetEventHooks().SetCurrentSpider(spider)
-	e.components.GetLimiter().SetCurrentSpider(spider)
-	e.components.SetCurrentSpider(spider)
-	e.currentSpider = spider
-}
 
 // Start 爬虫启动器
 func (e *CrawlEngine) start(spiderName string) {
@@ -182,14 +166,10 @@ func (e *CrawlEngine) start(spiderName string) {
 		engineLog.Errorf("SpiderBeforeStart ERROR %s", err.Error())
 		return
 	}
-	e.onceStart.Do(func() {
-		e.runtimeStatus.SetStartAt(time.Now().Unix())
-
-	})
+	e.runtimeStatus.SetStartAt(time.Now().Unix())
 	e.runtimeStatus.SetRestartAt(time.Now().Unix())
 	// 引入引擎所有的组件
 	e.eventsChan <- START
-	e.oncePause = sync.Once{}
 	tasks := []GoFunc{e.recvRequest, e.Scheduler}
 	e.runtimeStatus.SetStatus(ON_START)
 	wg := &conc.WaitGroup{}
@@ -208,6 +188,21 @@ func (e *CrawlEngine) start(spiderName string) {
 	}
 
 }
+func (e *CrawlEngine) Execute(spiderName string) StatisticInterface {
+	e.start(spiderName)
+	return e.stop()
+}
+
+// setCurrentSpider 对相关组件设置当前的spider
+func (e *CrawlEngine) setCurrentSpider(spider SpiderInterface) {
+	e.components.GetStats().SetCurrentSpider(spider)
+	e.components.GetQueue().SetCurrentSpider(spider)
+	e.components.GetDupefilter().SetCurrentSpider(spider)
+	e.components.GetEventHooks().SetCurrentSpider(spider)
+	e.components.GetLimiter().SetCurrentSpider(spider)
+	e.components.SetCurrentSpider(spider)
+	e.currentSpider = spider
+}
 
 // EventsWatcherRunner 事件监听器运行组件
 func (e *CrawlEngine) EventsWatcherRunner() error {
@@ -225,10 +220,11 @@ func (e *CrawlEngine) Scheduler() error {
 			return nil
 		}
 		if e.runtimeStatus.GetStatusOn() == ON_PAUSE {
-			e.oncePause.Do(func() {
+			e.runtimeStatus.oncePause.Do(func() {
 				e.eventsChan <- PAUSE
 			})
 			e.eventsChan <- HEARTBEAT
+			time.Sleep(time.Second)
 			runtime.Gosched()
 			continue
 		}
@@ -519,12 +515,13 @@ func (e *CrawlEngine) GetSpiders() *Spiders {
 	return e.spiders
 }
 
-// Close 关闭引擎
+// close 关闭引擎
 func (e *CrawlEngine) close() {
-	defer func() {
-
-	}()
-	close(e.requestsChan)
+	e.onceClose.Do(func() {
+		// 保证channel只关闭一次
+		close(e.requestsChan)
+		close(e.eventsChan)
+	})
 }
 
 // GetStatic 获取StatisticInterface 统计指标
@@ -565,7 +562,7 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		currentSpider:         nil,
 		ctxCount:              0,
 		reqChannelSize:        1024,
-		onceStart:             sync.Once{},
+		onceClose:             sync.Once{},
 		components:            NewDefaultComponents(),
 	}
 	for _, o := range opts {
