@@ -40,4 +40,4 @@
 - 其他
   - [FAQ](faq.md)
   - [贡献](contribute.md)
-  - [更新日志](changelog.md)
+  - [更新日志](changelog)
