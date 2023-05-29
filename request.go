@@ -75,8 +75,11 @@ type Request struct {
 	AllowStatusCode []uint64 `json:"allowStatusCode"`
 	// Timeout 请求超时时间
 	Timeout time.Duration `json:"timeout"`
-	// DoNotFilter
+	// DoNotFilter 不过滤该请求
 	DoNotFilter bool
+
+	// Skip 忽略该请求
+	Skip bool
 }
 
 // Option NewRequest 可选参数
@@ -255,6 +258,7 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 		Meta:            make(map[string]interface{}),
 		Cookies:         make(map[string]string),
 		DoNotFilter:     false,
+		Skip:            false,
 		AllowRedirects:  true,
 		MaxRedirects:    3,
 		MaxConnsPerHost: 128,
@@ -301,6 +305,7 @@ func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request 
 		Meta:            make(map[string]interface{}),
 		DoNotFilter:     false,
 		AllowRedirects:  true,
+		Skip: false,
 		MaxRedirects:    3,
 		AllowStatusCode: make([]uint64, 0),
 		Timeout:         -1 * time.Second,

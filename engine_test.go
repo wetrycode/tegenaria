@@ -448,7 +448,41 @@ func TestPostForm(t *testing.T) {
 		convey.So(content, convey.ShouldContainSubstring, "form data")
 	})
 }
+func TestSkipRequest(t *testing.T){
+	convey.Convey("test skip request",t, func(){
+		engine := NewTestEngine("testSkipRequest1", EngineWithUniqueReq(false))
+		server := NewTestServer()
 
+		feedUrls := []string{
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+			server.URL + "/testGET",
+		}
+		spider := &TestSpider{NewBaseSpider("testSkipRequest", feedUrls)}
+		engine.RegisterSpiders(spider)
+
+		patch := gomonkey.ApplyFunc(
+			(*TestSpider).StartRequest,
+			func(spider *TestSpider, req chan<- *Context) {
+				for _, url := range spider.FeedUrls {
+					request := NewRequest(url, GET, spider.Parser)
+					request.Skip=true
+					ctx := NewContext(request, spider)
+					req <- ctx
+					time.Sleep(time.Second)
+				}
+			})
+		defer patch.Reset()
+		go func() {
+			engine.Execute("testSkipRequest")
+		}()
+		time.Sleep(3*time.Second)
+		convey.So(engine.components.GetStats().Get(RequestStats), convey.ShouldAlmostEqual, 0)
+
+	})
+}
 func TestPauseRestart(t *testing.T) {
 	convey.Convey("test pause then restart,puase should be done once", t, func() {
 		engine := NewTestEngine("PauseSpider01", EngineWithUniqueReq(false))
