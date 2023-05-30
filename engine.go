@@ -394,7 +394,7 @@ func (e *CrawlEngine) tryLimiterUint(ctx *Context) error {
 	return e.components.GetLimiter().CheckAndWaitLimiterPass()
 }
 func (e *CrawlEngine) downloadUnit(ctx *Context) error {
-	if ctx.Request.Skip{
+	if ctx.Request.Skip {
 		return nil
 	}
 	// 增加请求发送量
@@ -436,8 +436,11 @@ func (e *CrawlEngine) doHandleResponse(ctx *Context) error {
 			ctx.setError(fmt.Sprintf("handle response error %s", p), string(debug.Stack()))
 		}
 	}()
+	if ctx.Request.Skip {
+		return nil
+	}
 	// 检查response的值
-	if ctx.Response == nil && !ctx.Request.Skip {
+	if ctx.Response == nil {
 		err := fmt.Errorf("response is nil")
 		engineLog.WithField("request_id", ctx.CtxID).Errorf("Request is fail with error %s", err.Error())
 		return err
