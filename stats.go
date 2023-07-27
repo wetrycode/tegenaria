@@ -183,7 +183,12 @@ func (s *DefaultStatistic) SetCurrentSpider(spider SpiderInterface) {
 
 // Incr 新增一个指标值
 func (s *DefaultStatistic) Incr(metrics string) {
+	if _, ok := s.register.Load(metrics); !ok {
+		s.Metrics[metrics] = new(uint64)
+		atomic.StoreUint64(s.Metrics[metrics], 0)
+	}
 	atomic.AddUint64(s.Metrics[metrics], 1)
+
 	s.register.Store(metrics, true)
 }
 

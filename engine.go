@@ -292,7 +292,7 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 		}
 		GoRunner(wg, funcs...)
 		// 处理request的所有工作单元
-		units := []workerUnit{e.doDownload, e.doHandleResponse, e.doParse}
+		units := []workerUnit{e.tryLimiterUint, e.doDownload, e.doHandleResponse, e.doParse}
 		e.doWorkerUnit(c, units...)
 		close(ctx.Items)
 		wg.Wait()
@@ -394,7 +394,7 @@ func (e *CrawlEngine) tryLimiterUint(ctx *Context) error {
 	return e.components.GetLimiter().CheckAndWaitLimiterPass()
 }
 func (e *CrawlEngine) downloadUnit(ctx *Context) error {
-	if ctx.Request.Skip{
+	if ctx.Request.Skip {
 		return nil
 	}
 	// 增加请求发送量
@@ -423,7 +423,7 @@ func (e *CrawlEngine) doDownload(ctx *Context) (err error) {
 		}
 	}()
 	// 处理request的所有工作单元
-	units := []workerUnit{e.downloaderMiddlewaresUint, e.tryLimiterUint, e.downloadUnit}
+	units := []workerUnit{e.downloaderMiddlewaresUint, e.downloadUnit}
 	e.doWorkerUnit(ctx, units...)
 	err = ctx.Error
 	return err
