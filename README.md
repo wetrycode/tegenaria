@@ -35,7 +35,9 @@ import "github.com/wetrycode/tegenaria"
 
 # 快速开始
 
-查看实例demo [example](example) 
+ - 查看实例demo [example](example) 
+
+ - 使用脚手架工具[teg-cli]("https://github.com/wetrycode/teg-cli")创建项目
 
 # 文档
 

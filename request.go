@@ -273,6 +273,18 @@ func NewRequest(url string, method RequestMethod, parser Parser, opts ...Request
 	return request
 
 }
+// Relase 释放request
+func (r *Request) Relase() {
+	r.Headers = nil
+	r.Params = nil
+	r.Proxy = nil
+	r.Cookies = nil
+	r.Meta = nil
+	r.AllowStatusCode = nil
+	r.body = nil
+	r.bodyReader = nil
+	r = nil
+}
 
 // ToMap 将request对象转为map
 func (r *Request) ToMap() (map[string]interface{}, error) {
@@ -305,7 +317,7 @@ func RequestFromMap(src map[string]interface{}, opts ...RequestOption) *Request 
 		Meta:            make(map[string]interface{}),
 		DoNotFilter:     false,
 		AllowRedirects:  true,
-		Skip: false,
+		Skip:            false,
 		MaxRedirects:    3,
 		AllowStatusCode: make([]uint64, 0),
 		Timeout:         -1 * time.Second,

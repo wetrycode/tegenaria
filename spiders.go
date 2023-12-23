@@ -22,7 +22,13 @@
 
 package tegenaria
 
-import "sync"
+import (
+	"html/template"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sync"
+)
 
 // SpiderInterface Tegenaria spider interface, developer can custom spider must be based on
 // this interface to achieve custom spider.
@@ -119,4 +125,38 @@ func (s *Spiders) GetAllSpidersName() []string {
 		names = append(names, spider)
 	}
 	return names
+}
+
+func RenderNewSpider(name string, packageName string, outputDir string) (string, error) {
+	_, filename, _, _ := runtime.Caller(0)
+	currentDir := filepath.Dir(filename)
+	tmpl, err := template.ParseFiles(currentDir + "/templates/spider.tpl")
+	if err != nil {
+		panic(err)
+	}
+	params := struct {
+		SpiderName  string
+		PackageName string
+	}{
+		SpiderName:  name,
+		PackageName: packageName,
+	}
+	// 确保输出目录存在
+	err = os.MkdirAll(outputDir, os.ModePerm)
+	if err != nil {
+		return "", err
+	}
+
+	// 创建输出文件
+	outputFilePath := filepath.Join(outputDir, name+".go")
+	file, err := os.Create(outputFilePath)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	err = tmpl.Execute(file, params)
+	if err != nil {
+		return "", err
+	}
+	return outputFilePath, nil
 }

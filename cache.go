@@ -77,6 +77,7 @@ func (c *DefaultQueue) Dequeue() (interface{}, error) {
 
 // isEmpty 缓存是否为空
 func (c *DefaultQueue) IsEmpty() bool {
+	fmt.Printf("queue size:%d", c.queue.Quantity())
 	return int64(c.queue.Quantity()) == 0
 }
 

@@ -96,6 +96,19 @@ func NewContext(request *Request, Spider SpiderInterface, opts ...ContextOption)
 
 }
 
+// FreeContext 释放context
+func (ctx *Context) FreeContext() {
+	ctx.Request = nil
+	ctx.Response = nil
+	ctx.parent = nil
+	ctx.CtxID = ""
+	ctx.Error = nil
+	ctx.Cancel = nil
+	ctx.Items = nil
+	ctx.Spider = nil
+	ctx = nil
+}
+
 // setResponse 设置响应
 func (c *Context) setResponse(resp *Response) {
 	c.Response = resp
@@ -127,13 +140,18 @@ func (c *Context) setError(msg string, stack string) {
 
 // Close 关闭context
 func (c *Context) Close() {
+	c.Cancel()
+
+	if c.Request != nil {
+		c.Request.Relase()
+	}
+	c.FreeContext()
 	if c.Response != nil {
 		// 释放response
 		freeResponse(c.Response)
 	}
 	// ctxManager.remove(c)
 	c.CtxID = ""
-	c.Cancel()
 
 }
 

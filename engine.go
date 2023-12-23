@@ -125,6 +125,7 @@ func (e *CrawlEngine) startSpider(spider SpiderInterface) {
 			}
 		}
 		e.startSpiderFinish = true
+
 	}()
 	spider.StartRequest(e.requestsChan)
 }
@@ -224,13 +225,14 @@ func (e *CrawlEngine) Scheduler() error {
 				e.eventsChan <- PAUSE
 			})
 			e.eventsChan <- HEARTBEAT
-			time.Sleep(time.Second)
+			time.Sleep(time.Second * 3)
 			runtime.Gosched()
 			continue
 		}
 		// 从缓存队列中读取请求对象
 		req, err := e.components.GetQueue().Dequeue()
 		if err != nil {
+			time.Sleep(time.Second * 3)
 			runtime.Gosched()
 			continue
 		}
@@ -267,6 +269,8 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 	c := ctx
 	return func() error {
 		defer func() {
+			atomic.AddInt64(&e.ctxCount, -1)
+
 			if c.Error != nil {
 				// 新增一个错误
 				e.components.GetStats().Incr(ErrorStats)
@@ -275,8 +279,8 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 				// 将错误交给自定义的spider错误处理函数
 				c.Spider.ErrorHandler(c, e.requestsChan)
 			}
+			
 			c.Close()
-			atomic.AddInt64(&e.ctxCount, -1)
 		}()
 		// 发起心跳检查
 		e.eventsChan <- HEARTBEAT
@@ -302,13 +306,17 @@ func (e *CrawlEngine) worker(ctx *Context) GoFunc {
 
 // recvRequest 从requestsChan读取context对象
 func (e *CrawlEngine) recvRequest() error {
+	ticker := time.NewTicker(time.Second * 3)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case req := <-e.requestsChan:
 			if req == nil {
 				continue
 			}
-			if e.GetRuntimeStatus().GetStatusOn() == ON_STOP {
+			runtimeStatus := e.GetRuntimeStatus().GetStatusOn()
+			if runtimeStatus == ON_STOP {
 				logger.Warnf("准备停止爬虫")
 				e.isStop = true
 				return nil
@@ -319,8 +327,7 @@ func (e *CrawlEngine) recvRequest() error {
 			if err != nil {
 				engineLog.WithField("request_id", req.CtxID).Errorf("请求入队列失败")
 			}
-		// 每三秒钟检查一次所有的任务是否都已经结束
-		case <-time.After(time.Second * 3):
+		case <-ticker.C:
 			// 被动等待爬虫停止或主动停止爬虫
 			engineLog.Infof("当前运行状态:%s", e.runtimeStatus.GetStatusOn().GetTypeName())
 			if e.checkReadyDone() || e.runtimeStatus.GetStatusOn() == ON_STOP {
@@ -328,9 +335,7 @@ func (e *CrawlEngine) recvRequest() error {
 				engineLog.Warningf("停止接收请求")
 				return nil
 			}
-
 		}
-		runtime.Gosched()
 	}
 }
 
@@ -339,6 +344,9 @@ func (e *CrawlEngine) recvRequest() error {
 // 所有的context是否都已经关闭
 // 队列是否为空
 func (e *CrawlEngine) checkReadyDone() bool {
+	// fmt.Printf("当前请求计数:%d\n", atomic.LoadInt64(&e.ctxCount))
+	// fmt.Printf("当前队列大小:%d\n", e.components.GetQueue().GetSize())
+	// fmt.Printf("当前运行状态:%s\n", e.startSpiderFinish)
 	return e.startSpiderFinish && atomic.LoadInt64(&e.ctxCount) == 0 && e.components.CheckWorkersStop()
 }
 
@@ -500,6 +508,7 @@ func (e *CrawlEngine) doPipelinesHandlers(ctx *Context) error {
 		if err := recover(); err != nil {
 			ctx.setError(fmt.Sprintf("pipeline error %s", err), string(debug.Stack()))
 		}
+
 		engineLog.WithField("request_id", ctx.CtxID).Infof("pipelines pass")
 	}()
 	for item := range ctx.Items {
@@ -560,7 +569,7 @@ func NewEngine(opts ...EngineOption) *CrawlEngine {
 		pipelines:             make(ItemPipelines, 0),
 		downloaderMiddlewares: make(Middlewares, 0),
 		requestsChan:          make(chan *Context, 1024),
-		eventsChan:            make(chan EventType, 16),
+		eventsChan:            make(chan EventType),
 		filterDuplicateReq:    true,
 		isStop:                false,
 		downloader:            NewDownloader(),
